@@ -67,7 +67,7 @@ export function UsersPage() {
   });
 
   const editM = useMutation({
-    mutationFn: async (payload: { id: string; data: { name?: string; telegramId?: string; trialDays?: number } }) =>
+    mutationFn: async (payload: { id: string; data: { name?: string; telegramId?: string; trialDays?: number; serverId?: string } }) =>
       (await api.patch<VpnUser>(`/users/${payload.id}`, payload.data)).data,
     onSuccess: async () => {
       toast.success('User updated');
@@ -229,7 +229,7 @@ export function UsersPage() {
                       setEditTarget(u);
                       // default trialDays empty = keep current
                       editForm.reset({
-                        serverId: u.serverId,
+                        serverId: u.serverId ?? undefined,
                         name: u.name,
                         telegramId: u.telegramId ?? '',
                         trialDays: undefined,

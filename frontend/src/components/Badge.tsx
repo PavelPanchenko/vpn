@@ -1,4 +1,4 @@
-type Variant = 'default' | 'success' | 'warning' | 'danger' | 'info';
+type Variant = 'default' | 'success' | 'warning' | 'danger' | 'info' | 'secondary';
 
 type BadgeProps = {
   children: string;
@@ -15,6 +15,7 @@ export function Badge({ children, variant = 'default', className }: BadgeProps) 
     warning: 'border-amber-200 bg-amber-50 text-amber-800',
     danger: 'border-red-200 bg-red-50 text-red-700',
     info: 'border-sky-200 bg-sky-50 text-sky-700',
+    secondary: 'border-slate-200 bg-slate-100 text-slate-600',
   };
   return <span className={[base, variants[variant], className].filter(Boolean).join(' ')}>{children}</span>;
 }
