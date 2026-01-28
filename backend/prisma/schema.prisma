@@ -1,0 +1,217 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AdminRole {
+  ADMIN
+}
+
+enum VpnProtocol {
+  VLESS
+}
+
+enum VpnTransport {
+  WS
+  TCP
+}
+
+enum VpnSecurity {
+  NONE
+  TLS
+  REALITY
+}
+
+enum VpnUserStatus {
+  ACTIVE
+  BLOCKED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PAID
+  FAILED
+}
+
+model AdminUser {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  role         AdminRole @default(ADMIN)
+  createdAt    DateTime  @default(now())
+
+  @@map("admin_users")
+}
+
+model VpnServer {
+  id        String      @id @default(cuid())
+  name      String
+  host      String
+  port      Int
+  protocol  VpnProtocol @default(VLESS)
+  transport VpnTransport
+
+  // legacy toggle (kept for backward compatibility)
+  tls       Boolean     @default(true)
+
+  // more precise transport security
+  security  VpnSecurity @default(NONE)
+  sni       String?
+  path      String?
+
+  publicKey String
+  shortId   String
+
+  // x-ui / 3x-ui / x-ui-pro panel integration (optional)
+  panelBaseUrl     String?
+  panelUsername    String?
+  panelPasswordEnc String?
+  panelInboundId   Int?
+
+  maxUsers  Int         @default(0)
+  active    Boolean     @default(true)
+  createdAt DateTime    @default(now())
+
+  users       VpnUser[]
+  userServers UserServer[]
+
+  @@map("vpn_servers")
+}
+
+model VpnUser {
+  id         String         @id @default(cuid())
+  name       String         @default("User")
+  telegramId String?
+  uuid       String         @unique
+  panelEmail String?        @unique
+  status     VpnUserStatus  @default(ACTIVE)
+  expiresAt  DateTime?
+  firstPaidAt DateTime?     // Устанавливается один раз при первом успешном платеже (для разделения новых/существующих пользователей)
+  createdAt  DateTime       @default(now())
+
+  // Legacy: оставляем для обратной совместимости, но используем UserServer для множественных серверов
+  serverId   String?
+  server     VpnServer?     @relation(fields: [serverId], references: [id], onDelete: Restrict)
+
+  userServers UserServer[]
+  subscriptions Subscription[]
+  payments      Payment[]
+  supportMessages SupportMessage[]
+
+  @@index([serverId])
+  @@map("vpn_users")
+}
+
+model Subscription {
+  id         String   @id @default(cuid())
+  vpnUserId  String
+  paymentId  String?  @unique // Связь с платежом, который создал эту подписку
+  periodDays Int
+  startsAt   DateTime
+  endsAt     DateTime
+  active     Boolean  @default(true)
+
+  vpnUser    VpnUser  @relation(fields: [vpnUserId], references: [id], onDelete: Cascade)
+  payment    Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@index([vpnUserId])
+  @@index([paymentId])
+  @@map("subscriptions")
+}
+
+model Plan {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  description String?
+  periodDays  Int
+  price       Int
+  currency    String   @default("RUB")
+  isTrial     Boolean  @default(false)
+  active      Boolean  @default(true)
+  legacy      Boolean  @default(false) // Старые тарифы для существующих пользователей
+  availableFor String  @default("ALL") // "ALL" | "NEW_USERS" | "EXISTING_USERS" - для кого доступен тариф
+  createdAt   DateTime @default(now())
+
+  payments    Payment[]
+
+  @@map("plans")
+}
+
+model Payment {
+  id                 String        @id @default(cuid())
+  vpnUserId          String
+  planId             String?
+  amount             Int
+  currency           String
+  planPriceAtPurchase Int?         // Цена тарифа на момент покупки (для отслеживания изменений цен)
+  status             PaymentStatus @default(PAID)
+  createdAt          DateTime      @default(now())
+
+  vpnUser       VpnUser        @relation(fields: [vpnUserId], references: [id], onDelete: Cascade)
+  plan          Plan?          @relation(fields: [planId], references: [id], onDelete: SetNull)
+  subscription  Subscription?
+
+  @@index([vpnUserId])
+  @@index([planId])
+  @@map("payments")
+}
+
+model UserServer {
+  id         String   @id @default(cuid())
+  vpnUserId  String
+  serverId   String
+  panelEmail String   @unique
+  active     Boolean  @default(true)
+  isActive   Boolean  @default(false) // Текущая активная локация (только одна может быть true)
+  createdAt  DateTime @default(now())
+
+  vpnUser    VpnUser  @relation(fields: [vpnUserId], references: [id], onDelete: Cascade)
+  server     VpnServer @relation(fields: [serverId], references: [id], onDelete: Cascade)
+
+  @@unique([vpnUserId, serverId])
+  @@index([vpnUserId])
+  @@index([serverId])
+  @@map("user_servers")
+}
+
+model BotConfig {
+  id          String   @id @default(cuid())
+  tokenEnc    String   // Зашифрованный токен бота
+  active      Boolean  @default(false) // Активен ли бот
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("bot_config")
+}
+
+enum SupportMessageType {
+  USER_MESSAGE  // Сообщение от пользователя
+  ADMIN_REPLY   // Ответ администратора
+}
+
+enum SupportTicketStatus {
+  OPEN      // Открыт (ожидает ответа)
+  CLOSED    // Закрыт
+}
+
+model SupportMessage {
+  id          String              @id @default(cuid())
+  vpnUserId   String
+  type        SupportMessageType
+  message     String
+  status      SupportTicketStatus @default(OPEN)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  vpnUser     VpnUser             @relation(fields: [vpnUserId], references: [id], onDelete: Cascade)
+
+  @@index([vpnUserId])
+  @@index([status])
+  @@map("support_messages")
+}
+

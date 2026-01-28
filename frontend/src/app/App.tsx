@@ -1,0 +1,39 @@
+import { Navigate, Route, Routes } from 'react-router-dom';
+import { LoginPage } from '../pages/LoginPage';
+import { DashboardPage } from '../pages/DashboardPage';
+import { ServersPage } from '../pages/ServersPage';
+import { UsersPage } from '../pages/UsersPage';
+import { UserDetailsPage } from '../pages/UserDetailsPage';
+import { SubscriptionsPage } from '../pages/SubscriptionsPage';
+import { PaymentsPage } from '../pages/PaymentsPage';
+import { PlansPage } from '../pages/PlansPage';
+import { BotPage } from '../pages/BotPage';
+import { SupportPage } from '../pages/SupportPage';
+import { MiniAppPage } from '../pages/MiniAppPage';
+import { ProtectedLayout } from './ProtectedLayout';
+
+export function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+
+      <Route element={<ProtectedLayout />}>
+        <Route path="/" element={<DashboardPage />} />
+        <Route path="/servers" element={<ServersPage />} />
+        <Route path="/users" element={<UsersPage />} />
+        <Route path="/users/:id" element={<UserDetailsPage />} />
+        <Route path="/subscriptions" element={<SubscriptionsPage />} />
+        <Route path="/payments" element={<PaymentsPage />} />
+        <Route path="/plans" element={<PlansPage />} />
+        <Route path="/bot" element={<BotPage />} />
+        <Route path="/support" element={<SupportPage />} />
+      </Route>
+
+      {/* Публичный роут для Telegram Mini App (без админской авторизации) */}
+      <Route path="/mini" element={<MiniAppPage />} />
+
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
