@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma } from '@prisma/client';
+import { Prisma, PrismaClientKnownRequestError } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateServerDto } from './dto/create-server.dto';
 import { UpdateServerDto } from './dto/update-server.dto';
@@ -273,13 +273,13 @@ export class ServersService {
   }
 
   async remove(id: string) {
-    await this.prisma.vpnServer.findUnique({ where: { id } }).then((s) => {
+    await this.prisma.vpnServer.findUnique({ where: { id } }).then((s: any) => {
       if (!s) throw new NotFoundException('Server not found');
     });
     try {
       await this.prisma.vpnServer.delete({ where: { id } });
-    } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError) {
+    } catch (e: unknown) {
+      if (e instanceof PrismaClientKnownRequestError) {
         // FK constraint (есть пользователи) — не даём удалить "тихо"
         if (e.code === 'P2003') {
           throw new ConflictException('Cannot delete server with existing users');

@@ -152,7 +152,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
             return;
           }
 
-          const buttons = servers.map((server) => [
+          const buttons = servers.map((server: any) => [
             Markup.button.callback(server.name, `select_server_${server.id}`),
           ]);
 
@@ -211,7 +211,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
           // Получаем доступные тарифы для пользователя
           const plans = await this.plansService.list(user.id);
           const trialPlan = plans.find((p) => p.isTrial);
-          let paidPlans = plans.filter((p) => !p.isTrial && p.active);
+          let paidPlans = plans.filter((p: any) => !p.isTrial && p.active);
           
           // Если для пользователя нет тарифов, показываем все активные (fallback)
           if (paidPlans.length === 0) {
@@ -242,11 +242,11 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
             const recommendedPlan = displayedPlans[middleIndex];
             
             // Находим минимальную цену для отображения
-            const minPrice = Math.min(...displayedPlans.map(p => p.price));
-            const minPricePlan = displayedPlans.find(p => p.price === minPrice);
+            const minPrice = Math.min(...displayedPlans.map((p: any) => p.price));
+            const minPricePlan = displayedPlans.find((p: any) => p.price === minPrice);
             
             message += `💳 Тарифы после пробного периода:\n`;
-            displayedPlans.forEach((plan) => {
+            displayedPlans.forEach((plan: any) => {
               // Отмечаем средний тариф как рекомендуемый
               const emoji = plan.id === recommendedPlan.id ? '🔥 ' : '   ';
               message += `${emoji}${plan.name} - ${plan.price} ${plan.currency} (${plan.periodDays} дн.)\n`;
@@ -355,7 +355,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
           }
 
           const { Markup } = await import('telegraf');
-          const buttons = allServers.map((server) => [
+          const buttons = allServers.map((server: any) => [
             Markup.button.callback(server.name, `select_server_${server.id}`),
           ]);
 
@@ -395,7 +395,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
           let plans = await this.plansService.list(user.id);
           this.logger.debug(`Found ${plans.length} plans for user ${user.id} (command /pay)`);
           
-          let paidPlans = plans.filter((p) => !p.isTrial && p.active);
+          let paidPlans = plans.filter((p: any) => !p.isTrial && p.active);
           this.logger.debug(`Found ${paidPlans.length} paid plans after filtering (command /pay)`);
 
           // Если для пользователя нет тарифов, показываем все активные (fallback)
@@ -419,7 +419,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
             this.logger.debug(`Using ${paidPlans.length} active plans as fallback (command /pay)`);
           }
 
-          const buttons = paidPlans.map((plan) => [
+          const buttons = paidPlans.map((plan: any) => [
             Markup.button.callback(
               `${plan.name} - ${plan.price} ${plan.currency} (${plan.periodDays} дн.)`,
               `select_plan_${plan.id}`,
@@ -719,13 +719,13 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
             return;
           }
 
-          const statusEmoji = {
+          const statusEmoji: Record<string, string> = {
             ACTIVE: '✅',
             BLOCKED: '🚫',
             EXPIRED: '⏰',
           };
 
-          let message = `${statusEmoji[user.status]} Статус аккаунта: ${user.status}\n\n`;
+          let message = `${statusEmoji[user.status] || '❓'} Статус аккаунта: ${user.status}\n\n`;
 
           // Информация о подписке
           if (user.expiresAt) {
@@ -750,7 +750,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
           // Информация об активных серверах
           if (user.userServers && user.userServers.length > 0) {
             message += `\n🌐 Активные серверы:\n`;
-            user.userServers.forEach((userServer) => {
+            user.userServers.forEach((userServer: any) => {
               message += `  • ${userServer.server.name}\n`;
             });
           } else {
@@ -1071,14 +1071,14 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
           return;
         }
 
-        const statusEmoji = {
+        const statusEmoji: Record<string, string> = {
           ACTIVE: '✅',
           BLOCKED: '🚫',
           EXPIRED: '⏰',
         };
 
         // Формируем текст статуса
-        let statusText = `\n\n${statusEmoji[user.status]} Статус: ${user.status}`;
+        let statusText = `\n\n${statusEmoji[user.status] || '❓'} Статус: ${user.status}`;
 
         if (user.expiresAt) {
           const expiresAt = new Date(user.expiresAt);

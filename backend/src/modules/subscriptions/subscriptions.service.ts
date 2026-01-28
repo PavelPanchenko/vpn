@@ -69,7 +69,7 @@ export class SubscriptionsService {
           ? 'EXPIRED'
           : 'ACTIVE';
 
-    const created = await this.prisma.$transaction(async (tx) => {
+    const created = await this.prisma.$transaction(async (tx: any) => {
       await tx.subscription.updateMany({
         where: { vpnUserId: dto.vpnUserId, active: true },
         data: { active: false },

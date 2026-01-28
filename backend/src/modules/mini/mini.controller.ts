@@ -163,7 +163,7 @@ export class MiniController {
       status: user.status,
       expiresAt: user.expiresAt,
       daysLeft,
-      servers: user.userServers.map((us) => ({
+      servers: user.userServers.map((us: any) => ({
         id: us.server.id,
         name: us.server.name,
       })),
@@ -213,7 +213,7 @@ export class MiniController {
 
     const plans = await this.plansService.list(user.id);
     // Фронт может сам решать, какие показывать, но по умолчанию вернем только активные
-    return plans.filter((p) => p.active);
+    return plans.filter((p: any) => p.active);
   }
 
   @Post('pay')

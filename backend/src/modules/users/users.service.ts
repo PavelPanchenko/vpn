@@ -60,7 +60,7 @@ export class UsersService {
     // Пытаемся синхронизировать с панелью (best-effort, чтобы не блокировать весь джоб)
     for (const user of users) {
       // Обрабатываем только активную локацию через UserServer
-      const activeUserServer = user.userServers.find((us) => us.isActive);
+      const activeUserServer = user.userServers.find((us: any) => us.isActive);
       if (activeUserServer) {
         const us = activeUserServer;
         const server = us.server;
@@ -136,9 +136,9 @@ export class UsersService {
       }
     }
 
-    const userIds = users.map((u) => u.id);
+    const userIds = users.map((u: any) => u.id);
 
-    await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx: any) => {
       await tx.subscription.updateMany({
         where: { vpnUserId: { in: userIds }, active: true },
         data: { active: false },
@@ -697,7 +697,7 @@ export class UsersService {
       // Обновляем panelEmail если его не было, и serverId.
       const updatedPanelEmail = existing.panelEmail ?? this.makePanelEmail(nextName, existing.id, nextTelegramId ?? undefined);
       if (dto.trialDays) {
-        await this.prisma.$transaction(async (tx) => {
+        await this.prisma.$transaction(async (tx: any) => {
           await tx.subscription.updateMany({
             where: { vpnUserId: id, active: true },
             data: { active: false },
@@ -819,7 +819,7 @@ export class UsersService {
 
     // Now persist DB changes atomically.
     if (dto.trialDays) {
-      await this.prisma.$transaction(async (tx) => {
+      await this.prisma.$transaction(async (tx: any) => {
         await tx.subscription.updateMany({
           where: { vpnUserId: id, active: true },
           data: { active: false },
@@ -1201,7 +1201,7 @@ export class UsersService {
     });
 
     // Обновляем флаги активности в БД
-    await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx: any) => {
       // Деактивируем все локации пользователя
       await tx.userServer.updateMany({
         where: { vpnUserId: userId },
