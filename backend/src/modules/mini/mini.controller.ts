@@ -44,16 +44,21 @@ export class MiniController {
     });
     const dataCheckString = dataCheckArray.join('\n');
 
-    // Секретный ключ: SHA256 от токена бота
+    // Секретный ключ для Telegram WebApp:
+    // secret_key = HMAC_SHA256(key="WebAppData", msg=bot_token)
+    // https://core.telegram.org/bots/webapps#validating-data-received-via-the-web-app
     const token = await this.botService.getToken();
     if (!token) {
       throw new UnauthorizedException('Bot token not configured');
     }
 
-    const secretKey = crypto.createHash('sha256').update(token).digest();
+    const secretKey = crypto.createHmac('sha256', 'WebAppData').update(token).digest();
     const hmac = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
 
-    if (hmac !== hash) {
+    // Безопасное сравнение
+    const a = Buffer.from(hmac, 'hex');
+    const b = Buffer.from(hash, 'hex');
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
       throw new UnauthorizedException('Invalid initData hash');
     }
 
