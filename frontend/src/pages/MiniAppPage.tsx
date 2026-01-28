@@ -32,27 +32,64 @@ export function MiniAppPage() {
   >([]);
   const [payingPlanId, setPayingPlanId] = useState<string | null>(null);
 
+  const getInitDataFromUrl = () => {
+    try {
+      // Telegram может прокидывать initData как tgWebAppData в query/hash
+      const url = new URL(window.location.href);
+      const fromQuery = url.searchParams.get('tgWebAppData');
+      if (fromQuery) return fromQuery;
+
+      const hash = url.hash?.startsWith('#') ? url.hash.slice(1) : url.hash;
+      if (hash) {
+        const params = new URLSearchParams(hash);
+        const fromHash = params.get('tgWebAppData');
+        if (fromHash) return fromHash;
+      }
+    } catch {
+      // ignore
+    }
+    return '';
+  };
+
   useEffect(() => {
     const tg = window.Telegram?.WebApp;
-    if (!tg || !tg.initData) {
-      setError('Откройте это мини‑приложение из Telegram.');
-      setLoading(false);
-      return;
-    }
 
-    setInitData(tg.initData as string);
-
-    // Инициализируем WebApp UI
+    // Инициализируем WebApp UI (у некоторых клиентов initData появляется после ready)
     try {
-      tg.ready();
-      tg.expand?.();
+      tg?.ready?.();
+      tg?.expand?.();
     } catch {
       // ignore
     }
 
+    const resolveInitData = async () => {
+      // 1) Пробуем из Telegram WebApp API (с небольшим ожиданием)
+      for (let i = 0; i < 5; i++) {
+        const v = (tg?.initData as string) || '';
+        if (v) return v;
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
+      // 2) Фоллбек: пробуем из URL (tgWebAppData)
+      const fromUrl = getInitDataFromUrl();
+      if (fromUrl) return fromUrl;
+
+      return '';
+    };
+
     const loadStatus = async () => {
       try {
-        const res = await api.post('/mini/status', { initData: tg.initData });
+        const resolved = await resolveInitData();
+        if (!resolved) {
+          setError(
+            'Откройте это мини‑приложение из Telegram.\n\n' +
+              'Если вы открыли ссылку в браузере, авторизация не сработает — используйте кнопку WebApp в боте.',
+          );
+          return;
+        }
+
+        setInitData(resolved);
+        const res = await api.post('/mini/status', { initData: resolved });
         setStatus(res.data);
       } catch (e: any) {
         console.error(e);
