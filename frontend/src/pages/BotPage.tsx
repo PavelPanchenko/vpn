@@ -119,13 +119,13 @@ export function BotPage() {
         ) : config ? (
           <div className="space-y-4">
             <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-slate-700">Status:</span>
-                  <Badge variant={config.active ? 'success' : 'secondary'}>
-                    {config.active ? 'Active' : 'Inactive'}
-                  </Badge>
-                </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-slate-700">Status:</span>
+                <Badge variant={config.active ? 'success' : 'warning'}>
+                  {config.active ? 'Active' : 'Inactive'}
+                </Badge>
+              </div>
                 <div className="text-xs text-slate-500">
                   Created: {new Date(config.createdAt).toLocaleString()}
                 </div>

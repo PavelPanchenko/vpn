@@ -1,6 +1,12 @@
 type Variant = 'default' | 'success' | 'warning' | 'danger' | 'info';
 
-export function Badge({ children, variant = 'default' }: { children: string; variant?: Variant }) {
+type BadgeProps = {
+  children: string;
+  variant?: Variant;
+  className?: string;
+};
+
+export function Badge({ children, variant = 'default', className }: BadgeProps) {
   const base =
     'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium leading-5';
   const variants: Record<Variant, string> = {
@@ -10,7 +16,7 @@ export function Badge({ children, variant = 'default' }: { children: string; var
     danger: 'border-red-200 bg-red-50 text-red-700',
     info: 'border-sky-200 bg-sky-50 text-sky-700',
   };
-  return <span className={[base, variants[variant]].join(' ')}>{children}</span>;
+  return <span className={[base, variants[variant], className].filter(Boolean).join(' ')}>{children}</span>;
 }
 
 export function statusBadgeVariant(value: string): Variant {

@@ -85,5 +85,6 @@ export type Payment = {
   status: PaymentStatus;
   createdAt: string;
   plan?: Plan | null;
+  vpnUser?: VpnUser | null;
 };
 
