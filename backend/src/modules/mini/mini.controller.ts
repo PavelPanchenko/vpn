@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, Post, UnauthorizedException } from '@nestjs/common';
 import { MiniInitDataDto } from './dto/mini-auth.dto';
 import { MiniPayDto } from './dto/mini-pay.dto';
+import { MiniActivateServerDto } from './dto/mini-activate.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import { PlansService } from '../plans/plans.service';
@@ -87,18 +88,11 @@ export class MiniController {
     return { telegramId, name };
   }
 
-  @Post('auth')
-  async auth(@Body() dto: MiniInitDataDto) {
-    const { telegramId, name } = await this.validateInitData(dto.initData);
-
-    // Ищем или создаём пользователя так же, как это делает бот
+  private async getOrCreateUser(telegramId: string, name: string) {
     let user = await this.prisma.vpnUser.findFirst({
       where: { telegramId },
       include: {
-        userServers: {
-          where: { isActive: true },
-          include: { server: true },
-        },
+        userServers: { include: { server: true } },
         subscriptions: {
           where: { active: true },
           orderBy: { endsAt: 'desc' },
@@ -112,10 +106,7 @@ export class MiniController {
       user = await this.prisma.vpnUser.findUnique({
         where: { id: created.id },
         include: {
-          userServers: {
-            where: { isActive: true },
-            include: { server: true },
-          },
+          userServers: { include: { server: true } },
           subscriptions: {
             where: { active: true },
             orderBy: { endsAt: 'desc' },
@@ -124,6 +115,44 @@ export class MiniController {
         },
       });
     }
+
+    return user!;
+  }
+
+  private buildStatusPayload(user: any) {
+    let daysLeft: number | null = null;
+    if (user.expiresAt) {
+      const now = new Date();
+      daysLeft = Math.ceil((user.expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    }
+
+    const activeServers = (user.userServers || []).filter((us: any) => us.isActive);
+
+    return {
+      id: user.id,
+      status: user.status,
+      expiresAt: user.expiresAt,
+      daysLeft,
+      servers: activeServers.map((us: any) => ({
+        id: us.server.id,
+        name: us.server.name,
+      })),
+      subscription: user.subscriptions?.[0]
+        ? {
+            id: user.subscriptions[0].id,
+            periodDays: user.subscriptions[0].periodDays,
+            startsAt: user.subscriptions[0].startsAt,
+            endsAt: user.subscriptions[0].endsAt,
+          }
+        : null,
+    };
+  }
+
+  @Post('auth')
+  async auth(@Body() dto: MiniInitDataDto) {
+    const { telegramId, name } = await this.validateInitData(dto.initData);
+
+    const user = await this.getOrCreateUser(telegramId, name);
 
     return {
       id: user!.id,
@@ -136,51 +165,50 @@ export class MiniController {
 
   @Post('status')
   async status(@Body() dto: MiniInitDataDto) {
-    const { telegramId } = await this.validateInitData(dto.initData);
+    const { telegramId, name } = await this.validateInitData(dto.initData);
+    const user = await this.getOrCreateUser(telegramId, name);
+    return this.buildStatusPayload(user);
+  }
 
-    const user = await this.prisma.vpnUser.findFirst({
-      where: { telegramId },
-      include: {
-        userServers: {
-          where: { isActive: true },
-          include: { server: true },
-        },
-        subscriptions: {
-          where: { active: true },
-          orderBy: { endsAt: 'desc' },
-          take: 1,
-        },
-      },
+  @Post('servers')
+  async servers(@Body() dto: MiniInitDataDto) {
+    const { telegramId, name } = await this.validateInitData(dto.initData);
+    await this.getOrCreateUser(telegramId, name);
+
+    const servers = await this.prisma.vpnServer.findMany({
+      where: { active: true },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, name: true },
     });
 
-    if (!user) {
-      throw new UnauthorizedException('User not found, use /start in bot first');
+    return servers;
+  }
+
+  @Post('activate')
+  async activate(@Body() dto: MiniActivateServerDto) {
+    const { telegramId, name } = await this.validateInitData(dto.initData);
+    const user = await this.getOrCreateUser(telegramId, name);
+
+    // 1) если сервер уже добавлен — просто активируем (без изменения подписки)
+    const existing = await this.prisma.userServer.findUnique({
+      where: { vpnUserId_serverId: { vpnUserId: user.id, serverId: dto.serverId } },
+    });
+
+    if (existing) {
+      const updated = await this.usersService.activateServer(user.id, dto.serverId);
+      return this.buildStatusPayload(updated as any);
     }
 
-    let daysLeft: number | null = null;
-    if (user.expiresAt) {
-      const now = new Date();
-      daysLeft = Math.ceil((user.expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    // 2) если серверов ещё не было — выдаём триал
+    const anyServers = await this.prisma.userServer.count({ where: { vpnUserId: user.id } });
+    if (anyServers === 0) {
+      const updated = await this.usersService.addServerAndTrial(user.id, dto.serverId, 3);
+      return this.buildStatusPayload(updated as any);
     }
 
-    return {
-      id: user.id,
-      status: user.status,
-      expiresAt: user.expiresAt,
-      daysLeft,
-      servers: user.userServers.map((us: any) => ({
-        id: us.server.id,
-        name: us.server.name,
-      })),
-      subscription: user.subscriptions[0]
-        ? {
-            id: user.subscriptions[0].id,
-            periodDays: user.subscriptions[0].periodDays,
-            startsAt: user.subscriptions[0].startsAt,
-            endsAt: user.subscriptions[0].endsAt,
-          }
-        : null,
-    };
+    // 3) иначе — добавляем новую локацию, используя текущий expiresAt (без сброса подписки)
+    const updated = await this.usersService.addServer(user.id, dto.serverId);
+    return this.buildStatusPayload(updated as any);
   }
 
   @Post('config')

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -25,12 +25,16 @@ export function MiniAppPage() {
   const [initData, setInitData] = useState<string>('');
   const [status, setStatus] = useState<MiniStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [fatalError, setFatalError] = useState<string | null>(null);
+  const [toastError, setToastError] = useState<string | null>(null);
   const [configUrl, setConfigUrl] = useState<string | null>(null);
   const [plans, setPlans] = useState<
     { id: string; name: string; price: number; currency: string; periodDays: number }[]
   >([]);
   const [payingPlanId, setPayingPlanId] = useState<string | null>(null);
+  const [servers, setServers] = useState<{ id: string; name: string }[]>([]);
+  const [screen, setScreen] = useState<'home' | 'servers' | 'confirm' | 'config' | 'plans'>('home');
+  const [selectedServer, setSelectedServer] = useState<{ id: string; name: string } | null>(null);
 
   const getInitDataFromUrl = () => {
     try {
@@ -51,9 +55,23 @@ export function MiniAppPage() {
     return '';
   };
 
-  useEffect(() => {
-    const tg = window.Telegram?.WebApp;
+  const tg = window.Telegram?.WebApp;
+  const theme = useMemo(() => {
+    const tp = tg?.themeParams || {};
+    const get = (snake: string, camel: string) => (tp as any)[snake] ?? (tp as any)[camel];
+    return {
+      bg: get('bg_color', 'bgColor') ?? '#0b1220',
+      secondaryBg: get('secondary_bg_color', 'secondaryBgColor') ?? '#0f172a',
+      text: get('text_color', 'textColor') ?? '#ffffff',
+      hint: get('hint_color', 'hintColor') ?? '#94a3b8',
+      link: get('link_color', 'linkColor') ?? '#60a5fa',
+      button: get('button_color', 'buttonColor') ?? '#6366f1',
+      buttonText: get('button_text_color', 'buttonTextColor') ?? '#ffffff',
+      destructive: get('destructive_text_color', 'destructiveTextColor') ?? '#ef4444',
+    };
+  }, [tg?.themeParams]);
 
+  useEffect(() => {
     // Инициализируем WebApp UI (у некоторых клиентов initData появляется после ready)
     try {
       tg?.ready?.();
@@ -81,10 +99,11 @@ export function MiniAppPage() {
       try {
         const resolved = await resolveInitData();
         if (!resolved) {
-          setError(
+          setFatalError(
             'Откройте это мини‑приложение из Telegram.\n\n' +
               'Если вы открыли ссылку в браузере, авторизация не сработает — используйте кнопку WebApp в боте.',
           );
+          setLoading(false);
           return;
         }
 
@@ -93,7 +112,7 @@ export function MiniAppPage() {
         setStatus(res.data);
       } catch (e: any) {
         console.error(e);
-        setError(e?.response?.data?.message || 'Не удалось загрузить статус.');
+        setFatalError(e?.response?.data?.message || 'Не удалось загрузить статус.');
       } finally {
         setLoading(false);
       }
@@ -104,44 +123,73 @@ export function MiniAppPage() {
 
   const handleLoadConfig = async () => {
     if (!initData) return;
-    setError(null);
+    setToastError(null);
     setConfigUrl(null);
     try {
       const res = await api.post('/mini/config', { initData });
       const cfg = res.data?.configs?.[0];
       if (!cfg || !cfg.url) {
-        setError('Конфигурация недоступна. Убедитесь, что у вас есть активный сервер.');
+        setToastError('Конфигурация недоступна. Сначала выберите и активируйте локацию.');
         return;
       }
       setConfigUrl(cfg.url);
+      setScreen('config');
     } catch (e: any) {
       console.error(e);
-      setError(e?.response?.data?.message || 'Не удалось получить конфигурацию.');
+      setToastError(e?.response?.data?.message || 'Не удалось получить конфигурацию.');
     }
   };
 
   const handleLoadPlans = async () => {
     if (!initData) return;
-    setError(null);
+    setToastError(null);
     try {
       const res = await api.post('/mini/plans', { initData });
       setPlans(res.data || []);
+      setScreen('plans');
     } catch (e: any) {
       console.error(e);
-      setError(e?.response?.data?.message || 'Не удалось загрузить тарифы.');
+      setToastError(e?.response?.data?.message || 'Не удалось загрузить тарифы.');
+    }
+  };
+
+  const handleLoadServers = async () => {
+    if (!initData) return;
+    setToastError(null);
+    try {
+      const res = await api.post('/mini/servers', { initData });
+      setServers(res.data || []);
+      setScreen('servers');
+    } catch (e: any) {
+      console.error(e);
+      setToastError(e?.response?.data?.message || 'Не удалось загрузить список локаций.');
+    }
+  };
+
+  const handleActivateServer = async () => {
+    if (!initData || !selectedServer) return;
+    setToastError(null);
+    try {
+      const res = await api.post('/mini/activate', { initData, serverId: selectedServer.id });
+      setStatus(res.data);
+      setSelectedServer(null);
+      setScreen('home');
+    } catch (e: any) {
+      console.error(e);
+      setToastError(e?.response?.data?.message || 'Не удалось активировать локацию.');
     }
   };
 
   const handlePay = async (planId: string) => {
     if (!initData) return;
-    setError(null);
+    setToastError(null);
     setPayingPlanId(planId);
     try {
       await api.post('/mini/pay', { initData, planId });
       await handleLoadStatusSilent();
     } catch (e: any) {
       console.error(e);
-      setError(e?.response?.data?.message || 'Не удалось выполнить оплату.');
+      setToastError(e?.response?.data?.message || 'Не удалось выполнить оплату.');
     } finally {
       setPayingPlanId(null);
     }
@@ -158,21 +206,61 @@ export function MiniAppPage() {
     }
   };
 
+  const hasActiveServer = Boolean(status?.servers?.length);
+
+  // Native BackButton
+  useEffect(() => {
+    const back = tg?.BackButton;
+    if (!back) return;
+
+    const shouldShow = screen !== 'home';
+    try {
+      if (shouldShow) back.show?.();
+      else back.hide?.();
+    } catch {
+      // ignore
+    }
+
+    const handler = () => {
+      if (screen === 'confirm') {
+        setScreen('servers');
+        return;
+      }
+      setScreen('home');
+      setSelectedServer(null);
+      setConfigUrl(null);
+    };
+
+    try {
+      back.onClick?.(handler);
+    } catch {
+      // ignore
+    }
+
+    return () => {
+      try {
+        back.offClick?.(handler);
+      } catch {
+        // ignore
+      }
+    };
+  }, [screen]);
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
+      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: theme.bg, color: theme.text }}>
         <div className="text-lg">Загрузка...</div>
       </div>
     );
   }
 
-  if (error) {
+  if (fatalError) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white px-4">
+      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: theme.bg, color: theme.text }}>
         <div className="max-w-md text-center">
           <h1 className="text-2xl font-semibold mb-4">Mini VPN</h1>
-          <p className="text-red-400 mb-4 whitespace-pre-wrap">{error}</p>
-          <p className="text-slate-400 text-sm">
+          <p className="mb-4 whitespace-pre-wrap" style={{ color: theme.destructive }}>{fatalError}</p>
+          <p className="text-sm" style={{ color: theme.hint }}>
             Убедитесь, что открываете мини‑приложение через кнопку в Telegram‑боте.
           </p>
         </div>
@@ -181,120 +269,242 @@ export function MiniAppPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white px-4 py-6">
+    <div className="min-h-screen px-4 py-6" style={{ background: theme.bg, color: theme.text }}>
       <div className="max-w-md mx-auto space-y-6">
         <header>
           <h1 className="text-2xl font-bold">Mini VPN</h1>
-          <p className="text-slate-400 text-sm mt-1">
+          <p className="text-sm mt-1" style={{ color: theme.hint }}>
             Ваш доступ к VPN и подписке прямо в Telegram.
           </p>
         </header>
 
-        {status && (
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-400">Статус аккаунта</span>
-              <span className="text-sm font-medium">
-                {status.status === 'ACTIVE' && '✅ ACTIVE'}
-                {status.status === 'BLOCKED' && '🚫 BLOCKED'}
-                {status.status === 'EXPIRED' && '⏰ EXPIRED'}
-              </span>
-            </div>
+        {toastError ? (
+          <div className="rounded-2xl border px-4 py-3 text-sm whitespace-pre-wrap" style={{ borderColor: theme.destructive, color: theme.destructive, background: theme.secondaryBg }}>
+            {toastError}
+          </div>
+        ) : null}
 
-            {status.expiresAt && (
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-400">Действует до</span>
-                <span>
-                  {new Date(status.expiresAt).toLocaleDateString('ru-RU')}{' '}
-                  {status.daysLeft !== null && `(${status.daysLeft} дн.)`}
+        {/* HOME */}
+        {screen === 'home' && status && (
+          <>
+            <section className="rounded-2xl border p-4 space-y-2" style={{ borderColor: 'rgba(255,255,255,0.12)', background: theme.secondaryBg }}>
+              <div className="flex items-center justify-between">
+                <span className="text-sm" style={{ color: theme.hint }}>Статус аккаунта</span>
+                <span className="text-sm font-medium">
+                  {status.status === 'ACTIVE' && '✅ ACTIVE'}
+                  {status.status === 'BLOCKED' && '🚫 BLOCKED'}
+                  {status.status === 'EXPIRED' && '⏰ EXPIRED'}
                 </span>
               </div>
-            )}
 
-            {status.servers.length > 0 ? (
-              <div className="text-sm">
-                <div className="text-slate-400 mb-1">Активные локации</div>
-                <ul className="list-disc list-inside space-y-0.5">
-                  {status.servers.map((s) => (
-                    <li key={s.id}>{s.name}</li>
-                  ))}
-                </ul>
+              {status.expiresAt ? (
+                <div className="flex items-center justify-between text-sm">
+                  <span style={{ color: theme.hint }}>Действует до</span>
+                  <span>
+                    {new Date(status.expiresAt).toLocaleDateString('ru-RU')} {status.daysLeft !== null && `(${status.daysLeft} дн.)`}
+                  </span>
+                </div>
+              ) : null}
+
+              {hasActiveServer ? (
+                <div className="text-sm">
+                  <div style={{ color: theme.hint }} className="mb-1">Активная локация</div>
+                  <div className="font-medium">{status.servers[0].name}</div>
+                </div>
+              ) : (
+                <p className="text-sm" style={{ color: theme.hint }}>
+                  У вас пока нет активной локации. Выберите её ниже.
+                </p>
+              )}
+            </section>
+
+            <section className="rounded-2xl border p-4 space-y-3" style={{ borderColor: 'rgba(255,255,255,0.12)', background: theme.secondaryBg }}>
+              <h2 className="text-sm font-semibold">Локация</h2>
+              <button
+                onClick={handleLoadServers}
+                className="w-full inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium transition"
+                style={{ background: theme.button, color: theme.buttonText }}
+              >
+                📍 {hasActiveServer ? 'Выбрать другую локацию' : 'Выбрать локацию'}
+              </button>
+            </section>
+
+            <section className="rounded-2xl border p-4 space-y-3" style={{ borderColor: 'rgba(255,255,255,0.12)', background: theme.secondaryBg }}>
+              <h2 className="text-sm font-semibold">Конфигурация</h2>
+              <button
+                onClick={handleLoadConfig}
+                disabled={!hasActiveServer}
+                className="w-full inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium transition disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{ background: theme.button, color: theme.buttonText }}
+              >
+                📥 Получить конфиг
+              </button>
+              {!hasActiveServer ? (
+                <div className="text-xs" style={{ color: theme.hint }}>
+                  Сначала выберите и подтвердите локацию.
+                </div>
+              ) : null}
+            </section>
+
+            <section className="rounded-2xl border p-4 space-y-3" style={{ borderColor: 'rgba(255,255,255,0.12)', background: theme.secondaryBg }}>
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold">Тарифы</h2>
+                <button onClick={handleLoadPlans} className="text-xs" style={{ color: theme.link }}>
+                  Открыть
+                </button>
+              </div>
+              <p className="text-sm" style={{ color: theme.hint }}>
+                Оплата и продление подписки.
+              </p>
+            </section>
+          </>
+        )}
+
+        {/* SERVERS */}
+        {screen === 'servers' && (
+          <section className="rounded-2xl border p-4 space-y-3" style={{ borderColor: 'rgba(255,255,255,0.12)', background: theme.secondaryBg }}>
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold">Выберите локацию</div>
+              <button onClick={() => setScreen('home')} className="text-xs" style={{ color: theme.link }}>
+                Назад
+              </button>
+            </div>
+
+            {servers.length === 0 ? (
+              <p className="text-sm" style={{ color: theme.hint }}>Нет доступных локаций.</p>
+            ) : (
+              <div className="space-y-2">
+                {servers.map((s: { id: string; name: string }) => (
+                  <button
+                    key={s.id}
+                    onClick={() => {
+                      setSelectedServer(s);
+                      setScreen('confirm');
+                    }}
+                    className="w-full inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium transition"
+                    style={{ background: 'rgba(255,255,255,0.08)', color: theme.text }}
+                  >
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* CONFIRM */}
+        {screen === 'confirm' && selectedServer && (
+          <section className="rounded-2xl border p-4 space-y-3" style={{ borderColor: 'rgba(255,255,255,0.12)', background: theme.secondaryBg }}>
+            <div className="text-sm font-semibold">Подтверждение</div>
+            <p className="text-sm" style={{ color: theme.hint }}>
+              Локация: <span className="font-medium" style={{ color: theme.text }}>{selectedServer.name}</span>
+            </p>
+            <p className="text-xs" style={{ color: theme.hint }}>
+              При первом подключении вы получите пробный период на 3 дня.
+            </p>
+            <div className="grid gap-2">
+              <button
+                onClick={handleActivateServer}
+                className="w-full inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium transition"
+                style={{ background: theme.button, color: theme.buttonText }}
+              >
+                ✅ Подтвердить и подключить
+              </button>
+              <button
+                onClick={() => setScreen('servers')}
+                className="w-full inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium transition"
+                style={{ background: 'rgba(255,255,255,0.08)', color: theme.text }}
+              >
+                🔙 Назад
+              </button>
+            </div>
+          </section>
+        )}
+
+        {/* CONFIG */}
+        {screen === 'config' && (
+          <section className="rounded-2xl border p-4 space-y-3" style={{ borderColor: 'rgba(255,255,255,0.12)', background: theme.secondaryBg }}>
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold">Конфигурация</div>
+              <button
+                onClick={() => {
+                  setScreen('home');
+                  setConfigUrl(null);
+                }}
+                className="text-xs"
+                style={{ color: theme.link }}
+              >
+                Назад
+              </button>
+            </div>
+
+            {configUrl ? (
+              <div className="space-y-3">
+                <div className="flex justify-center">
+                  <div className="bg-white p-2 rounded-xl">
+                    <QRCodeSVG value={configUrl} size={200} />
+                  </div>
+                </div>
+                <div className="rounded-xl p-3 text-xs break-all" style={{ background: 'rgba(0,0,0,0.35)' }}>
+                  {configUrl}
+                </div>
               </div>
             ) : (
-              <p className="text-sm text-slate-400">
-                У вас пока нет активных серверов. Выберите локацию в боте.
+              <p className="text-sm" style={{ color: theme.hint }}>
+                Конфиг не загружен.
               </p>
             )}
           </section>
         )}
 
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
-          <h2 className="text-sm font-semibold text-slate-200">Конфигурация</h2>
-          <button
-            onClick={handleLoadConfig}
-            className="w-full inline-flex items-center justify-center rounded-xl bg-indigo-500 hover:bg-indigo-400 px-4 py-2 text-sm font-medium transition"
-          >
-            📥 Получить конфиг
-          </button>
-
-          {configUrl && (
-            <div className="mt-3 space-y-3">
-              <div className="flex justify-center">
-                <div className="bg-white p-2 rounded-xl">
-                  <QRCodeSVG value={configUrl} size={180} />
-                </div>
-              </div>
-              <div className="text-xs text-slate-400">
-                Отсканируйте QR‑код в приложении (v2rayNG, V2rayTun и т.п.) или скопируйте ссылку
-                ниже.
-              </div>
-              <div className="bg-slate-950 rounded-xl p-3 text-xs break-all max-h-40 overflow-auto border border-slate-800">
-                {configUrl}
-              </div>
+        {/* PLANS */}
+        {screen === 'plans' && (
+          <section className="rounded-2xl border p-4 space-y-3" style={{ borderColor: 'rgba(255,255,255,0.12)', background: theme.secondaryBg }}>
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold">Тарифы</div>
+              <button onClick={() => setScreen('home')} className="text-xs" style={{ color: theme.link }}>
+                Назад
+              </button>
             </div>
-          )}
-        </section>
 
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-200">Тарифы</h2>
-            <button
-              onClick={handleLoadPlans}
-              className="text-xs text-indigo-400 hover:text-indigo-300"
-            >
-              Обновить
-            </button>
-          </div>
+            <div className="flex items-center justify-between">
+              <button onClick={handleLoadPlans} className="text-xs" style={{ color: theme.link }}>
+                Обновить
+              </button>
+            </div>
 
-          {plans.length === 0 ? (
-            <p className="text-sm text-slate-400">
-              Нажмите «Обновить», чтобы загрузить доступные тарифы.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {plans.map((p) => (
-                <div
-                  key={p.id}
-                  className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 flex items-center justify-between text-sm"
-                >
-                  <div>
-                    <div className="font-medium">{p.name}</div>
-                    <div className="text-slate-400">
-                      {p.price} {p.currency} · {p.periodDays} дн.
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handlePay(p.id)}
-                    disabled={payingPlanId === p.id}
-                    className="inline-flex items-center justify-center rounded-lg bg-emerald-500 hover:bg-emerald-400 px-3 py-1.5 text-xs font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+            {plans.length === 0 ? (
+              <p className="text-sm" style={{ color: theme.hint }}>
+                Нажмите «Обновить», чтобы загрузить доступные тарифы.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {plans.map((p: { id: string; name: string; price: number; currency: string; periodDays: number }) => (
+                  <div
+                    key={p.id}
+                    className="rounded-xl px-3 py-2 flex items-center justify-between text-sm"
+                    style={{ background: 'rgba(255,255,255,0.08)' }}
                   >
-                    {payingPlanId === p.id ? 'Оплата...' : 'Оплатить'}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
+                    <div>
+                      <div className="font-medium">{p.name}</div>
+                      <div style={{ color: theme.hint }}>
+                        {p.price} {p.currency} · {p.periodDays} дн.
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handlePay(p.id)}
+                      disabled={payingPlanId === p.id}
+                      className="inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-xs font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                      style={{ background: theme.button, color: theme.buttonText }}
+                    >
+                      {payingPlanId === p.id ? 'Оплата...' : 'Оплатить'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
       </div>
     </div>
   );
