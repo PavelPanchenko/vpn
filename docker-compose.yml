@@ -7,8 +7,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: vless_admin
-    ports:
-      - "5432:5432"
+
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
@@ -32,7 +31,7 @@ services:
       # Переопределяем DATABASE_URL, чтобы backend ходил в контейнер db
       DATABASE_URL: postgresql://postgres:postgres@db:5432/vless_admin?schema=public
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
 
 volumes:
   db-data:
