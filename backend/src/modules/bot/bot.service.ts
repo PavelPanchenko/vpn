@@ -66,6 +66,7 @@ export class BotService {
       data: {
         tokenEnc,
         active: dto.active ?? false,
+        useMiniApp: dto.useMiniApp ?? false,
       },
     });
 
@@ -113,6 +114,9 @@ export class BotService {
     if (dto.active !== undefined) {
       updateData.active = dto.active;
     }
+    if (dto.useMiniApp !== undefined) {
+      updateData.useMiniApp = dto.useMiniApp;
+    }
 
     const updated = await this.prisma.botConfig.update({
       where: { id },
@@ -120,7 +124,7 @@ export class BotService {
     });
 
     // Если токен или статус изменился, перезапускаем бота асинхронно (не блокируем ответ)
-    if (isTokenChanging || dto.active !== undefined) {
+    if (isTokenChanging || dto.active !== undefined || dto.useMiniApp !== undefined) {
       this.telegramBotService.restartBot().catch((err) => {
         // Логируем ошибку, но не блокируем ответ
         console.error('Failed to restart bot after update:', err);

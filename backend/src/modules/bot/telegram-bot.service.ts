@@ -210,7 +210,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
 
           // Получаем доступные тарифы для пользователя
           const plans = await this.plansService.list(user.id);
-          const trialPlan = plans.find((p) => p.isTrial);
+          const trialPlan = plans.find((p: any) => p.isTrial);
           let paidPlans = plans.filter((p: any) => !p.isTrial && p.active);
           
           // Если для пользователя нет тарифов, показываем все активные (fallback)
@@ -358,9 +358,6 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
           const buttons = allServers.map((server: any) => [
             Markup.button.callback(server.name, `select_server_${server.id}`),
           ]);
-
-          // Добавляем кнопку "Назад в меню"
-          buttons.push([Markup.button.callback('🔙 Назад в меню', 'back_to_main')]);
 
           // Определяем текст сообщения в зависимости от того, есть ли у пользователя серверы
           const messageText = user && user.userServers && user.userServers.length > 0
@@ -789,28 +786,34 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         ctx.reply('❌ Произошла ошибка. Попробуйте позже.');
       });
 
-      // Регистрируем команды бота для отображения в меню
-      await this.bot.telegram.setMyCommands([
-        { command: 'start', description: '🏠 Главное меню' },
-        { command: 'config', description: '📥 Получить конфигурацию VPN' },
-        { command: 'pay', description: '💳 Оплатить подписку' },
-        { command: 'status', description: '📊 Статус подписки' },
-        { command: 'support', description: '💬 Поддержка' },
-        { command: 'help', description: '❓ Помощь и инструкции' },
-        { command: 'cancel', description: '❌ Отменить режим поддержки' },
-      ]);
-
       // Регистрируем команды бота для отображения в меню Telegram
       try {
-        await this.bot.telegram.setMyCommands([
-          { command: 'start', description: '🏠 Главное меню' },
-          { command: 'config', description: '📥 Получить конфигурацию VPN' },
-          { command: 'pay', description: '💳 Оплатить подписку' },
-          { command: 'status', description: '📊 Статус подписки' },
-          { command: 'support', description: '💬 Поддержка' },
-          { command: 'help', description: '❓ Помощь и инструкции' },
-          { command: 'cancel', description: '❌ Отменить режим поддержки' },
-        ]);
+        const activeBot = await this.prisma.botConfig.findFirst({
+          where: { active: true },
+          orderBy: { createdAt: 'desc' },
+          select: { useMiniApp: true },
+        });
+        const useMiniApp = Boolean(activeBot?.useMiniApp);
+
+        // Строгий mini-app режим: оставляем только базовые команды, остальное — внутри mini app
+        const commands = useMiniApp
+          ? [
+              { command: 'start', description: '🏠 Главное меню' },
+              { command: 'help', description: '❓ Помощь и инструкции' },
+              { command: 'support', description: '💬 Поддержка' },
+              { command: 'cancel', description: '❌ Отменить режим поддержки' },
+            ]
+          : [
+              { command: 'start', description: '🏠 Главное меню' },
+              { command: 'config', description: '📥 Получить конфигурацию VPN' },
+              { command: 'pay', description: '💳 Оплатить подписку' },
+              { command: 'status', description: '📊 Статус подписки' },
+              { command: 'support', description: '💬 Поддержка' },
+              { command: 'help', description: '❓ Помощь и инструкции' },
+              { command: 'cancel', description: '❌ Отменить режим поддержки' },
+            ];
+
+        await this.bot.telegram.setMyCommands(commands);
         this.logger.log('Bot commands registered successfully');
       } catch (error: any) {
         this.logger.warn('Failed to register bot commands:', error);
@@ -855,15 +858,38 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     const { Markup } = await import('telegraf');
     const miniAppUrl = this.config.get<string>('TELEGRAM_MINI_APP_URL');
 
-    const buttons: any[] = [
-      [Markup.button.callback('📥 Получить конфиг', 'get_config')],
-      [Markup.button.callback('💳 Оплатить подписку', 'show_pay')],
-      [Markup.button.callback('📊 Статус подписки', 'show_status')],
-      [Markup.button.callback('📍 Выбрать другую локацию', 'back_to_servers')],
-    ];
+    const activeBot = await this.prisma.botConfig.findFirst({
+      where: { active: true },
+      orderBy: { createdAt: 'desc' },
+      select: { useMiniApp: true },
+    });
 
-    // Кнопка mini‑app доступна только для HTTPS URL (требование Telegram)
-    if (miniAppUrl && miniAppUrl.startsWith('https://')) {
+    // Перезагружаем пользователя, чтобы меню не "ломалось" на неподтвержденном выборе локации
+    const hydratedUser = user?.id
+      ? await this.prisma.vpnUser.findUnique({
+          where: { id: user.id },
+          include: {
+            userServers: { where: { isActive: true } },
+          },
+        })
+      : user;
+
+    const hasActiveLocation = Boolean(
+      hydratedUser?.serverId || (hydratedUser?.userServers && hydratedUser.userServers.length > 0),
+    );
+
+    const buttons: any[] = [];
+    if (hasActiveLocation) {
+      buttons.push([Markup.button.callback('📥 Получить конфиг', 'get_config')]);
+      buttons.push([Markup.button.callback('📊 Статус подписки', 'show_status')]);
+      buttons.push([Markup.button.callback('📍 Выбрать другую локацию', 'back_to_servers')]);
+    } else {
+      buttons.push([Markup.button.callback('📍 Выбрать локацию', 'back_to_servers')]);
+    }
+    buttons.push([Markup.button.callback('💳 Оплатить подписку', 'show_pay')]);
+
+    // Кнопка mini‑app показывается только если включено в админке (и URL HTTPS)
+    if (activeBot?.useMiniApp && miniAppUrl && miniAppUrl.startsWith('https://')) {
       buttons.push([Markup.button.webApp('📱 Открыть мини‑приложение', miniAppUrl)]);
     }
 
@@ -948,7 +974,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         let plans = await this.plansService.list(user.id);
         this.logger.debug(`Found ${plans.length} plans for user ${user.id}`);
         
-        let paidPlans = plans.filter((p) => !p.isTrial && p.active);
+        let paidPlans = plans.filter((p: any) => !p.isTrial && p.active);
         this.logger.debug(`Found ${paidPlans.length} paid plans after filtering`);
 
         // Если для пользователя нет тарифов, показываем все активные (fallback)
@@ -974,7 +1000,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         }
 
         const { Markup } = await import('telegraf');
-        const buttons = paidPlans.map((plan) => [
+        const buttons = paidPlans.map((plan: any) => [
           Markup.button.callback(
             `${plan.name} - ${plan.price} ${plan.currency} (${plan.periodDays} дн.)`,
             `select_plan_${plan.id}`,
@@ -1025,26 +1051,13 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
 
         await ctx.answerCbQuery();
         
-        // Пытаемся отредактировать сообщение, если это возможно
+        // Просто показываем главное меню заново (кнопки строятся из актуального состояния пользователя)
         try {
-          const { Markup } = await import('telegraf');
-          const miniAppUrl = this.config.get<string>('TELEGRAM_MINI_APP_URL');
-          const buttons: any[] = [
-            [Markup.button.callback('📥 Получить конфиг', 'get_config')],
-            [Markup.button.callback('💳 Оплатить подписку', 'show_pay')],
-            [Markup.button.callback('📊 Статус подписки', 'show_status')],
-            [Markup.button.callback('📍 Выбрать другую локацию', 'back_to_servers')],
-          ];
-
-          if (miniAppUrl && miniAppUrl.startsWith('https://')) {
-            buttons.push([Markup.button.webApp('📱 Открыть мини‑приложение', miniAppUrl)]);
-          }
-
-          await ctx.editMessageText('🏠 Главное меню:', Markup.inlineKeyboard(buttons));
+          await ctx.editMessageText('🏠 Главное меню:');
         } catch (editError: any) {
-          // Если не удалось отредактировать, отправляем новое сообщение
-          await this.showMainMenu(ctx, user);
+          // ignore
         }
+        await this.showMainMenu(ctx, user);
       } catch (error: any) {
         this.logger.error('Error handling back_to_main action:', error);
         await ctx.answerCbQuery('❌ Произошла ошибка');
@@ -1097,14 +1110,34 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
 
         const { Markup } = await import('telegraf');
         const miniAppUrl = this.config.get<string>('TELEGRAM_MINI_APP_URL');
-        const buttons: any[] = [
-          [Markup.button.callback('📥 Получить конфиг', 'get_config')],
-          [Markup.button.callback('💳 Оплатить подписку', 'show_pay')],
-          [Markup.button.callback('📊 Статус подписки', 'show_status')],
-          [Markup.button.callback('📍 Выбрать другую локацию', 'back_to_servers')],
-        ];
+        const activeBot = await this.prisma.botConfig.findFirst({
+          where: { active: true },
+          orderBy: { createdAt: 'desc' },
+          select: { useMiniApp: true },
+        });
 
-        if (miniAppUrl && miniAppUrl.startsWith('https://')) {
+        // Показываем "Получить конфиг" только если реально есть активная локация
+        const userWithActive = await this.prisma.vpnUser.findFirst({
+          where: { telegramId },
+          include: {
+            userServers: { where: { isActive: true } },
+          },
+        });
+        const hasActiveLocation = Boolean(
+          userWithActive?.serverId || (userWithActive?.userServers && userWithActive.userServers.length > 0),
+        );
+
+        const buttons: any[] = [];
+        if (hasActiveLocation) {
+          buttons.push([Markup.button.callback('📥 Получить конфиг', 'get_config')]);
+          buttons.push([Markup.button.callback('📊 Статус подписки', 'show_status')]);
+          buttons.push([Markup.button.callback('📍 Выбрать другую локацию', 'back_to_servers')]);
+        } else {
+          buttons.push([Markup.button.callback('📍 Выбрать локацию', 'back_to_servers')]);
+        }
+        buttons.push([Markup.button.callback('💳 Оплатить подписку', 'show_pay')]);
+
+        if (activeBot?.useMiniApp && miniAppUrl && miniAppUrl.startsWith('https://')) {
           buttons.push([Markup.button.webApp('📱 Открыть мини‑приложение', miniAppUrl)]);
         }
 

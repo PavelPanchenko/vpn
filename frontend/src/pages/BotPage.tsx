@@ -13,6 +13,7 @@ import { Badge } from '../components/Badge';
 type BotConfig = {
   id: string;
   active: boolean;
+  useMiniApp: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -20,11 +21,13 @@ type BotConfig = {
 type CreateBotConfigForm = {
   token: string;
   active: boolean;
+  useMiniApp: boolean;
 };
 
 type UpdateBotConfigForm = {
   token?: string;
   active?: boolean;
+  useMiniApp?: boolean;
 };
 
 export function BotPage() {
@@ -45,6 +48,7 @@ export function BotPage() {
     defaultValues: {
       token: '',
       active: false,
+      useMiniApp: false,
     },
   });
 
@@ -126,6 +130,12 @@ export function BotPage() {
                   {config.active ? 'Active' : 'Inactive'}
                 </Badge>
               </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-slate-700">Mode:</span>
+                  <Badge variant={config.useMiniApp ? 'info' : 'default'}>
+                    {config.useMiniApp ? 'Mini App' : 'Classic'}
+                  </Badge>
+                </div>
                 <div className="text-xs text-slate-500">
                   Created: {new Date(config.createdAt).toLocaleString()}
                 </div>
@@ -137,7 +147,7 @@ export function BotPage() {
                 <Button
                   variant="secondary"
                   onClick={() => {
-                    editForm.reset({ active: config.active });
+                    editForm.reset({ active: config.active, useMiniApp: config.useMiniApp });
                     setEditTarget(config);
                   }}
                 >
@@ -202,6 +212,15 @@ export function BotPage() {
             />
             <span className="text-sm text-slate-700">Activate bot immediately</span>
           </label>
+
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              {...createForm.register('useMiniApp')}
+              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm text-slate-700">Use Telegram Mini App mode (show WebApp button)</span>
+          </label>
         </form>
       </Modal>
 
@@ -247,6 +266,15 @@ export function BotPage() {
               className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
             />
             <span className="text-sm text-slate-700">Active</span>
+          </label>
+
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              {...editForm.register('useMiniApp')}
+              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm text-slate-700">Use Telegram Mini App mode (show WebApp button)</span>
           </label>
         </form>
       </Modal>

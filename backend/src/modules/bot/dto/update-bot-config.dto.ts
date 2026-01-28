@@ -10,4 +10,8 @@ export class UpdateBotConfigDto extends PartialType(CreateBotConfigDto) {
   @IsBoolean()
   @IsOptional()
   active?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  useMiniApp?: boolean;
 }

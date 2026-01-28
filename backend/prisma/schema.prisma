@@ -183,6 +183,7 @@ model BotConfig {
   id          String   @id @default(cuid())
   tokenEnc    String   // Зашифрованный токен бота
   active      Boolean  @default(false) // Активен ли бот
+  useMiniApp  Boolean  @default(false) // Показывать кнопку Mini App (режим работы бота)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
