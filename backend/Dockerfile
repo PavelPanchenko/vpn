@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Устанавливаем зависимости (dev-зависимости тоже нужны для сборки и prisma)
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 
 # Копируем исходники и собираем приложение
 COPY . .
