@@ -22,6 +22,7 @@ type Plan = {
   active: boolean;
   legacy: boolean;
   availableFor: 'ALL' | 'NEW_USERS' | 'EXISTING_USERS';
+  isTop: boolean;
 };
 
 type CreatePlanForm = {
@@ -35,6 +36,7 @@ type CreatePlanForm = {
   active: boolean;
   legacy?: boolean;
   availableFor?: 'ALL' | 'NEW_USERS' | 'EXISTING_USERS';
+  isTop?: boolean;
 };
 
 export function PlansPage() {
@@ -93,6 +95,7 @@ export function PlansPage() {
       active: true,
       legacy: false,
       availableFor: 'NEW_USERS',
+      isTop: false,
     },
   });
 
@@ -108,6 +111,7 @@ export function PlansPage() {
       active: true,
       legacy: false,
       availableFor: 'ALL',
+      isTop: false,
     },
   });
 
@@ -174,6 +178,7 @@ export function PlansPage() {
               <Td>
                 <div className="space-y-1">
                   <Badge variant={p.active ? 'success' : 'warning'}>{p.active ? 'ACTIVE' : 'INACTIVE'}</Badge>
+                  {p.isTop && <Badge variant="info" className="ml-1">Топ</Badge>}
                   {p.legacy && <Badge variant="warning" className="ml-1">Legacy</Badge>}
                   <div className="text-xs text-slate-500">
                     {p.availableFor === 'ALL' ? 'All users' : p.availableFor === 'NEW_USERS' ? 'New users' : 'Existing users'}
@@ -197,6 +202,7 @@ export function PlansPage() {
                         active: p.active,
                         legacy: p.legacy,
                         availableFor: p.availableFor,
+                        isTop: p.isTop,
                       });
                     }}
                   >
@@ -302,6 +308,10 @@ export function PlansPage() {
               Legacy (for existing users)
             </label>
             <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input type="checkbox" {...createForm.register('isTop')} />
+              Топ тариф (в Mini App)
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-700">
               <input type="checkbox" {...createForm.register('active')} defaultChecked />
               Active
             </label>
@@ -335,6 +345,7 @@ export function PlansPage() {
                     active: Boolean(v.active),
                     legacy: Boolean(v.legacy),
                     availableFor: v.availableFor,
+                    isTop: Boolean(v.isTop),
                   },
                 });
               })}
@@ -395,6 +406,10 @@ export function PlansPage() {
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input type="checkbox" {...editForm.register('legacy')} />
               Legacy (for existing users)
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input type="checkbox" {...editForm.register('isTop')} />
+              Топ тариф (в Mini App)
             </label>
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input type="checkbox" {...editForm.register('active')} />

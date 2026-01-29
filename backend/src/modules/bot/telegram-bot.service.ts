@@ -13,6 +13,11 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TelegramBotService.name);
   private bot: any = null;
   private isRunning = false;
+  private tokenInUse: string | null = null;
+  private pollingLockAcquired = false;
+  // Глобальный lock на весь кластер приложений, использующих одну и ту же БД
+  // (защита от 409, если запущено несколько backend-инстансов).
+  private readonly pollingLockKey = 987654321;
   // Храним пользователей, которые находятся в режиме поддержки
   private supportModeUsers = new Map<string, boolean>();
   // Флаг для предотвращения одновременных запусков
@@ -86,12 +91,43 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
+      // Гарантируем, что polling (getUpdates) стартует только в одном backend-инстансе на одну БД.
+      // Если другой инстанс держит lock — просто пропускаем запуск бота, чтобы не получать 409.
+      try {
+        const res = await this.prisma.$queryRaw<{ got: boolean }[]>`
+          SELECT pg_try_advisory_lock(${this.pollingLockKey}) AS got
+        `;
+        const got = Boolean(res?.[0]?.got);
+        if (!got) {
+          this.logger.warn(
+            'Another backend instance holds Telegram polling lock. Skipping bot launch to avoid 409.',
+          );
+          return;
+        }
+        this.pollingLockAcquired = true;
+      } catch (lockError: any) {
+        // Если lock не смогли взять (например, права/ошибка соединения) — лучше не стартовать бот,
+        // иначе можем поймать 409 и начать "драться" с другим инстансом.
+        this.logger.error('Failed to acquire Telegram polling lock. Bot will not start.', lockError);
+        return;
+      }
+
       // Импорт telegraf
       const { Telegraf, Markup } = await import('telegraf');
       
-      // Создаем новый экземпляр бота только если его еще нет
+      // Если токен изменился — обязательно пересоздаем Telegraf,
+      // иначе он продолжит работать со старым токеном. Lock не отпускаем — тот же слот под новый бот.
+      if (this.bot && this.tokenInUse !== token) {
+        this.logger.log('Bot token changed. Recreating bot instance...');
+        await this.stopBot(false);
+      }
+
+      // Создаем новый экземпляр бота, если его нет (или он был остановлен)
       if (!this.bot) {
         this.bot = new Telegraf(token);
+        this.tokenInUse = token;
+        // При пересоздании бота очищаем локальные runtime-состояния
+        this.supportModeUsers.clear();
       }
 
       // Обработка команды /cancel - выход из режима поддержки
@@ -305,19 +341,27 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
 
           await ctx.answerCbQuery('⏳ Подключаем локацию...');
 
-          // Добавляем сервер и триал подписку к существующему пользователю
-          user = await this.usersService.addServerAndTrial(user.id, serverId, 3);
+          const result = await this.usersService.addServerAndTrial(user.id, serverId, 3);
+          const updatedUser = result.updated;
+          if (!updatedUser) return;
+
+          const expiresAtStr =
+            updatedUser.expiresAt ? new Date(updatedUser.expiresAt).toLocaleDateString('ru-RU') : null;
+          const periodLine = result.trialCreated
+            ? '🎁 Пробный период: 3 дня\n\n'
+            : (expiresAtStr
+              ? `📅 Подписка активна до: ${expiresAtStr}\n\n`
+              : '\n');
 
           await ctx.editMessageText(
             `✅ Локация успешно подключена!\n\n` +
               `📍 Локация: ${server.name}\n` +
-              `🎁 Пробный период: 3 дня\n\n` +
+              periodLine +
               `Используйте /config для получения конфигурации VPN.\n` +
               `Используйте /pay для продления подписки.`,
           );
 
-          // Показываем главное меню
-          await this.showMainMenu(ctx, user);
+          await this.showMainMenu(ctx, updatedUser);
         } catch (error: any) {
           this.logger.error('Error confirming server selection:', error);
           await ctx.answerCbQuery('❌ Ошибка при подключении локации');
@@ -422,9 +466,6 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
               `select_plan_${plan.id}`,
             ),
           ]);
-          
-          // Добавляем кнопку "Назад"
-          buttons.push([Markup.button.callback('🔙 Назад в меню', 'back_to_main')]);
 
           await ctx.reply(
             `💳 Выберите тариф для оплаты:\n\n` +
@@ -717,6 +758,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
           }
 
           const statusEmoji: Record<string, string> = {
+            NEW: '🆕',
             ACTIVE: '✅',
             BLOCKED: '🚫',
             EXPIRED: '⏰',
@@ -755,13 +797,10 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
             message += `📍 Используйте /start для выбора локации\n`;
           }
 
-          // Информация о подписках
+          // Детали последней подписки (одна запись; общий срок уже выше — «Осталось дней»)
           if (user.subscriptions && user.subscriptions.length > 0) {
-            const activeSubscription = user.subscriptions[0];
-            message += `\n📦 Активная подписка:\n`;
-            message += `  • Период: ${activeSubscription.periodDays} дней\n`;
-            message += `  • Начало: ${new Date(activeSubscription.startsAt).toLocaleDateString('ru-RU')}\n`;
-            message += `  • Конец: ${new Date(activeSubscription.endsAt).toLocaleDateString('ru-RU')}\n`;
+            const lastSub = user.subscriptions[0];
+            message += `\n📦 Последний платёж: ${lastSub.periodDays} дн. (${new Date(lastSub.startsAt).toLocaleDateString('ru-RU')} – ${new Date(lastSub.endsAt).toLocaleDateString('ru-RU')})\n`;
           }
 
           await ctx.reply(message);
@@ -774,6 +813,49 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
             '• Временная недоступность сервиса\n\n' +
             'Попробуйте позже или обратитесь в поддержку через /support.',
           );
+        }
+      });
+
+      // Команда /info — ссылки на документы и контакты (HTML для кликабельных ссылок в тексте)
+      this.bot.command('info', async (ctx: any) => {
+        try {
+          const siteUrlRaw = this.config.get<string>('PUBLIC_SITE_URL') || '';
+          const siteUrl = siteUrlRaw.replace(/\/+$/, '');
+
+          const privacyUrl = siteUrl ? `${siteUrl}/privacy` : null;
+          const termsUrl = siteUrl ? `${siteUrl}/terms` : null;
+
+          const supportEmail = this.config.get<string>('PUBLIC_SUPPORT_EMAIL') || null;
+          const supportTelegram = this.config.get<string>('PUBLIC_SUPPORT_TELEGRAM') || null;
+
+          const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+          let msg = 'ℹ️ <b>Информация</b>\n\n';
+          msg += '• Документы:\n';
+          if (privacyUrl) {
+            msg += `  • <a href="${privacyUrl}">Политика конфиденциальности</a>\n`;
+          } else {
+            msg += '  • Политика конфиденциальности — не настроено\n';
+          }
+          if (termsUrl) {
+            msg += `  • <a href="${termsUrl}">Пользовательское соглашение</a>\n\n`;
+          } else {
+            msg += '  • Пользовательское соглашение — не настроено\n\n';
+          }
+          msg += '• Контакты:\n';
+          if (supportTelegram) {
+            const tgUser = supportTelegram.replace(/^@/, '');
+            msg += `  • Telegram: <a href="tg://resolve?domain=${escape(tgUser)}">${escape(supportTelegram)}</a>\n`;
+          }
+          if (supportEmail) {
+            msg += `  • Email: <a href="mailto:${escape(supportEmail)}">${escape(supportEmail)}</a>\n`;
+          }
+          if (!supportTelegram && !supportEmail) msg += '  • не настроено\n';
+
+          await ctx.reply(msg, { parse_mode: 'HTML' });
+        } catch (error: any) {
+          this.logger.error('Error handling /info command:', error);
+          await ctx.reply('❌ Не удалось загрузить информацию. Попробуйте позже.');
         }
       });
 
@@ -799,6 +881,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         const commands = useMiniApp
           ? [
               { command: 'start', description: '🏠 Главное меню' },
+              { command: 'info', description: 'ℹ️ Информация и документы' },
               { command: 'help', description: '❓ Помощь и инструкции' },
               { command: 'support', description: '💬 Поддержка' },
               { command: 'cancel', description: '❌ Отменить режим поддержки' },
@@ -808,6 +891,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
               { command: 'config', description: '📥 Получить конфигурацию VPN' },
               { command: 'pay', description: '💳 Оплатить подписку' },
               { command: 'status', description: '📊 Статус подписки' },
+              { command: 'info', description: 'ℹ️ Информация и документы' },
               { command: 'support', description: '💬 Поддержка' },
               { command: 'help', description: '❓ Помощь и инструкции' },
               { command: 'cancel', description: '❌ Отменить режим поддержки' },
@@ -820,16 +904,45 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         // Продолжаем запуск даже если не удалось зарегистрировать команды
       }
 
+      // На случай, если этот токен ранее использовался с webhook-режимом:
+      // getUpdates (long polling) конфликтует с активным webhook.
+      try {
+        await this.bot.telegram.deleteWebhook({ drop_pending_updates: true });
+      } catch (error: any) {
+        this.logger.warn('Failed to delete webhook (can be ignored):', error);
+      }
+
       // Запуск бота
       await this.bot.launch();
       this.isRunning = true;
-      this.logger.log('Telegram bot started successfully');
+      try {
+        const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+        const json = (await res.json()) as { ok?: boolean; result?: { username?: string } };
+        if (json?.ok && json?.result?.username) {
+          this.logger.log(`Telegram bot started: @${json.result.username}`);
+        } else {
+          this.logger.log('Telegram bot started successfully');
+        }
+      } catch {
+        this.logger.log('Telegram bot started successfully');
+      }
 
       // Graceful stop
       process.once('SIGINT', () => this.stopBot());
       process.once('SIGTERM', () => this.stopBot());
     } catch (error: any) {
       this.logger.error('Failed to start bot:', error);
+      // Если старт не удался — отпускаем lock, чтобы другой инстанс мог попытаться поднять бота.
+      if (this.pollingLockAcquired) {
+        try {
+          await this.prisma.$queryRaw<{ unlocked: boolean }[]>`
+            SELECT pg_advisory_unlock(${this.pollingLockKey}) AS unlocked
+          `;
+        } catch {
+          // ignore
+        }
+        this.pollingLockAcquired = false;
+      }
     } finally {
       this.isStarting = false;
     }
@@ -1006,9 +1119,6 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
             `select_plan_${plan.id}`,
           ),
         ]);
-        
-        // Добавляем кнопку "Назад"
-        buttons.push([Markup.button.callback('🔙 Назад в меню', 'back_to_main')]);
 
         await ctx.answerCbQuery();
         
@@ -1085,6 +1195,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         }
 
         const statusEmoji: Record<string, string> = {
+          NEW: '🆕',
           ACTIVE: '✅',
           BLOCKED: '🚫',
           EXPIRED: '⏰',
@@ -1272,9 +1383,23 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async stopBot() {
+  /**
+   * Останавливает бота и опционально отпускает advisory lock.
+   * @param releaseLock — при false lock не отпускаем (смена токена в том же инстансе).
+   */
+  async stopBot(releaseLock = true) {
     if (!this.bot) {
       this.isRunning = false;
+      if (releaseLock && this.pollingLockAcquired) {
+        try {
+          await this.prisma.$queryRaw<{ unlocked: boolean }[]>`
+            SELECT pg_advisory_unlock(${this.pollingLockKey}) AS unlocked
+          `;
+        } catch {
+          // ignore
+        }
+        this.pollingLockAcquired = false;
+      }
       return;
     }
 
@@ -1283,26 +1408,53 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         await this.bot.stop();
       }
       this.isRunning = false;
-      // Не удаляем this.bot, так как он может быть переиспользован
+      this.bot = null;
+      this.tokenInUse = null;
+      if (releaseLock && this.pollingLockAcquired) {
+        try {
+          await this.prisma.$queryRaw<{ unlocked: boolean }[]>`
+            SELECT pg_advisory_unlock(${this.pollingLockKey}) AS unlocked
+          `;
+        } catch {
+          // ignore
+        }
+        this.pollingLockAcquired = false;
+      }
       this.logger.log('Telegram bot stopped');
     } catch (error: any) {
       this.logger.error('Error stopping bot:', error);
-      // Все равно сбрасываем флаг, даже если была ошибка
       this.isRunning = false;
+      this.bot = null;
+      this.tokenInUse = null;
+      if (releaseLock && this.pollingLockAcquired) {
+        try {
+          await this.prisma.$queryRaw<{ unlocked: boolean }[]>`
+            SELECT pg_advisory_unlock(${this.pollingLockKey}) AS unlocked
+          `;
+        } catch {
+          // ignore
+        }
+        this.pollingLockAcquired = false;
+      }
     }
   }
 
   async restartBot() {
-    // Если уже идет процесс запуска, не перезапускаем
+    // Если бот ещё запускается — ждём завершения, иначе рестарт «проглатывается» и старый бот остаётся.
     if (this.isStarting) {
-      this.logger.debug('Bot is already starting/restarting, skipping duplicate restart');
-      return;
+      this.logger.log('Restart requested while bot is starting, waiting for startup to finish...');
+      const deadline = Date.now() + 15000; // не более 15 с
+      while (this.isStarting && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      if (this.isStarting) {
+        this.logger.warn('Startup did not finish in time, forcing restart');
+      }
     }
 
     this.logger.log('Restarting bot...');
     await this.stopBot();
-    // Даем время на полную остановку
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     await this.startBot();
   }
 }

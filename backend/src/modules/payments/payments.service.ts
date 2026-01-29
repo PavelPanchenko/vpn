@@ -177,7 +177,7 @@ export class PaymentsService {
         if (user) {
           const now = new Date();
           let nextExpiresAt: Date | null = null;
-          let nextStatus: 'ACTIVE' | 'BLOCKED' | 'EXPIRED' = 'EXPIRED';
+          let nextStatus: 'NEW' | 'ACTIVE' | 'BLOCKED' | 'EXPIRED' = 'EXPIRED';
 
           if (remainingActiveSubscription) {
             nextExpiresAt = remainingActiveSubscription.endsAt;
@@ -188,7 +188,6 @@ export class PaymentsService {
                   ? 'EXPIRED'
                   : 'ACTIVE';
           } else {
-            // Нет активных подписок - проверяем, есть ли другие подписки
             const allSubscriptions = await this.prisma.subscription.findMany({
               where: { vpnUserId: payment.vpnUserId },
               orderBy: { endsAt: 'desc' },
@@ -203,7 +202,6 @@ export class PaymentsService {
                     ? 'EXPIRED'
                     : 'ACTIVE';
             } else {
-              // Нет подписок вообще - сбрасываем expiresAt
               nextExpiresAt = null;
               nextStatus = user.status === 'BLOCKED' ? 'BLOCKED' : 'EXPIRED';
             }

@@ -34,6 +34,9 @@ export class PlansService {
     // Логика видимости тарифов:
     // - Новые пользователи (firstPaidAt IS NULL): только новые тарифы (legacy=false, availableFor IN ("ALL", "NEW_USERS"))
     // - Существующие пользователи (firstPaidAt IS NOT NULL): все тарифы (availableFor IN ("ALL", "EXISTING_USERS"), legacy может быть любым)
+    // Trial не показываем в списке — он выдаётся автоматически при первом подключении
+    where.isTrial = false;
+
     if (isExistingUser) {
       where.availableFor = { in: ['ALL', 'EXISTING_USERS'] };
     } else {
@@ -41,10 +44,20 @@ export class PlansService {
       where.availableFor = { in: ['ALL', 'NEW_USERS'] };
     }
 
-    return this.prisma.plan.findMany({
+    let result = await this.prisma.plan.findMany({
       where,
       orderBy: { price: 'asc' },
     });
+
+    // Fallback: если для пользователя ничего не подошло — показываем все активные нетриальные (чтобы в Mini App всегда было что выбрать)
+    if (result.length === 0) {
+      result = await this.prisma.plan.findMany({
+        where: { active: true, isTrial: false },
+        orderBy: { price: 'asc' },
+      });
+    }
+
+    return result;
   }
 
   async get(id: string) {
@@ -53,12 +66,18 @@ export class PlansService {
     return plan;
   }
 
-  create(dto: CreatePlanDto) {
+  async create(dto: CreatePlanDto) {
+    if (dto.isTop) {
+      await this.prisma.plan.updateMany({ data: { isTop: false } });
+    }
     return this.prisma.plan.create({ data: dto });
   }
 
   async update(id: string, dto: UpdatePlanDto) {
     await this.get(id);
+    if (dto.isTop === true) {
+      await this.prisma.plan.updateMany({ where: { id: { not: id } }, data: { isTop: false } });
+    }
     return this.prisma.plan.update({ where: { id }, data: dto });
   }
 

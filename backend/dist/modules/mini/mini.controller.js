@@ -16,23 +16,28 @@ exports.MiniController = void 0;
 const common_1 = require("@nestjs/common");
 const mini_auth_dto_1 = require("./dto/mini-auth.dto");
 const mini_pay_dto_1 = require("./dto/mini-pay.dto");
+const mini_activate_dto_1 = require("./dto/mini-activate.dto");
 const prisma_service_1 = require("../prisma/prisma.service");
 const users_service_1 = require("../users/users.service");
 const plans_service_1 = require("../plans/plans.service");
 const payments_service_1 = require("../payments/payments.service");
+const servers_service_1 = require("../servers/servers.service");
 const bot_service_1 = require("../bot/bot.service");
 const crypto = require("crypto");
+const getOrCreateLocks = new Map();
 let MiniController = class MiniController {
     prisma;
     usersService;
     plansService;
     paymentsService;
+    serversService;
     botService;
-    constructor(prisma, usersService, plansService, paymentsService, botService) {
+    constructor(prisma, usersService, plansService, paymentsService, serversService, botService) {
         this.prisma = prisma;
         this.usersService = usersService;
         this.plansService = plansService;
         this.paymentsService = paymentsService;
+        this.serversService = serversService;
         this.botService = botService;
     }
     async validateInitData(initData) {
@@ -55,10 +60,13 @@ let MiniController = class MiniController {
         if (!token) {
             throw new common_1.UnauthorizedException('Bot token not configured');
         }
-        const secretKey = crypto.createHash('sha256').update(token).digest();
+        const secretKey = crypto.createHmac('sha256', 'WebAppData').update(token).digest();
         const hmac = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
-        if (hmac !== hash) {
-            throw new common_1.UnauthorizedException('Invalid initData hash');
+        const a = Buffer.from(hmac, 'hex');
+        const b = Buffer.from(hash, 'hex');
+        if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+            throw new common_1.UnauthorizedException('Invalid initData hash. Откройте мини‑приложение только через кнопку в том же боте, ' +
+                'который настроен в админке (активный бот). Проверьте, что токен в админке совпадает с ботом, из которого открываете приложение.');
         }
         const userParam = params.get('user');
         if (!userParam) {
@@ -80,15 +88,27 @@ let MiniController = class MiniController {
             (userObj.last_name ? `${userObj.first_name} ${userObj.last_name}` : 'User');
         return { telegramId, name };
     }
-    async auth(dto) {
-        const { telegramId, name } = await this.validateInitData(dto.initData);
+    async getOrCreateUser(telegramId, name) {
+        const run = async () => {
+            return this.doGetOrCreateUser(telegramId, name);
+        };
+        const prev = getOrCreateLocks.get(telegramId);
+        const next = prev ? prev.then(() => run(), () => run()) : run();
+        getOrCreateLocks.set(telegramId, next);
+        try {
+            return await next;
+        }
+        finally {
+            if (getOrCreateLocks.get(telegramId) === next) {
+                getOrCreateLocks.delete(telegramId);
+            }
+        }
+    }
+    async doGetOrCreateUser(telegramId, name) {
         let user = await this.prisma.vpnUser.findFirst({
             where: { telegramId },
             include: {
-                userServers: {
-                    where: { isActive: true },
-                    include: { server: true },
-                },
+                userServers: { include: { server: true } },
                 subscriptions: {
                     where: { active: true },
                     orderBy: { endsAt: 'desc' },
@@ -101,10 +121,7 @@ let MiniController = class MiniController {
             user = await this.prisma.vpnUser.findUnique({
                 where: { id: created.id },
                 include: {
-                    userServers: {
-                        where: { isActive: true },
-                        include: { server: true },
-                    },
+                    userServers: { include: { server: true } },
                     subscriptions: {
                         where: { active: true },
                         orderBy: { endsAt: 'desc' },
@@ -113,6 +130,38 @@ let MiniController = class MiniController {
                 },
             });
         }
+        return user;
+    }
+    buildStatusPayload(user, trafficUsed = null) {
+        let daysLeft = null;
+        if (user.expiresAt) {
+            const now = new Date();
+            daysLeft = Math.ceil((user.expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        }
+        const activeServers = (user.userServers || []).filter((us) => us.isActive);
+        return {
+            id: user.id,
+            status: user.status,
+            expiresAt: user.expiresAt,
+            daysLeft,
+            trafficUsed,
+            servers: activeServers.map((us) => ({
+                id: us.server.id,
+                name: us.server.name,
+            })),
+            subscription: user.subscriptions?.[0]
+                ? {
+                    id: user.subscriptions[0].id,
+                    periodDays: user.subscriptions[0].periodDays,
+                    startsAt: user.subscriptions[0].startsAt,
+                    endsAt: user.subscriptions[0].endsAt,
+                }
+                : null,
+        };
+    }
+    async auth(dto) {
+        const { telegramId, name } = await this.validateInitData(dto.initData);
+        const user = await this.getOrCreateUser(telegramId, name);
         return {
             id: user.id,
             telegramId: user.telegramId,
@@ -122,47 +171,62 @@ let MiniController = class MiniController {
         };
     }
     async status(dto) {
-        const { telegramId } = await this.validateInitData(dto.initData);
-        const user = await this.prisma.vpnUser.findFirst({
-            where: { telegramId },
-            include: {
-                userServers: {
-                    where: { isActive: true },
-                    include: { server: true },
-                },
-                subscriptions: {
-                    where: { active: true },
-                    orderBy: { endsAt: 'desc' },
-                    take: 1,
-                },
-            },
-        });
-        if (!user) {
-            throw new common_1.UnauthorizedException('User not found, use /start in bot first');
+        const { telegramId, name } = await this.validateInitData(dto.initData);
+        const user = await this.getOrCreateUser(telegramId, name);
+        let trafficUsed = null;
+        try {
+            const { traffic } = await this.usersService.getTraffic(user.id);
+            const first = traffic?.[0];
+            if (first != null && typeof first.total === 'number')
+                trafficUsed = first.total;
         }
-        let daysLeft = null;
-        if (user.expiresAt) {
-            const now = new Date();
-            daysLeft = Math.ceil((user.expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        catch {
         }
+        const bot = await this.botService.getBotMe();
         return {
-            id: user.id,
-            status: user.status,
-            expiresAt: user.expiresAt,
-            daysLeft,
-            servers: user.userServers.map((us) => ({
-                id: us.server.id,
-                name: us.server.name,
-            })),
-            subscription: user.subscriptions[0]
-                ? {
-                    id: user.subscriptions[0].id,
-                    periodDays: user.subscriptions[0].periodDays,
-                    startsAt: user.subscriptions[0].startsAt,
-                    endsAt: user.subscriptions[0].endsAt,
-                }
-                : null,
+            ...this.buildStatusPayload(user, trafficUsed),
+            botName: bot.name,
+            botUsername: bot.username ?? null,
         };
+    }
+    async servers(dto) {
+        const { telegramId, name } = await this.validateInitData(dto.initData);
+        await this.getOrCreateUser(telegramId, name);
+        const all = await this.serversService.list();
+        const active = all.filter((s) => s.active);
+        const sorted = [...active].sort((a, b) => {
+            if (a.isRecommended && !b.isRecommended)
+                return -1;
+            if (!a.isRecommended && b.isRecommended)
+                return 1;
+            const freeA = a.freeSlots ?? -1;
+            const freeB = b.freeSlots ?? -1;
+            return freeB - freeA;
+        });
+        return sorted.map((s) => ({
+            id: s.id,
+            name: s.name,
+            freeSlots: s.freeSlots,
+            isRecommended: s.isRecommended ?? false,
+        }));
+    }
+    async activate(dto) {
+        const { telegramId, name } = await this.validateInitData(dto.initData);
+        const user = await this.getOrCreateUser(telegramId, name);
+        const existing = await this.prisma.userServer.findUnique({
+            where: { vpnUserId_serverId: { vpnUserId: user.id, serverId: dto.serverId } },
+        });
+        if (existing) {
+            const updated = await this.usersService.activateServer(user.id, dto.serverId);
+            return this.buildStatusPayload(updated);
+        }
+        const anyServers = await this.prisma.userServer.count({ where: { vpnUserId: user.id } });
+        if (anyServers === 0) {
+            const result = await this.usersService.addServerAndTrial(user.id, dto.serverId, 3);
+            return this.buildStatusPayload(result.updated);
+        }
+        const updated = await this.usersService.addServer(user.id, dto.serverId);
+        return this.buildStatusPayload(updated);
     }
     async config(dto) {
         const { telegramId } = await this.validateInitData(dto.initData);
@@ -179,15 +243,9 @@ let MiniController = class MiniController {
         return configResult;
     }
     async plans(dto) {
-        const { telegramId } = await this.validateInitData(dto.initData);
-        const user = await this.prisma.vpnUser.findFirst({
-            where: { telegramId },
-        });
-        if (!user) {
-            throw new common_1.UnauthorizedException('User not found');
-        }
-        const plans = await this.plansService.list(user.id);
-        return plans.filter((p) => p.active);
+        const { telegramId, name } = await this.validateInitData(dto.initData);
+        const user = await this.getOrCreateUser(telegramId, name);
+        return this.plansService.list(user.id);
     }
     async pay(dto) {
         const { telegramId } = await this.validateInitData(dto.initData);
@@ -235,6 +293,20 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], MiniController.prototype, "status", null);
 __decorate([
+    (0, common_1.Post)('servers'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [mini_auth_dto_1.MiniInitDataDto]),
+    __metadata("design:returntype", Promise)
+], MiniController.prototype, "servers", null);
+__decorate([
+    (0, common_1.Post)('activate'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [mini_activate_dto_1.MiniActivateServerDto]),
+    __metadata("design:returntype", Promise)
+], MiniController.prototype, "activate", null);
+__decorate([
     (0, common_1.Post)('config'),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -261,6 +333,7 @@ exports.MiniController = MiniController = __decorate([
         users_service_1.UsersService,
         plans_service_1.PlansService,
         payments_service_1.PaymentsService,
+        servers_service_1.ServersService,
         bot_service_1.BotService])
 ], MiniController);
 //# sourceMappingURL=mini.controller.js.map

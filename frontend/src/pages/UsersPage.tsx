@@ -138,6 +138,7 @@ export function UsersPage() {
                 onChange={(e) => setStatusFilter(e.target.value as 'ALL' | VpnUserStatus)}
               >
                 <option value="ALL">All statuses</option>
+                <option value="NEW">NEW</option>
                 <option value="ACTIVE">ACTIVE</option>
                 <option value="BLOCKED">BLOCKED</option>
                 <option value="EXPIRED">EXPIRED</option>
@@ -216,8 +217,10 @@ export function UsersPage() {
                     })
                   }
                 >
+                  <option value="NEW">NEW</option>
                   <option value="ACTIVE">ACTIVE</option>
                   <option value="BLOCKED">BLOCKED</option>
+                  <option value="EXPIRED">EXPIRED</option>
                 </select>
               </Td>
               <Td>{u.expiresAt ? new Date(u.expiresAt).toLocaleString() : '-'}</Td>

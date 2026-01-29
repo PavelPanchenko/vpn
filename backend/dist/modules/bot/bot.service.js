@@ -22,6 +22,7 @@ let BotService = class BotService {
     prisma;
     config;
     telegramBotService;
+    botMeCache = null;
     constructor(prisma, config, telegramBotService) {
         this.prisma = prisma;
         this.config = config;
@@ -58,19 +59,49 @@ let BotService = class BotService {
             throw new common_1.BadRequestException('Failed to decrypt bot token');
         }
     }
-    async create(dto) {
-        const existing = await this.prisma.botConfig.findFirst({
-            where: { active: true },
-        });
-        if (existing && dto.active !== false) {
-            throw new common_1.BadRequestException('An active bot configuration already exists. Deactivate it first or update existing one.');
+    clearBotMeCache() {
+        this.botMeCache = null;
+    }
+    async getBotMe() {
+        const now = Date.now();
+        if (this.botMeCache && this.botMeCache.expiresAt > now)
+            return this.botMeCache.value;
+        const token = await this.getToken();
+        if (!token)
+            return { name: 'VPN', username: null };
+        try {
+            const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+            const json = await res.json();
+            const name = json?.ok && json?.result
+                ? (json.result.first_name || json.result.username || 'VPN')
+                : 'VPN';
+            const username = json?.ok && json?.result ? (json.result.username ?? null) : null;
+            const value = { name, username };
+            this.botMeCache = { value, expiresAt: now + 10 * 60 * 1000 };
+            return value;
         }
+        catch {
+            return { name: 'VPN', username: null };
+        }
+    }
+    async create(dto) {
+        this.clearBotMeCache();
         const tokenEnc = secret_box_1.SecretBox.encrypt(dto.token, this.getEncryptionSecret());
-        const created = await this.prisma.botConfig.create({
-            data: {
-                tokenEnc,
-                active: dto.active ?? false,
-            },
+        const activate = dto.active ?? false;
+        const created = await this.prisma.$transaction(async (tx) => {
+            if (activate) {
+                await tx.botConfig.updateMany({
+                    where: { active: true },
+                    data: { active: false },
+                });
+            }
+            return tx.botConfig.create({
+                data: {
+                    tokenEnc,
+                    active: activate,
+                    useMiniApp: dto.useMiniApp ?? false,
+                },
+            });
         });
         if (created.active) {
             this.telegramBotService.restartBot().catch((err) => {
@@ -99,16 +130,20 @@ let BotService = class BotService {
         const updateData = {};
         const isTokenChanging = dto.token !== undefined;
         if (isTokenChanging && dto.token) {
+            this.clearBotMeCache();
             updateData.tokenEnc = secret_box_1.SecretBox.encrypt(dto.token, this.getEncryptionSecret());
         }
         if (dto.active !== undefined) {
             updateData.active = dto.active;
         }
+        if (dto.useMiniApp !== undefined) {
+            updateData.useMiniApp = dto.useMiniApp;
+        }
         const updated = await this.prisma.botConfig.update({
             where: { id },
             data: updateData,
         });
-        if (isTokenChanging || dto.active !== undefined) {
+        if (isTokenChanging || dto.active !== undefined || dto.useMiniApp !== undefined) {
             this.telegramBotService.restartBot().catch((err) => {
                 console.error('Failed to restart bot after update:', err);
             });

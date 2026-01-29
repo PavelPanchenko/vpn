@@ -14,6 +14,7 @@ const class_validator_1 = require("class-validator");
 class CreateBotConfigDto {
     token;
     active;
+    useMiniApp;
 }
 exports.CreateBotConfigDto = CreateBotConfigDto;
 __decorate([
@@ -23,6 +24,12 @@ __decorate([
 ], CreateBotConfigDto.prototype, "token", void 0);
 __decorate([
     (0, class_validator_1.IsBoolean)(),
+    (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Boolean)
 ], CreateBotConfigDto.prototype, "active", void 0);
+__decorate([
+    (0, class_validator_1.IsBoolean)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Boolean)
+], CreateBotConfigDto.prototype, "useMiniApp", void 0);
 //# sourceMappingURL=create-bot-config.dto.js.map

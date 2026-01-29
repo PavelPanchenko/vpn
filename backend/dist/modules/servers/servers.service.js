@@ -33,7 +33,7 @@ let ServersService = class ServersService {
         const [servers, activeUsers] = await this.prisma.$transaction([
             this.prisma.vpnServer.findMany({
                 orderBy: { createdAt: 'desc' },
-                include: { _count: { select: { users: true } } },
+                include: { _count: { select: { users: true, userServers: true } } },
             }),
             this.prisma.vpnUser.findMany({
                 where: { status: 'ACTIVE' },
@@ -47,11 +47,16 @@ let ServersService = class ServersService {
             }
         }
         return servers.map((s) => {
-            const usersCount = s._count.users;
+            const usersOnServer = s._count.userServers;
             const activeUsersCount = activeByServer.get(s.id) ?? 0;
-            const freeSlots = s.maxUsers > 0 ? Math.max(0, s.maxUsers - usersCount) : null;
+            const freeSlots = s.maxUsers > 0 ? Math.max(0, s.maxUsers - usersOnServer) : null;
             const { _count, ...rest } = s;
-            return this.maskServer({ ...rest, usersCount, activeUsersCount, freeSlots });
+            return this.maskServer({
+                ...rest,
+                usersCount: usersOnServer,
+                activeUsersCount,
+                freeSlots,
+            });
         });
     }
     async get(id) {
@@ -60,7 +65,10 @@ let ServersService = class ServersService {
             throw new common_1.NotFoundException('Server not found');
         return this.maskServer(server);
     }
-    create(dto) {
+    async create(dto) {
+        if (dto.isRecommended) {
+            await this.prisma.vpnServer.updateMany({ data: { isRecommended: false } });
+        }
         return this.prisma.vpnServer.create({
             data: {
                 name: dto.name,
@@ -74,12 +82,16 @@ let ServersService = class ServersService {
                 publicKey: dto.publicKey,
                 shortId: dto.shortId,
                 maxUsers: dto.maxUsers,
+                isRecommended: dto.isRecommended ?? false,
                 active: dto.active,
             },
         });
     }
     async update(id, dto) {
         await this.get(id);
+        if (dto.isRecommended === true) {
+            await this.prisma.vpnServer.updateMany({ where: { id: { not: id } }, data: { isRecommended: false } });
+        }
         let security;
         if (dto.security !== undefined) {
             security = dto.security;
@@ -101,6 +113,7 @@ let ServersService = class ServersService {
                 publicKey: dto.publicKey,
                 shortId: dto.shortId,
                 maxUsers: dto.maxUsers,
+                isRecommended: dto.isRecommended,
                 active: dto.active,
             },
         });

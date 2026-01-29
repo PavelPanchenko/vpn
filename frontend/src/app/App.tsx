@@ -10,6 +10,8 @@ import { PlansPage } from '../pages/PlansPage';
 import { BotPage } from '../pages/BotPage';
 import { SupportPage } from '../pages/SupportPage';
 import { MiniAppPage } from '../pages/MiniAppPage';
+import { PrivacyPolicyPage } from '../pages/PrivacyPolicyPage';
+import { TermsPage } from '../pages/TermsPage';
 import { ProtectedLayout } from './ProtectedLayout';
 
 export function App() {
@@ -31,6 +33,8 @@ export function App() {
 
       {/* Публичный роут для Telegram Mini App (без админской авторизации) */}
       <Route path="/mini" element={<MiniAppPage />} />
+      <Route path="/privacy" element={<PrivacyPolicyPage />} />
+      <Route path="/terms" element={<TermsPage />} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -16,6 +16,7 @@ const class_validator_1 = require("class-validator");
 class UpdateBotConfigDto extends (0, mapped_types_1.PartialType)(create_bot_config_dto_1.CreateBotConfigDto) {
     token;
     active;
+    useMiniApp;
 }
 exports.UpdateBotConfigDto = UpdateBotConfigDto;
 __decorate([
@@ -28,4 +29,9 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Boolean)
 ], UpdateBotConfigDto.prototype, "active", void 0);
+__decorate([
+    (0, class_validator_1.IsBoolean)(),
+    (0, class_validator_1.IsOptional)(),
+    __metadata("design:type", Boolean)
+], UpdateBotConfigDto.prototype, "useMiniApp", void 0);
 //# sourceMappingURL=update-bot-config.dto.js.map

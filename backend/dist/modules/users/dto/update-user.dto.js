@@ -38,7 +38,7 @@ __decorate([
 ], UpdateUserDto.prototype, "telegramId", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsIn)(['ACTIVE', 'BLOCKED', 'EXPIRED']),
+    (0, class_validator_1.IsIn)(['NEW', 'ACTIVE', 'BLOCKED', 'EXPIRED']),
     __metadata("design:type", String)
 ], UpdateUserDto.prototype, "status", void 0);
 __decorate([

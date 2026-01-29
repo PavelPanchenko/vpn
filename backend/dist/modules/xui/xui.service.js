@@ -5,28 +5,28 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var XuiService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.XuiService = void 0;
 const common_1 = require("@nestjs/common");
 const axios_1 = require("axios");
-const http = require("node:http");
-const https = require("node:https");
-let XuiService = class XuiService {
+const https = require("https");
+const http = require("http");
+let XuiService = XuiService_1 = class XuiService {
+    logger = new common_1.Logger(XuiService_1.name);
     httpAgent = new http.Agent({ keepAlive: true });
-    httpsAgent = new https.Agent({ keepAlive: true });
+    httpsAgent = new https.Agent({ keepAlive: true, rejectUnauthorized: false });
     normalizeBaseUrl(baseUrl) {
-        return baseUrl.replace(/\/+$/, '');
+        return baseUrl.replace(/\/$/, '');
     }
-    isRetryableNetworkError(err) {
-        const e = err;
-        const code = e?.code;
-        return (code === 'ECONNRESET' ||
-            code === 'ETIMEDOUT' ||
-            code === 'ECONNREFUSED' ||
-            code === 'EAI_AGAIN' ||
-            code === 'ENOTFOUND');
+    authHeaders(auth) {
+        if (auth.cookie)
+            return { Cookie: auth.cookie };
+        if (auth.token)
+            return { Authorization: `Bearer ${auth.token}` };
+        return {};
     }
-    async withRetry(fn, retries = 2, delayMs = 350) {
+    async withRetry(fn, retries = 2) {
         let lastErr;
         for (let i = 0; i <= retries; i++) {
             try {
@@ -34,172 +34,174 @@ let XuiService = class XuiService {
             }
             catch (e) {
                 lastErr = e;
-                if (!this.isRetryableNetworkError(e) || i === retries)
-                    break;
-                await new Promise((r) => setTimeout(r, delayMs * (i + 1)));
             }
         }
         throw lastErr;
     }
-    buildCookieHeader(setCookies) {
-        if (!setCookies || setCookies.length === 0)
-            return null;
-        const pairs = setCookies
-            .map((c) => c.split(';')[0]?.trim())
-            .filter(Boolean);
-        if (pairs.length === 0)
-            return null;
-        const sessionFirst = pairs.sort((a, b) => (b.startsWith('session=') ? 1 : 0) - (a.startsWith('session=') ? 1 : 0));
-        return sessionFirst.join('; ');
-    }
-    assertOk(data, action) {
-        if (typeof data === 'string' && data.toLowerCase().includes('<html')) {
-            throw new common_1.BadRequestException(`Panel ${action} failed (unauthorized)`);
-        }
-        if (data && typeof data === 'object' && 'success' in data && data.success === false) {
-            throw new common_1.BadRequestException(data.msg || `Panel ${action} failed`);
-        }
-    }
     async login(baseUrl, username, password) {
         const url = `${this.normalizeBaseUrl(baseUrl)}/login`;
         const res = await this.withRetry(() => axios_1.default.post(url, { username, password }, {
-            validateStatus: () => true,
             maxRedirects: 0,
+            validateStatus: (s) => s >= 200 && s < 400,
             timeout: 15_000,
             httpAgent: this.httpAgent,
             httpsAgent: this.httpsAgent,
-        }), 2, 400).catch((e) => {
-            const code = e?.code ? ` (${e.code})` : '';
-            throw new common_1.BadRequestException(`Panel connection failed during login${code}`);
-        });
-        const cookie = this.buildCookieHeader(res.headers['set-cookie']);
-        const token = res.data?.session_token;
-        return { cookie: cookie ?? undefined, token: token ?? undefined };
+        }));
+        const cookie = res.headers['set-cookie']?.[0]?.split(';')[0];
+        const token = res.data?.token;
+        return { cookie: cookie ?? undefined, token };
     }
     async listInbounds(baseUrl, auth) {
         const url = `${this.normalizeBaseUrl(baseUrl)}/panel/api/inbounds/list`;
         const res = await this.withRetry(() => axios_1.default.get(url, {
-            validateStatus: () => true,
-            headers: auth.cookie ? { Cookie: auth.cookie } : undefined,
+            headers: this.authHeaders(auth),
             timeout: 15_000,
             httpAgent: this.httpAgent,
             httpsAgent: this.httpsAgent,
-        }), 2, 400);
-        this.assertOk(res.data, 'listInbounds');
-        const list = res.data?.obj ?? res.data?.inbounds ?? [];
-        return list;
+            validateStatus: (s) => s === 200,
+        }));
+        const data = res.data;
+        if (Array.isArray(data))
+            return data;
+        if (data?.obj != null && Array.isArray(data.obj))
+            return data.obj;
+        return [];
     }
     async getInbound(baseUrl, inboundId, auth) {
         const url = `${this.normalizeBaseUrl(baseUrl)}/panel/api/inbounds/get/${inboundId}`;
         const res = await this.withRetry(() => axios_1.default.get(url, {
-            validateStatus: () => true,
-            headers: auth.cookie ? { Cookie: auth.cookie } : undefined,
+            headers: this.authHeaders(auth),
             timeout: 15_000,
             httpAgent: this.httpAgent,
             httpsAgent: this.httpsAgent,
-        }), 2, 400);
-        this.assertOk(res.data, 'getInbound');
-        return res.data?.obj ?? res.data?.inbound ?? res.data;
-    }
-    async addClient(baseUrl, auth, inboundId, client) {
-        const url = `${this.normalizeBaseUrl(baseUrl)}/panel/api/inbounds/addClient`;
-        const settings = JSON.stringify({
-            clients: [
-                {
-                    comment: client.comment ?? '',
-                    email: client.email,
-                    enable: client.enable,
-                    expiryTime: client.expiryTime,
-                    flow: client.flow ?? '',
-                    id: client.id,
-                    limitIp: client.limitIp ?? 0,
-                    subId: client.subId ?? client.email,
-                    tgId: client.tgId ?? '',
-                    totalGB: client.totalGB ?? 0,
-                },
-            ],
-        });
-        const res = await axios_1.default.post(url, { id: inboundId, settings }, {
-            validateStatus: () => true,
-            headers: auth.cookie ? { Cookie: auth.cookie } : undefined,
-            timeout: 15_000,
-            httpAgent: this.httpAgent,
-            httpsAgent: this.httpsAgent,
-        });
-        this.assertOk(res.data, 'addClient');
-        return res.data;
-    }
-    async updateClientByEmail(baseUrl, auth, inboundId, email, client) {
-        try {
-            await this.deleteClientByEmail(baseUrl, auth, inboundId, email);
-        }
-        catch {
-        }
-        return this.addClient(baseUrl, auth, inboundId, {
-            id: client.id,
-            email,
-            enable: client.enable,
-            expiryTime: client.expiryTime,
-            flow: client.flow,
-            tgId: client.tgId,
-            subId: client.subId,
-            limitIp: client.limitIp,
-            totalGB: client.totalGB,
-            comment: client.comment,
-        });
-    }
-    async deleteClientByEmail(baseUrl, auth, inboundId, email) {
-        const url = `${this.normalizeBaseUrl(baseUrl)}/panel/api/inbounds/${inboundId}/delClientByEmail/${encodeURIComponent(email)}`;
-        const res = await axios_1.default.post(url, null, {
-            validateStatus: () => true,
-            headers: auth.cookie ? { Cookie: auth.cookie } : undefined,
-            timeout: 15_000,
-            httpAgent: this.httpAgent,
-            httpsAgent: this.httpsAgent,
-        });
-        if (res.status >= 400) {
-            throw new common_1.BadRequestException('Panel deleteClient failed');
-        }
-        if (res.data && typeof res.data === 'object' && 'success' in res.data && res.data.success === false) {
-            throw new common_1.BadRequestException(res.data.msg || 'Panel deleteClient failed');
-        }
-        return res.data;
+            validateStatus: (s) => s === 200,
+        }));
+        const data = res.data;
+        const obj = data?.obj ?? data;
+        const clientStats = obj?.clientStats ?? obj?.client_stats ?? (Array.isArray(data?.clientStats) ? data.clientStats : []);
+        return { ...obj, clientStats };
     }
     async getClientTraffic(baseUrl, auth, inboundId, email) {
         const inbound = await this.getInbound(baseUrl, inboundId, auth);
         const settings = typeof inbound.settings === 'string' ? JSON.parse(inbound.settings) : inbound.settings;
         const clients = settings?.clients || [];
-        const client = clients.find((c) => c.email === email);
+        const client = clients.find((c) => (c.email ?? c.Email) === email);
         if (!client) {
+            this.logger.warn(`getClientTraffic: client not found (email=${email})`);
             throw new common_1.BadRequestException('Client not found in panel');
         }
-        const clientStats = inbound.clientStats || [];
-        const stats = clientStats.find((s) => s.email === email);
+        const clientStats = inbound.clientStats ?? inbound.client_stats ?? [];
+        let stats = clientStats.find((s) => (s.email ?? s.Email) === email);
+        if (!stats && client.id)
+            stats = clientStats.find((s) => (s.id ?? s.Id) === client.id);
+        const t = stats?.traffic ?? stats?.Traffic;
+        const up = Number(stats?.up ?? stats?.Up ?? t?.up ?? t?.Up ?? 0);
+        const down = Number(stats?.down ?? stats?.Down ?? t?.down ?? t?.Down ?? 0);
+        const allTime = Number(stats?.allTime ?? stats?.all_time ?? 0);
+        const totalUsed = allTime > 0 ? allTime : up + down;
         return {
-            email: client.email,
-            id: client.id,
-            up: stats?.up || 0,
-            down: stats?.down || 0,
-            total: stats?.allTime || (stats?.up || 0) + (stats?.down || 0),
-            reset: stats?.reset || 0,
-            lastOnline: stats?.lastOnline || 0,
+            up,
+            down,
+            total: totalUsed,
+            reset: Number(stats?.reset ?? stats?.Reset ?? 0),
+            lastOnline: Number(stats?.lastOnline ?? stats?.last_online ?? 0),
         };
     }
     async resetClientTraffic(baseUrl, auth, inboundId, email) {
         const url = `${this.normalizeBaseUrl(baseUrl)}/panel/api/inbounds/${inboundId}/resetClientTraffic/${encodeURIComponent(email)}`;
-        const res = await this.withRetry(() => axios_1.default.post(url, null, {
-            validateStatus: () => true,
-            headers: auth.cookie ? { Cookie: auth.cookie } : undefined,
+        await this.withRetry(() => axios_1.default.post(url, null, {
+            headers: this.authHeaders(auth),
             timeout: 15_000,
             httpAgent: this.httpAgent,
             httpsAgent: this.httpsAgent,
-        }), 2, 400);
-        this.assertOk(res.data, 'resetClientTraffic');
+            validateStatus: (s) => s >= 200 && s < 400,
+        }));
+    }
+    async addClient(baseUrl, auth, inboundId, client) {
+        const inbound = await this.getInbound(baseUrl, inboundId, auth);
+        const settings = typeof inbound.settings === 'string' ? JSON.parse(inbound.settings) : inbound.settings;
+        const clients = settings?.clients ?? [];
+        if (clients.some((c) => (c.email ?? c.Email) === client.email)) {
+            throw new common_1.BadRequestException('Client already exists');
+        }
+        const obj = {
+            id: client.id,
+            email: client.email,
+            flow: client.flow ?? '',
+        };
+        if (client.expiryTime != null && client.expiryTime > 0) {
+            obj.expiryTime = client.expiryTime;
+            obj.expire = Math.floor(client.expiryTime / 1000);
+        }
+        if (client.enable !== undefined)
+            obj.enable = client.enable;
+        clients.push(obj);
+        const url = `${this.normalizeBaseUrl(baseUrl)}/panel/api/inbounds/update/${inboundId}`;
+        const body = { ...inbound, settings: JSON.stringify({ ...settings, clients }) };
+        const res = await axios_1.default.post(url, body, {
+            headers: { ...this.authHeaders(auth), 'Content-Type': 'application/json' },
+            timeout: 15_000,
+            httpAgent: this.httpAgent,
+            httpsAgent: this.httpsAgent,
+            validateStatus: (s) => s === 200,
+        });
+        if (res.data?.success === false)
+            throw new common_1.BadRequestException(res.data?.msg ?? 'Panel update failed');
+        return res.data;
+    }
+    async updateClient(baseUrl, auth, inboundId, email, patch) {
+        const inbound = await this.getInbound(baseUrl, inboundId, auth);
+        const settings = typeof inbound.settings === 'string' ? JSON.parse(inbound.settings) : inbound.settings;
+        const clients = settings?.clients ?? [];
+        const idx = clients.findIndex((c) => (c.email ?? c.Email) === email);
+        if (idx < 0)
+            throw new common_1.BadRequestException('Client not found');
+        if (patch.email != null)
+            clients[idx].email = patch.email;
+        if (patch.flow != null)
+            clients[idx].flow = patch.flow;
+        if (patch.expiryTime !== undefined) {
+            clients[idx].expiryTime = patch.expiryTime;
+            clients[idx].expire = patch.expiryTime > 0 ? Math.floor(patch.expiryTime / 1000) : 0;
+        }
+        if (patch.enable !== undefined)
+            clients[idx].enable = patch.enable;
+        const url = `${this.normalizeBaseUrl(baseUrl)}/panel/api/inbounds/update/${inboundId}`;
+        const body = { ...inbound, settings: JSON.stringify({ ...settings, clients }) };
+        const res = await axios_1.default.post(url, body, {
+            headers: { ...this.authHeaders(auth), 'Content-Type': 'application/json' },
+            timeout: 15_000,
+            httpAgent: this.httpAgent,
+            httpsAgent: this.httpsAgent,
+            validateStatus: (s) => s === 200,
+        });
+        if (res.data?.success === false)
+            throw new common_1.BadRequestException(res.data?.msg ?? 'Panel update failed');
+        return res.data;
+    }
+    async deleteClient(baseUrl, auth, inboundId, email) {
+        const inbound = await this.getInbound(baseUrl, inboundId, auth);
+        const settings = typeof inbound.settings === 'string' ? JSON.parse(inbound.settings) : inbound.settings;
+        const clients = (settings?.clients ?? []).filter((c) => (c.email ?? c.Email) !== email);
+        if (clients.length === (settings?.clients ?? []).length) {
+            throw new common_1.BadRequestException('Client not found');
+        }
+        const url = `${this.normalizeBaseUrl(baseUrl)}/panel/api/inbounds/update/${inboundId}`;
+        const body = { ...inbound, settings: JSON.stringify({ ...settings, clients }) };
+        const res = await axios_1.default.post(url, body, {
+            headers: { ...this.authHeaders(auth), 'Content-Type': 'application/json' },
+            timeout: 15_000,
+            httpAgent: this.httpAgent,
+            httpsAgent: this.httpsAgent,
+            validateStatus: (s) => s === 200,
+        });
+        if (res.data?.success === false)
+            throw new common_1.BadRequestException(res.data?.msg ?? 'Panel delete failed');
         return res.data;
     }
 };
 exports.XuiService = XuiService;
-exports.XuiService = XuiService = __decorate([
+exports.XuiService = XuiService = XuiService_1 = __decorate([
     (0, common_1.Injectable)()
 ], XuiService);
 //# sourceMappingURL=xui.service.js.map

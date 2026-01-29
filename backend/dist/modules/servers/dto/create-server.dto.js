@@ -23,6 +23,7 @@ class CreateServerDto {
     publicKey;
     shortId;
     maxUsers;
+    isRecommended;
     active;
 }
 exports.CreateServerDto = CreateServerDto;
@@ -77,6 +78,11 @@ __decorate([
     (0, class_validator_1.Min)(0),
     __metadata("design:type", Number)
 ], CreateServerDto.prototype, "maxUsers", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], CreateServerDto.prototype, "isRecommended", void 0);
 __decorate([
     (0, class_validator_1.IsBoolean)(),
     __metadata("design:type", Boolean)

@@ -22,6 +22,7 @@ class CreatePlanDto {
     active;
     legacy;
     availableFor;
+    isTop;
 }
 exports.CreatePlanDto = CreatePlanDto;
 __decorate([
@@ -72,4 +73,9 @@ __decorate([
     (0, class_validator_1.IsIn)(['ALL', 'NEW_USERS', 'EXISTING_USERS']),
     __metadata("design:type", String)
 ], CreatePlanDto.prototype, "availableFor", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], CreatePlanDto.prototype, "isTop", void 0);
 //# sourceMappingURL=create-plan.dto.js.map

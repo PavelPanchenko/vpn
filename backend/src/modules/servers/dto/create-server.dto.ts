@@ -41,6 +41,10 @@ export class CreateServerDto {
   @Min(0)
   maxUsers!: number;
 
+  @IsOptional()
+  @IsBoolean()
+  isRecommended?: boolean;
+
   @IsBoolean()
   active!: boolean;
 }

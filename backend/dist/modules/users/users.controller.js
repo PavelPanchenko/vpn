@@ -31,9 +31,6 @@ let UsersController = class UsersController {
     get(params) {
         return this.users.get(params.id);
     }
-    getConfig(params) {
-        return this.users.getConfig(params.id);
-    }
     create(dto) {
         return this.users.create(dto);
     }
@@ -43,19 +40,22 @@ let UsersController = class UsersController {
     remove(params) {
         return this.users.remove(params.id);
     }
+    getConfig(params) {
+        return this.users.getConfig(params.id);
+    }
     addServer(params, dto) {
         return this.users.addServer(params.id, dto.serverId);
     }
-    removeServer(params) {
-        return this.users.removeServer(params.id, params.serverId);
+    removeServer(params, serverId) {
+        return this.users.removeServer(params.id, serverId);
     }
-    activateServer(params) {
-        return this.users.activateServer(params.id, params.serverId);
+    activateServer(params, serverId) {
+        return this.users.activateServer(params.id, serverId);
     }
     getTraffic(params) {
         return this.users.getTraffic(params.id);
     }
-    resetTraffic(params) {
+    async resetTraffic(params) {
         return this.users.resetTraffic(params.id);
     }
 };
@@ -73,13 +73,6 @@ __decorate([
     __metadata("design:paramtypes", [id_param_dto_1.IdParamDto]),
     __metadata("design:returntype", void 0)
 ], UsersController.prototype, "get", null);
-__decorate([
-    (0, common_1.Get)(':id/config'),
-    __param(0, (0, common_1.Param)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [id_param_dto_1.IdParamDto]),
-    __metadata("design:returntype", void 0)
-], UsersController.prototype, "getConfig", null);
 __decorate([
     (0, common_1.Post)(),
     __param(0, (0, common_1.Body)()),
@@ -103,6 +96,13 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], UsersController.prototype, "remove", null);
 __decorate([
+    (0, common_1.Get)(':id/config'),
+    __param(0, (0, common_1.Param)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [id_param_dto_1.IdParamDto]),
+    __metadata("design:returntype", void 0)
+], UsersController.prototype, "getConfig", null);
+__decorate([
     (0, common_1.Post)(':id/servers'),
     __param(0, (0, common_1.Param)()),
     __param(1, (0, common_1.Body)()),
@@ -113,15 +113,17 @@ __decorate([
 __decorate([
     (0, common_1.Delete)(':id/servers/:serverId'),
     __param(0, (0, common_1.Param)()),
+    __param(1, (0, common_1.Param)('serverId')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [id_param_dto_1.IdParamDto, String]),
     __metadata("design:returntype", void 0)
 ], UsersController.prototype, "removeServer", null);
 __decorate([
     (0, common_1.Post)(':id/servers/:serverId/activate'),
     __param(0, (0, common_1.Param)()),
+    __param(1, (0, common_1.Param)('serverId')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", [id_param_dto_1.IdParamDto, String]),
     __metadata("design:returntype", void 0)
 ], UsersController.prototype, "activateServer", null);
 __decorate([
@@ -136,7 +138,7 @@ __decorate([
     __param(0, (0, common_1.Param)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [id_param_dto_1.IdParamDto]),
-    __metadata("design:returntype", void 0)
+    __metadata("design:returntype", Promise)
 ], UsersController.prototype, "resetTraffic", null);
 exports.UsersController = UsersController = __decorate([
     (0, common_1.Controller)('users'),

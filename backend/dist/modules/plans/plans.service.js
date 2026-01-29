@@ -30,6 +30,7 @@ let PlansService = class PlansService {
             select: { firstPaidAt: true },
         });
         const isExistingUser = user?.firstPaidAt !== null;
+        where.isTrial = false;
         if (isExistingUser) {
             where.availableFor = { in: ['ALL', 'EXISTING_USERS'] };
         }
@@ -37,10 +38,17 @@ let PlansService = class PlansService {
             where.legacy = false;
             where.availableFor = { in: ['ALL', 'NEW_USERS'] };
         }
-        return this.prisma.plan.findMany({
+        let result = await this.prisma.plan.findMany({
             where,
             orderBy: { price: 'asc' },
         });
+        if (result.length === 0) {
+            result = await this.prisma.plan.findMany({
+                where: { active: true, isTrial: false },
+                orderBy: { price: 'asc' },
+            });
+        }
+        return result;
     }
     async get(id) {
         const plan = await this.prisma.plan.findUnique({ where: { id } });
@@ -48,11 +56,17 @@ let PlansService = class PlansService {
             throw new common_1.NotFoundException('Plan not found');
         return plan;
     }
-    create(dto) {
+    async create(dto) {
+        if (dto.isTop) {
+            await this.prisma.plan.updateMany({ data: { isTop: false } });
+        }
         return this.prisma.plan.create({ data: dto });
     }
     async update(id, dto) {
         await this.get(id);
+        if (dto.isTop === true) {
+            await this.prisma.plan.updateMany({ where: { id: { not: id } }, data: { isTop: false } });
+        }
         return this.prisma.plan.update({ where: { id }, data: dto });
     }
     async remove(id) {

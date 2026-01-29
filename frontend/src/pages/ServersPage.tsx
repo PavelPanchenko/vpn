@@ -37,6 +37,7 @@ const empty: ServerForm = {
   panelUsername: null,
   panelInboundId: null,
   maxUsers: 0,
+  isRecommended: false,
   active: true,
 };
 
@@ -176,6 +177,7 @@ export function ServersPage() {
       panelUsername: s.panelUsername ?? null,
       panelInboundId: s.panelInboundId ?? null,
       maxUsers: s.maxUsers,
+      isRecommended: s.isRecommended ?? false,
       active: s.active,
     });
     setEditOpen(true);
@@ -213,9 +215,10 @@ export function ServersPage() {
           {rows.map((s) => (
             <tr key={s.id} className="border-t border-slate-100">
               <Td className="font-medium">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span>{s.name}</span>
                   <Badge variant={s.active ? 'success' : 'warning'}>{s.active ? 'ACTIVE' : 'INACTIVE'}</Badge>
+                  {s.isRecommended && <Badge variant="info">Рекомендуем</Badge>}
                 </div>
               </Td>
               <Td className="font-mono text-xs">
@@ -443,6 +446,7 @@ export function ServersPage() {
                       publicKey: v.publicKey,
                       shortId: v.shortId,
                       maxUsers: Number(v.maxUsers ?? 0),
+                      isRecommended: Boolean(v.isRecommended),
                       active: Boolean(v.active),
                     },
                   });
@@ -503,6 +507,10 @@ export function ServersPage() {
               Active
             </label>
           </div>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input type="checkbox" {...editForm.register('isRecommended')} />
+            Рекомендуем (в Mini App; иначе — локация с большим свободным местом)
+          </label>
         </form>
       </Modal>
     </div>

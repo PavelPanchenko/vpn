@@ -34,6 +34,9 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
     logger = new common_1.Logger(TelegramBotService_1.name);
     bot = null;
     isRunning = false;
+    tokenInUse = null;
+    pollingLockAcquired = false;
+    pollingLockKey = 987654321;
     supportModeUsers = new Map();
     isStarting = false;
     constructor(botService, usersService, plansService, paymentsService, supportService, prisma, config) {
@@ -89,9 +92,30 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                 this.logger.warn('Bot token not configured. Bot will not start.');
                 return;
             }
+            try {
+                const res = await this.prisma.$queryRaw `
+          SELECT pg_try_advisory_lock(${this.pollingLockKey}) AS got
+        `;
+                const got = Boolean(res?.[0]?.got);
+                if (!got) {
+                    this.logger.warn('Another backend instance holds Telegram polling lock. Skipping bot launch to avoid 409.');
+                    return;
+                }
+                this.pollingLockAcquired = true;
+            }
+            catch (lockError) {
+                this.logger.error('Failed to acquire Telegram polling lock. Bot will not start.', lockError);
+                return;
+            }
             const { Telegraf, Markup } = await Promise.resolve().then(() => require('telegraf'));
+            if (this.bot && this.tokenInUse !== token) {
+                this.logger.log('Bot token changed. Recreating bot instance...');
+                await this.stopBot(false);
+            }
             if (!this.bot) {
                 this.bot = new Telegraf(token);
+                this.tokenInUse = token;
+                this.supportModeUsers.clear();
             }
             this.bot.command('cancel', async (ctx) => {
                 const telegramId = ctx.from.id.toString();
@@ -191,8 +215,8 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                     if (displayedPlans.length > 0) {
                         const middleIndex = Math.floor(displayedPlans.length / 2);
                         const recommendedPlan = displayedPlans[middleIndex];
-                        const minPrice = Math.min(...displayedPlans.map(p => p.price));
-                        const minPricePlan = displayedPlans.find(p => p.price === minPrice);
+                        const minPrice = Math.min(...displayedPlans.map((p) => p.price));
+                        const minPricePlan = displayedPlans.find((p) => p.price === minPrice);
                         message += `💳 Тарифы после пробного периода:\n`;
                         displayedPlans.forEach((plan) => {
                             const emoji = plan.id === recommendedPlan.id ? '🔥 ' : '   ';
@@ -237,13 +261,22 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                         return;
                     }
                     await ctx.answerCbQuery('⏳ Подключаем локацию...');
-                    user = await this.usersService.addServerAndTrial(user.id, serverId, 3);
+                    const result = await this.usersService.addServerAndTrial(user.id, serverId, 3);
+                    const updatedUser = result.updated;
+                    if (!updatedUser)
+                        return;
+                    const expiresAtStr = updatedUser.expiresAt ? new Date(updatedUser.expiresAt).toLocaleDateString('ru-RU') : null;
+                    const periodLine = result.trialCreated
+                        ? '🎁 Пробный период: 3 дня\n\n'
+                        : (expiresAtStr
+                            ? `📅 Подписка активна до: ${expiresAtStr}\n\n`
+                            : '\n');
                     await ctx.editMessageText(`✅ Локация успешно подключена!\n\n` +
                         `📍 Локация: ${server.name}\n` +
-                        `🎁 Пробный период: 3 дня\n\n` +
+                        periodLine +
                         `Используйте /config для получения конфигурации VPN.\n` +
                         `Используйте /pay для продления подписки.`);
-                    await this.showMainMenu(ctx, user);
+                    await this.showMainMenu(ctx, updatedUser);
                 }
                 catch (error) {
                     this.logger.error('Error confirming server selection:', error);
@@ -276,7 +309,6 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                     const buttons = allServers.map((server) => [
                         Markup.button.callback(server.name, `select_server_${server.id}`),
                     ]);
-                    buttons.push([Markup.button.callback('🔙 Назад в меню', 'back_to_main')]);
                     const messageText = user && user.userServers && user.userServers.length > 0
                         ? `📍 Выберите локацию:\n\nВыберите сервер для получения конфигурации или переключения.`
                         : `🚀 Выберите локацию для подключения:\n\nПосле выбора вам будет предоставлен пробный период на 3 дня.`;
@@ -318,7 +350,6 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                     const buttons = paidPlans.map((plan) => [
                         Markup.button.callback(`${plan.name} - ${plan.price} ${plan.currency} (${plan.periodDays} дн.)`, `select_plan_${plan.id}`),
                     ]);
-                    buttons.push([Markup.button.callback('🔙 Назад в меню', 'back_to_main')]);
                     await ctx.reply(`💳 Выберите тариф для оплаты:\n\n` +
                         `После оплаты подписка будет автоматически активирована.`, Markup.inlineKeyboard(buttons));
                 }
@@ -540,11 +571,12 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                         return;
                     }
                     const statusEmoji = {
+                        NEW: '🆕',
                         ACTIVE: '✅',
                         BLOCKED: '🚫',
                         EXPIRED: '⏰',
                     };
-                    let message = `${statusEmoji[user.status]} Статус аккаунта: ${user.status}\n\n`;
+                    let message = `${statusEmoji[user.status] || '❓'} Статус аккаунта: ${user.status}\n\n`;
                     if (user.expiresAt) {
                         const expiresAt = new Date(user.expiresAt);
                         const now = new Date();
@@ -575,11 +607,8 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                         message += `📍 Используйте /start для выбора локации\n`;
                     }
                     if (user.subscriptions && user.subscriptions.length > 0) {
-                        const activeSubscription = user.subscriptions[0];
-                        message += `\n📦 Активная подписка:\n`;
-                        message += `  • Период: ${activeSubscription.periodDays} дней\n`;
-                        message += `  • Начало: ${new Date(activeSubscription.startsAt).toLocaleDateString('ru-RU')}\n`;
-                        message += `  • Конец: ${new Date(activeSubscription.endsAt).toLocaleDateString('ru-RU')}\n`;
+                        const lastSub = user.subscriptions[0];
+                        message += `\n📦 Последний платёж: ${lastSub.periodDays} дн. (${new Date(lastSub.startsAt).toLocaleDateString('ru-RU')} – ${new Date(lastSub.endsAt).toLocaleDateString('ru-RU')})\n`;
                     }
                     await ctx.reply(message);
                 }
@@ -592,43 +621,118 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                         'Попробуйте позже или обратитесь в поддержку через /support.');
                 }
             });
+            this.bot.command('info', async (ctx) => {
+                try {
+                    const siteUrlRaw = this.config.get('PUBLIC_SITE_URL') || '';
+                    const siteUrl = siteUrlRaw.replace(/\/+$/, '');
+                    const privacyUrl = siteUrl ? `${siteUrl}/privacy` : null;
+                    const termsUrl = siteUrl ? `${siteUrl}/terms` : null;
+                    const supportEmail = this.config.get('PUBLIC_SUPPORT_EMAIL') || null;
+                    const supportTelegram = this.config.get('PUBLIC_SUPPORT_TELEGRAM') || null;
+                    const escape = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    let msg = 'ℹ️ <b>Информация</b>\n\n';
+                    msg += '• Документы:\n';
+                    if (privacyUrl) {
+                        msg += `  • <a href="${privacyUrl}">Политика конфиденциальности</a>\n`;
+                    }
+                    else {
+                        msg += '  • Политика конфиденциальности — не настроено\n';
+                    }
+                    if (termsUrl) {
+                        msg += `  • <a href="${termsUrl}">Пользовательское соглашение</a>\n\n`;
+                    }
+                    else {
+                        msg += '  • Пользовательское соглашение — не настроено\n\n';
+                    }
+                    msg += '• Контакты:\n';
+                    if (supportTelegram) {
+                        const tgUser = supportTelegram.replace(/^@/, '');
+                        msg += `  • Telegram: <a href="tg://resolve?domain=${escape(tgUser)}">${escape(supportTelegram)}</a>\n`;
+                    }
+                    if (supportEmail) {
+                        msg += `  • Email: <a href="mailto:${escape(supportEmail)}">${escape(supportEmail)}</a>\n`;
+                    }
+                    if (!supportTelegram && !supportEmail)
+                        msg += '  • не настроено\n';
+                    await ctx.reply(msg, { parse_mode: 'HTML' });
+                }
+                catch (error) {
+                    this.logger.error('Error handling /info command:', error);
+                    await ctx.reply('❌ Не удалось загрузить информацию. Попробуйте позже.');
+                }
+            });
             this.setupMenuHandlers();
             this.bot.catch((err, ctx) => {
                 this.logger.error('Bot error:', err);
                 ctx.reply('❌ Произошла ошибка. Попробуйте позже.');
             });
-            await this.bot.telegram.setMyCommands([
-                { command: 'start', description: '🏠 Главное меню' },
-                { command: 'config', description: '📥 Получить конфигурацию VPN' },
-                { command: 'pay', description: '💳 Оплатить подписку' },
-                { command: 'status', description: '📊 Статус подписки' },
-                { command: 'support', description: '💬 Поддержка' },
-                { command: 'help', description: '❓ Помощь и инструкции' },
-                { command: 'cancel', description: '❌ Отменить режим поддержки' },
-            ]);
             try {
-                await this.bot.telegram.setMyCommands([
-                    { command: 'start', description: '🏠 Главное меню' },
-                    { command: 'config', description: '📥 Получить конфигурацию VPN' },
-                    { command: 'pay', description: '💳 Оплатить подписку' },
-                    { command: 'status', description: '📊 Статус подписки' },
-                    { command: 'support', description: '💬 Поддержка' },
-                    { command: 'help', description: '❓ Помощь и инструкции' },
-                    { command: 'cancel', description: '❌ Отменить режим поддержки' },
-                ]);
+                const activeBot = await this.prisma.botConfig.findFirst({
+                    where: { active: true },
+                    orderBy: { createdAt: 'desc' },
+                    select: { useMiniApp: true },
+                });
+                const useMiniApp = Boolean(activeBot?.useMiniApp);
+                const commands = useMiniApp
+                    ? [
+                        { command: 'start', description: '🏠 Главное меню' },
+                        { command: 'info', description: 'ℹ️ Информация и документы' },
+                        { command: 'help', description: '❓ Помощь и инструкции' },
+                        { command: 'support', description: '💬 Поддержка' },
+                        { command: 'cancel', description: '❌ Отменить режим поддержки' },
+                    ]
+                    : [
+                        { command: 'start', description: '🏠 Главное меню' },
+                        { command: 'config', description: '📥 Получить конфигурацию VPN' },
+                        { command: 'pay', description: '💳 Оплатить подписку' },
+                        { command: 'status', description: '📊 Статус подписки' },
+                        { command: 'info', description: 'ℹ️ Информация и документы' },
+                        { command: 'support', description: '💬 Поддержка' },
+                        { command: 'help', description: '❓ Помощь и инструкции' },
+                        { command: 'cancel', description: '❌ Отменить режим поддержки' },
+                    ];
+                await this.bot.telegram.setMyCommands(commands);
                 this.logger.log('Bot commands registered successfully');
             }
             catch (error) {
                 this.logger.warn('Failed to register bot commands:', error);
             }
+            try {
+                await this.bot.telegram.deleteWebhook({ drop_pending_updates: true });
+            }
+            catch (error) {
+                this.logger.warn('Failed to delete webhook (can be ignored):', error);
+            }
             await this.bot.launch();
             this.isRunning = true;
-            this.logger.log('Telegram bot started successfully');
+            try {
+                const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+                const json = (await res.json());
+                if (json?.ok && json?.result?.username) {
+                    this.logger.log(`Telegram bot started: @${json.result.username}`);
+                }
+                else {
+                    this.logger.log('Telegram bot started successfully');
+                }
+            }
+            catch {
+                this.logger.log('Telegram bot started successfully');
+            }
             process.once('SIGINT', () => this.stopBot());
             process.once('SIGTERM', () => this.stopBot());
         }
         catch (error) {
             this.logger.error('Failed to start bot:', error);
+            if (this.pollingLockAcquired) {
+                try {
+                    await this.prisma.$queryRaw `
+            SELECT pg_advisory_unlock(${this.pollingLockKey}) AS unlocked
+          `;
+                }
+                catch {
+                }
+                this.pollingLockAcquired = false;
+            }
         }
         finally {
             this.isStarting = false;
@@ -648,13 +752,31 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
     async showMainMenu(ctx, user) {
         const { Markup } = await Promise.resolve().then(() => require('telegraf'));
         const miniAppUrl = this.config.get('TELEGRAM_MINI_APP_URL');
-        const buttons = [
-            [Markup.button.callback('📥 Получить конфиг', 'get_config')],
-            [Markup.button.callback('💳 Оплатить подписку', 'show_pay')],
-            [Markup.button.callback('📊 Статус подписки', 'show_status')],
-            [Markup.button.callback('📍 Выбрать другую локацию', 'back_to_servers')],
-        ];
-        if (miniAppUrl && miniAppUrl.startsWith('https://')) {
+        const activeBot = await this.prisma.botConfig.findFirst({
+            where: { active: true },
+            orderBy: { createdAt: 'desc' },
+            select: { useMiniApp: true },
+        });
+        const hydratedUser = user?.id
+            ? await this.prisma.vpnUser.findUnique({
+                where: { id: user.id },
+                include: {
+                    userServers: { where: { isActive: true } },
+                },
+            })
+            : user;
+        const hasActiveLocation = Boolean(hydratedUser?.serverId || (hydratedUser?.userServers && hydratedUser.userServers.length > 0));
+        const buttons = [];
+        if (hasActiveLocation) {
+            buttons.push([Markup.button.callback('📥 Получить конфиг', 'get_config')]);
+            buttons.push([Markup.button.callback('📊 Статус подписки', 'show_status')]);
+            buttons.push([Markup.button.callback('📍 Выбрать другую локацию', 'back_to_servers')]);
+        }
+        else {
+            buttons.push([Markup.button.callback('📍 Выбрать локацию', 'back_to_servers')]);
+        }
+        buttons.push([Markup.button.callback('💳 Оплатить подписку', 'show_pay')]);
+        if (activeBot?.useMiniApp && miniAppUrl && miniAppUrl.startsWith('https://')) {
             buttons.push([Markup.button.webApp('📱 Открыть мини‑приложение', miniAppUrl)]);
         }
         await ctx.reply('🏠 Главное меню:', Markup.inlineKeyboard(buttons));
@@ -734,7 +856,6 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                 const buttons = paidPlans.map((plan) => [
                     Markup.button.callback(`${plan.name} - ${plan.price} ${plan.currency} (${plan.periodDays} дн.)`, `select_plan_${plan.id}`),
                 ]);
-                buttons.push([Markup.button.callback('🔙 Назад в меню', 'back_to_main')]);
                 await ctx.answerCbQuery();
                 try {
                     await ctx.editMessageText(`💳 Выберите тариф для оплаты:\n\n` +
@@ -764,22 +885,11 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                 }
                 await ctx.answerCbQuery();
                 try {
-                    const { Markup } = await Promise.resolve().then(() => require('telegraf'));
-                    const miniAppUrl = this.config.get('TELEGRAM_MINI_APP_URL');
-                    const buttons = [
-                        [Markup.button.callback('📥 Получить конфиг', 'get_config')],
-                        [Markup.button.callback('💳 Оплатить подписку', 'show_pay')],
-                        [Markup.button.callback('📊 Статус подписки', 'show_status')],
-                        [Markup.button.callback('📍 Выбрать другую локацию', 'back_to_servers')],
-                    ];
-                    if (miniAppUrl && miniAppUrl.startsWith('https://')) {
-                        buttons.push([Markup.button.webApp('📱 Открыть мини‑приложение', miniAppUrl)]);
-                    }
-                    await ctx.editMessageText('🏠 Главное меню:', Markup.inlineKeyboard(buttons));
+                    await ctx.editMessageText('🏠 Главное меню:');
                 }
                 catch (editError) {
-                    await this.showMainMenu(ctx, user);
                 }
+                await this.showMainMenu(ctx, user);
             }
             catch (error) {
                 this.logger.error('Error handling back_to_main action:', error);
@@ -804,11 +914,12 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                     return;
                 }
                 const statusEmoji = {
+                    NEW: '🆕',
                     ACTIVE: '✅',
                     BLOCKED: '🚫',
                     EXPIRED: '⏰',
                 };
-                let statusText = `\n\n${statusEmoji[user.status]} Статус: ${user.status}`;
+                let statusText = `\n\n${statusEmoji[user.status] || '❓'} Статус: ${user.status}`;
                 if (user.expiresAt) {
                     const expiresAt = new Date(user.expiresAt);
                     const now = new Date();
@@ -826,13 +937,29 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                 }
                 const { Markup } = await Promise.resolve().then(() => require('telegraf'));
                 const miniAppUrl = this.config.get('TELEGRAM_MINI_APP_URL');
-                const buttons = [
-                    [Markup.button.callback('📥 Получить конфиг', 'get_config')],
-                    [Markup.button.callback('💳 Оплатить подписку', 'show_pay')],
-                    [Markup.button.callback('📊 Статус подписки', 'show_status')],
-                    [Markup.button.callback('📍 Выбрать другую локацию', 'back_to_servers')],
-                ];
-                if (miniAppUrl && miniAppUrl.startsWith('https://')) {
+                const activeBot = await this.prisma.botConfig.findFirst({
+                    where: { active: true },
+                    orderBy: { createdAt: 'desc' },
+                    select: { useMiniApp: true },
+                });
+                const userWithActive = await this.prisma.vpnUser.findFirst({
+                    where: { telegramId },
+                    include: {
+                        userServers: { where: { isActive: true } },
+                    },
+                });
+                const hasActiveLocation = Boolean(userWithActive?.serverId || (userWithActive?.userServers && userWithActive.userServers.length > 0));
+                const buttons = [];
+                if (hasActiveLocation) {
+                    buttons.push([Markup.button.callback('📥 Получить конфиг', 'get_config')]);
+                    buttons.push([Markup.button.callback('📊 Статус подписки', 'show_status')]);
+                    buttons.push([Markup.button.callback('📍 Выбрать другую локацию', 'back_to_servers')]);
+                }
+                else {
+                    buttons.push([Markup.button.callback('📍 Выбрать локацию', 'back_to_servers')]);
+                }
+                buttons.push([Markup.button.callback('💳 Оплатить подписку', 'show_pay')]);
+                if (activeBot?.useMiniApp && miniAppUrl && miniAppUrl.startsWith('https://')) {
                     buttons.push([Markup.button.webApp('📱 Открыть мини‑приложение', miniAppUrl)]);
                 }
                 await ctx.answerCbQuery();
@@ -924,9 +1051,19 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
             this.logger.error(`Failed to send support reply to ${telegramId}:`, error);
         }
     }
-    async stopBot() {
+    async stopBot(releaseLock = true) {
         if (!this.bot) {
             this.isRunning = false;
+            if (releaseLock && this.pollingLockAcquired) {
+                try {
+                    await this.prisma.$queryRaw `
+            SELECT pg_advisory_unlock(${this.pollingLockKey}) AS unlocked
+          `;
+                }
+                catch {
+                }
+                this.pollingLockAcquired = false;
+            }
             return;
         }
         try {
@@ -934,21 +1071,51 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                 await this.bot.stop();
             }
             this.isRunning = false;
+            this.bot = null;
+            this.tokenInUse = null;
+            if (releaseLock && this.pollingLockAcquired) {
+                try {
+                    await this.prisma.$queryRaw `
+            SELECT pg_advisory_unlock(${this.pollingLockKey}) AS unlocked
+          `;
+                }
+                catch {
+                }
+                this.pollingLockAcquired = false;
+            }
             this.logger.log('Telegram bot stopped');
         }
         catch (error) {
             this.logger.error('Error stopping bot:', error);
             this.isRunning = false;
+            this.bot = null;
+            this.tokenInUse = null;
+            if (releaseLock && this.pollingLockAcquired) {
+                try {
+                    await this.prisma.$queryRaw `
+            SELECT pg_advisory_unlock(${this.pollingLockKey}) AS unlocked
+          `;
+                }
+                catch {
+                }
+                this.pollingLockAcquired = false;
+            }
         }
     }
     async restartBot() {
         if (this.isStarting) {
-            this.logger.debug('Bot is already starting/restarting, skipping duplicate restart');
-            return;
+            this.logger.log('Restart requested while bot is starting, waiting for startup to finish...');
+            const deadline = Date.now() + 15000;
+            while (this.isStarting && Date.now() < deadline) {
+                await new Promise((r) => setTimeout(r, 300));
+            }
+            if (this.isStarting) {
+                this.logger.warn('Startup did not finish in time, forcing restart');
+            }
         }
         this.logger.log('Restarting bot...');
         await this.stopBot();
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
         await this.startBot();
     }
 };

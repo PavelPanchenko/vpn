@@ -163,7 +163,7 @@ let PaymentsService = class PaymentsService {
                         nextStatus =
                             user.status === 'BLOCKED'
                                 ? 'BLOCKED'
-                                : nextExpiresAt.getTime() < now.getTime()
+                                : nextExpiresAt && nextExpiresAt.getTime() < now.getTime()
                                     ? 'EXPIRED'
                                     : 'ACTIVE';
                     }
@@ -178,7 +178,7 @@ let PaymentsService = class PaymentsService {
                             nextStatus =
                                 user.status === 'BLOCKED'
                                     ? 'BLOCKED'
-                                    : nextExpiresAt.getTime() < now.getTime()
+                                    : nextExpiresAt && nextExpiresAt.getTime() < now.getTime()
                                         ? 'EXPIRED'
                                         : 'ACTIVE';
                         }

@@ -6,8 +6,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import { PlansService } from '../plans/plans.service';
 import { PaymentsService } from '../payments/payments.service';
+import { ServersService } from '../servers/servers.service';
 import { BotService } from '../bot/bot.service';
 import * as crypto from 'crypto';
+
+/** Очередь операций "найти или создать" по telegramId — устраняет гонку при двойном вызове (например React Strict Mode). */
+const getOrCreateLocks = new Map<string, Promise<unknown>>();
 
 @Controller('mini')
 export class MiniController {
@@ -16,6 +20,7 @@ export class MiniController {
     private readonly usersService: UsersService,
     private readonly plansService: PlansService,
     private readonly paymentsService: PaymentsService,
+    private readonly serversService: ServersService,
     private readonly botService: BotService,
   ) {}
 
@@ -60,7 +65,10 @@ export class MiniController {
     const a = Buffer.from(hmac, 'hex');
     const b = Buffer.from(hash, 'hex');
     if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-      throw new UnauthorizedException('Invalid initData hash');
+      throw new UnauthorizedException(
+        'Invalid initData hash. Откройте мини‑приложение только через кнопку в том же боте, ' +
+          'который настроен в админке (активный бот). Проверьте, что токен в админке совпадает с ботом, из которого открываете приложение.',
+      );
     }
 
     const userParam = params.get('user');
@@ -89,6 +97,22 @@ export class MiniController {
   }
 
   private async getOrCreateUser(telegramId: string, name: string) {
+    const run = async (): Promise<NonNullable<Awaited<ReturnType<typeof this.doGetOrCreateUser>>>> => {
+      return this.doGetOrCreateUser(telegramId, name);
+    };
+    const prev = getOrCreateLocks.get(telegramId);
+    const next = prev ? prev.then(() => run(), () => run()) : run();
+    getOrCreateLocks.set(telegramId, next);
+    try {
+      return await next;
+    } finally {
+      if (getOrCreateLocks.get(telegramId) === next) {
+        getOrCreateLocks.delete(telegramId);
+      }
+    }
+  }
+
+  private async doGetOrCreateUser(telegramId: string, name: string) {
     let user = await this.prisma.vpnUser.findFirst({
       where: { telegramId },
       include: {
@@ -119,7 +143,7 @@ export class MiniController {
     return user!;
   }
 
-  private buildStatusPayload(user: any) {
+  private buildStatusPayload(user: any, trafficUsed: number | null = null) {
     let daysLeft: number | null = null;
     if (user.expiresAt) {
       const now = new Date();
@@ -133,6 +157,7 @@ export class MiniController {
       status: user.status,
       expiresAt: user.expiresAt,
       daysLeft,
+      trafficUsed,
       servers: activeServers.map((us: any) => ({
         id: us.server.id,
         name: us.server.name,
@@ -167,7 +192,20 @@ export class MiniController {
   async status(@Body() dto: MiniInitDataDto) {
     const { telegramId, name } = await this.validateInitData(dto.initData);
     const user = await this.getOrCreateUser(telegramId, name);
-    return this.buildStatusPayload(user);
+    let trafficUsed: number | null = null;
+    try {
+      const { traffic } = await this.usersService.getTraffic(user.id);
+      const first = traffic?.[0];
+      if (first != null && typeof first.total === 'number') trafficUsed = first.total;
+    } catch {
+      // best-effort: панель может быть недоступна
+    }
+    const bot = await this.botService.getBotMe();
+    return {
+      ...this.buildStatusPayload(user, trafficUsed),
+      botName: bot.name,
+      botUsername: bot.username ?? null,
+    };
   }
 
   @Post('servers')
@@ -175,13 +213,22 @@ export class MiniController {
     const { telegramId, name } = await this.validateInitData(dto.initData);
     await this.getOrCreateUser(telegramId, name);
 
-    const servers = await this.prisma.vpnServer.findMany({
-      where: { active: true },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, name: true },
+    const all = await this.serversService.list();
+    const active = all.filter((s: any) => s.active);
+    const sorted = [...active].sort((a: any, b: any) => {
+      if (a.isRecommended && !b.isRecommended) return -1;
+      if (!a.isRecommended && b.isRecommended) return 1;
+      const freeA = a.freeSlots ?? -1;
+      const freeB = b.freeSlots ?? -1;
+      return freeB - freeA;
     });
 
-    return servers;
+    return sorted.map((s: any) => ({
+      id: s.id,
+      name: s.name,
+      freeSlots: s.freeSlots,
+      isRecommended: s.isRecommended ?? false,
+    }));
   }
 
   @Post('activate')
@@ -202,8 +249,8 @@ export class MiniController {
     // 2) если серверов ещё не было — выдаём триал
     const anyServers = await this.prisma.userServer.count({ where: { vpnUserId: user.id } });
     if (anyServers === 0) {
-      const updated = await this.usersService.addServerAndTrial(user.id, dto.serverId, 3);
-      return this.buildStatusPayload(updated as any);
+      const result = await this.usersService.addServerAndTrial(user.id, dto.serverId, 3);
+      return this.buildStatusPayload(result.updated as any);
     }
 
     // 3) иначе — добавляем новую локацию, используя текущий expiresAt (без сброса подписки)
@@ -234,19 +281,9 @@ export class MiniController {
 
   @Post('plans')
   async plans(@Body() dto: MiniInitDataDto) {
-    const { telegramId } = await this.validateInitData(dto.initData);
-
-    const user = await this.prisma.vpnUser.findFirst({
-      where: { telegramId },
-    });
-
-    if (!user) {
-      throw new UnauthorizedException('User not found');
-    }
-
-    const plans = await this.plansService.list(user.id);
-    // Фронт может сам решать, какие показывать, но по умолчанию вернем только активные
-    return plans.filter((p: any) => p.active);
+    const { telegramId, name } = await this.validateInitData(dto.initData);
+    const user = await this.getOrCreateUser(telegramId, name);
+    return this.plansService.list(user.id);
   }
 
   @Post('pay')

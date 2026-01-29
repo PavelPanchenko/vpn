@@ -13,6 +13,7 @@ const prisma_module_1 = require("../prisma/prisma.module");
 const users_module_1 = require("../users/users.module");
 const plans_module_1 = require("../plans/plans.module");
 const payments_module_1 = require("../payments/payments.module");
+const servers_module_1 = require("../servers/servers.module");
 const bot_module_1 = require("../bot/bot.module");
 let MiniModule = class MiniModule {
 };
@@ -24,6 +25,7 @@ exports.MiniModule = MiniModule = __decorate([
             users_module_1.UsersModule,
             plans_module_1.PlansModule,
             payments_module_1.PaymentsModule,
+            servers_module_1.ServersModule,
             (0, common_1.forwardRef)(() => bot_module_1.BotModule),
         ],
         controllers: [mini_controller_1.MiniController],

@@ -21,6 +21,7 @@ class UpdatePlanDto {
     active;
     legacy;
     availableFor;
+    isTop;
 }
 exports.UpdatePlanDto = UpdatePlanDto;
 __decorate([
@@ -71,4 +72,9 @@ __decorate([
     (0, class_validator_1.IsIn)(['ALL', 'NEW_USERS', 'EXISTING_USERS']),
     __metadata("design:type", String)
 ], UpdatePlanDto.prototype, "availableFor", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsBoolean)(),
+    __metadata("design:type", Boolean)
+], UpdatePlanDto.prototype, "isTop", void 0);
 //# sourceMappingURL=update-plan.dto.js.map

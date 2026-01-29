@@ -5,7 +5,17 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   try {
-    const app = await NestFactory.create(AppModule, { cors: true });
+    const app = await NestFactory.create(AppModule);
+    const config = app.get(ConfigService);
+    const corsOrigin = config.get<string>('CORS_ORIGIN');
+    app.enableCors({
+      origin: corsOrigin
+        ? corsOrigin.split(',').map((o) => o.trim()).filter(Boolean)
+        : true,
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization'],
+    });
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
@@ -14,7 +24,6 @@ async function bootstrap() {
       }),
     );
 
-    const config = app.get(ConfigService);
     const port = Number(config.get('PORT', 3000));
     await app.listen(port);
     console.log(`🚀 Application is running on: http://localhost:${port}`);

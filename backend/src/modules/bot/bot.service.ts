@@ -8,6 +8,8 @@ import { TelegramBotService } from './telegram-bot.service';
 
 @Injectable()
 export class BotService {
+  private botMeCache: { value: { name: string; username?: string | null }; expiresAt: number } | null = null;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
@@ -51,23 +53,56 @@ export class BotService {
     }
   }
 
-  async create(dto: CreateBotConfigDto) {
-    // Проверяем, есть ли уже активная конфигурация
-    const existing = await this.prisma.botConfig.findFirst({
-      where: { active: true },
-    });
-    if (existing && dto.active !== false) {
-      throw new BadRequestException('An active bot configuration already exists. Deactivate it first or update existing one.');
+  /** Сбросить кэш имени бота (вызывать при смене токена в create/update). */
+  clearBotMeCache(): void {
+    this.botMeCache = null;
+  }
+
+  async getBotMe(): Promise<{ name: string; username?: string | null }> {
+    const now = Date.now();
+    if (this.botMeCache && this.botMeCache.expiresAt > now) return this.botMeCache.value;
+
+    const token = await this.getToken();
+    if (!token) return { name: 'VPN', username: null };
+
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
+      const json: any = await res.json();
+      const name =
+        json?.ok && json?.result
+          ? (json.result.first_name || json.result.username || 'VPN')
+          : 'VPN';
+      const username = json?.ok && json?.result ? (json.result.username ?? null) : null;
+      const value = { name, username };
+      this.botMeCache = { value, expiresAt: now + 10 * 60 * 1000 };
+      return value;
+    } catch {
+      return { name: 'VPN', username: null };
     }
+  }
 
+  async create(dto: CreateBotConfigDto) {
+    this.clearBotMeCache();
     const tokenEnc = SecretBox.encrypt(dto.token, this.getEncryptionSecret());
+    const activate = dto.active ?? false;
 
-    const created = await this.prisma.botConfig.create({
-      data: {
-        tokenEnc,
-        active: dto.active ?? false,
-        useMiniApp: dto.useMiniApp ?? false,
-      },
+    const created = await this.prisma.$transaction(async (tx) => {
+      // Если создаём новую активную конфигурацию — автоматически деактивируем предыдущие.
+      // Это упрощает UX: не нужно вручную “Deactivate” перед “Create”.
+      if (activate) {
+        await tx.botConfig.updateMany({
+          where: { active: true },
+          data: { active: false },
+        });
+      }
+
+      return tx.botConfig.create({
+        data: {
+          tokenEnc,
+          active: activate,
+          useMiniApp: dto.useMiniApp ?? false,
+        },
+      });
     });
 
     // Если бот активирован, запускаем его асинхронно (не блокируем ответ)
@@ -107,6 +142,7 @@ export class BotService {
     const isTokenChanging = dto.token !== undefined;
     
     if (isTokenChanging && dto.token) {
+      this.clearBotMeCache();
       // При смене токена бота все пользователи остаются доступными,
       // так как они идентифицируются по telegramId, а не по botId
       updateData.tokenEnc = SecretBox.encrypt(dto.token, this.getEncryptionSecret());

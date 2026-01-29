@@ -27,7 +27,7 @@ export class ServersService {
     const [servers, activeUsers] = await this.prisma.$transaction([
       this.prisma.vpnServer.findMany({
         orderBy: { createdAt: 'desc' },
-        include: { _count: { select: { users: true } } },
+        include: { _count: { select: { users: true, userServers: true } } },
       }),
       this.prisma.vpnUser.findMany({
         where: { status: 'ACTIVE' },
@@ -43,14 +43,19 @@ export class ServersService {
     }
 
     return servers.map((s) => {
-      const usersCount = s._count.users;
+      const usersOnServer = s._count.userServers;
       const activeUsersCount = activeByServer.get(s.id) ?? 0;
       const freeSlots =
-        s.maxUsers > 0 ? Math.max(0, s.maxUsers - usersCount) : null;
+        s.maxUsers > 0 ? Math.max(0, s.maxUsers - usersOnServer) : null;
 
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { _count, ...rest } = s;
-      return this.maskServer({ ...rest, usersCount, activeUsersCount, freeSlots });
+      return this.maskServer({
+        ...rest,
+        usersCount: usersOnServer,
+        activeUsersCount,
+        freeSlots,
+      });
     });
   }
 
@@ -60,7 +65,10 @@ export class ServersService {
     return this.maskServer(server);
   }
 
-  create(dto: CreateServerDto) {
+  async create(dto: CreateServerDto) {
+    if (dto.isRecommended) {
+      await this.prisma.vpnServer.updateMany({ data: { isRecommended: false } });
+    }
     return this.prisma.vpnServer.create({
       data: {
         name: dto.name,
@@ -74,6 +82,7 @@ export class ServersService {
         publicKey: dto.publicKey,
         shortId: dto.shortId,
         maxUsers: dto.maxUsers,
+        isRecommended: dto.isRecommended ?? false,
         active: dto.active,
       },
     });
@@ -81,7 +90,11 @@ export class ServersService {
 
   async update(id: string, dto: UpdateServerDto) {
     await this.get(id);
-    
+
+    if (dto.isRecommended === true) {
+      await this.prisma.vpnServer.updateMany({ where: { id: { not: id } }, data: { isRecommended: false } });
+    }
+
     // Определяем security: если передано явно - используем его, иначе вычисляем из tls
     let security: 'NONE' | 'TLS' | 'REALITY' | undefined;
     if (dto.security !== undefined) {
@@ -89,7 +102,7 @@ export class ServersService {
     } else if (dto.tls !== undefined) {
       security = dto.tls ? 'TLS' : 'NONE';
     }
-    
+
     const updated = await this.prisma.vpnServer.update({
       where: { id },
       data: {
@@ -104,6 +117,7 @@ export class ServersService {
         publicKey: dto.publicKey,
         shortId: dto.shortId,
         maxUsers: dto.maxUsers,
+        isRecommended: dto.isRecommended,
         active: dto.active,
       },
     });
@@ -125,7 +139,7 @@ export class ServersService {
       throw new BadRequestException('Panel login failed');
     }
     const inbounds = await this.xui.listInbounds(dto.panelBaseUrl, auth);
-    return inbounds.map((i) => ({
+    return inbounds.map((i: { id: number; remark?: string; protocol?: string; port?: number; enable?: boolean; tag?: string }) => ({
       id: i.id,
       remark: i.remark ?? '',
       protocol: i.protocol,

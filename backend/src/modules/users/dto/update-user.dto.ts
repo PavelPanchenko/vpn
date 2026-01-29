@@ -15,8 +15,8 @@ export class UpdateUserDto {
   telegramId?: string | null;
 
   @IsOptional()
-  @IsIn(['ACTIVE', 'BLOCKED', 'EXPIRED'])
-  status?: 'ACTIVE' | 'BLOCKED' | 'EXPIRED';
+  @IsIn(['NEW', 'ACTIVE', 'BLOCKED', 'EXPIRED'])
+  status?: 'NEW' | 'ACTIVE' | 'BLOCKED' | 'EXPIRED';
 
   @IsOptional()
   @IsDateString()

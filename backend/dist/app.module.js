@@ -22,6 +22,7 @@ const dashboard_module_1 = require("./modules/dashboard/dashboard.module");
 const bot_module_1 = require("./modules/bot/bot.module");
 const support_module_1 = require("./modules/support/support.module");
 const mini_module_1 = require("./modules/mini/mini.module");
+const public_module_1 = require("./modules/public/public.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -42,6 +43,7 @@ exports.AppModule = AppModule = __decorate([
             bot_module_1.BotModule,
             support_module_1.SupportModule,
             mini_module_1.MiniModule,
+            public_module_1.PublicModule,
         ],
     })
 ], AppModule);

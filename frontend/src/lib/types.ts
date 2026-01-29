@@ -15,6 +15,7 @@ export type VpnServer = {
   panelUsername?: string | null;
   panelInboundId?: number | null;
   maxUsers: number;
+  isRecommended: boolean;
   active: boolean;
   createdAt: string;
   usersCount?: number;
@@ -22,7 +23,7 @@ export type VpnServer = {
   freeSlots?: number | null;
 };
 
-export type VpnUserStatus = 'ACTIVE' | 'BLOCKED' | 'EXPIRED';
+export type VpnUserStatus = 'NEW' | 'ACTIVE' | 'BLOCKED' | 'EXPIRED';
 
 export type UserServer = {
   id: string;
@@ -72,6 +73,7 @@ export type Plan = {
   active: boolean;
   legacy: boolean;
   availableFor: 'ALL' | 'NEW_USERS' | 'EXISTING_USERS';
+  isTop: boolean;
   createdAt: string;
 };
 

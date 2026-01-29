@@ -21,11 +21,6 @@ export class UsersController {
     return this.users.get(params.id);
   }
 
-  @Get(':id/config')
-  getConfig(@Param() params: IdParamDto) {
-    return this.users.getConfig(params.id);
-  }
-
   @Post()
   create(@Body() dto: CreateUserDto) {
     return this.users.create(dto);
@@ -41,19 +36,24 @@ export class UsersController {
     return this.users.remove(params.id);
   }
 
+  @Get(':id/config')
+  getConfig(@Param() params: IdParamDto) {
+    return this.users.getConfig(params.id);
+  }
+
   @Post(':id/servers')
   addServer(@Param() params: IdParamDto, @Body() dto: AddServerDto) {
     return this.users.addServer(params.id, dto.serverId);
   }
 
   @Delete(':id/servers/:serverId')
-  removeServer(@Param() params: IdParamDto & { serverId: string }) {
-    return this.users.removeServer(params.id, params.serverId);
+  removeServer(@Param() params: IdParamDto, @Param('serverId') serverId: string) {
+    return this.users.removeServer(params.id, serverId);
   }
 
   @Post(':id/servers/:serverId/activate')
-  activateServer(@Param() params: IdParamDto & { serverId: string }) {
-    return this.users.activateServer(params.id, params.serverId);
+  activateServer(@Param() params: IdParamDto, @Param('serverId') serverId: string) {
+    return this.users.activateServer(params.id, serverId);
   }
 
   @Get(':id/traffic')
@@ -62,8 +62,7 @@ export class UsersController {
   }
 
   @Post(':id/traffic/reset')
-  resetTraffic(@Param() params: IdParamDto) {
+  async resetTraffic(@Param() params: IdParamDto) {
     return this.users.resetTraffic(params.id);
   }
 }
-

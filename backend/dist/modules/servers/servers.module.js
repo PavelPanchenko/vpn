@@ -19,6 +19,7 @@ exports.ServersModule = ServersModule = __decorate([
         imports: [xui_module_1.XuiModule],
         providers: [servers_service_1.ServersService],
         controllers: [servers_controller_1.ServersController],
+        exports: [servers_service_1.ServersService],
     })
 ], ServersModule);
 //# sourceMappingURL=servers.module.js.map

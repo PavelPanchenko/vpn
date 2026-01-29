@@ -13,6 +13,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { BotModule } from './modules/bot/bot.module';
 import { SupportModule } from './modules/support/support.module';
 import { MiniModule } from './modules/mini/mini.module';
+import { PublicModule } from './modules/public/public.module';
 
 @Module({
   imports: [
@@ -30,7 +31,7 @@ import { MiniModule } from './modules/mini/mini.module';
     BotModule,
     SupportModule,
     MiniModule,
+    PublicModule,
   ],
 })
 export class AppModule {}
-

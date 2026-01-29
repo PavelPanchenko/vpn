@@ -7,6 +7,7 @@ import { XuiModule } from '../xui/xui.module';
   imports: [XuiModule],
   providers: [ServersService],
   controllers: [ServersController],
+  exports: [ServersService],
 })
 export class ServersModule {}
 

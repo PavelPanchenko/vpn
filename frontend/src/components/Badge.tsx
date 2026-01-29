@@ -22,6 +22,8 @@ export function Badge({ children, variant = 'default', className }: BadgeProps) 
 
 export function statusBadgeVariant(value: string): Variant {
   switch (value) {
+    case 'NEW':
+      return 'secondary';
     case 'ACTIVE':
     case 'PAID':
       return 'success';

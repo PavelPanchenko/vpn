@@ -42,7 +42,7 @@ type DashboardStats = {
       id: string;
       name: string;
       uuid: string;
-      status: 'ACTIVE' | 'BLOCKED' | 'EXPIRED';
+      status: 'NEW' | 'ACTIVE' | 'BLOCKED' | 'EXPIRED';
       createdAt: string;
     }>;
   };

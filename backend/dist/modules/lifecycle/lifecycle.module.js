@@ -13,31 +13,25 @@ exports.LifecycleModule = void 0;
 const common_1 = require("@nestjs/common");
 const auth_module_1 = require("../auth/auth.module");
 const auth_service_1 = require("../auth/auth.service");
-const plans_module_1 = require("../plans/plans.module");
-const plans_service_1 = require("../plans/plans.service");
-const plans_seed_1 = require("../plans/plans.seed");
 let LifecycleService = class LifecycleService {
     auth;
-    plans;
-    constructor(auth, plans) {
+    constructor(auth) {
         this.auth = auth;
-        this.plans = plans;
     }
     async onModuleInit() {
         await this.auth.ensureSeedAdmin();
-        await (0, plans_seed_1.seedPlans)();
     }
 };
 LifecycleService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [auth_service_1.AuthService, plans_service_1.PlansService])
+    __metadata("design:paramtypes", [auth_service_1.AuthService])
 ], LifecycleService);
 let LifecycleModule = class LifecycleModule {
 };
 exports.LifecycleModule = LifecycleModule;
 exports.LifecycleModule = LifecycleModule = __decorate([
     (0, common_1.Module)({
-        imports: [auth_module_1.AuthModule, plans_module_1.PlansModule],
+        imports: [auth_module_1.AuthModule],
         providers: [LifecycleService],
     })
 ], LifecycleModule);

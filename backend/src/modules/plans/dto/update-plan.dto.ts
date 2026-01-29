@@ -39,5 +39,9 @@ export class UpdatePlanDto {
   @IsOptional()
   @IsIn(['ALL', 'NEW_USERS', 'EXISTING_USERS'])
   availableFor?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isTop?: boolean;
 }
 

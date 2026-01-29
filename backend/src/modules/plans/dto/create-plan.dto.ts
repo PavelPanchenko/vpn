@@ -38,5 +38,9 @@ export class CreatePlanDto {
   @IsOptional()
   @IsIn(['ALL', 'NEW_USERS', 'EXISTING_USERS'])
   availableFor?: string; // Для кого доступен тариф
+
+  @IsOptional()
+  @IsBoolean()
+  isTop?: boolean; // Подсветка «Топ тариф» в Mini App
 }
 
