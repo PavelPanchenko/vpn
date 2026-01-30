@@ -53,8 +53,9 @@ export function MiniAppPage() {
   >([]);
   const [payingPlanId, setPayingPlanId] = useState<string | null>(null);
   const [servers, setServers] = useState<{ id: string; name: string; freeSlots?: number | null; isRecommended?: boolean }[]>([]);
-  const [screen, setScreen] = useState<'home' | 'servers' | 'confirm' | 'config' | 'plans'>('home');
-  const [selectedServer, setSelectedServer] = useState<{ id: string; name: string } | null>(null);
+  const [screen, setScreen] = useState<'home' | 'config' | 'plans'>('home');
+  const [activatingServerId, setActivatingServerId] = useState<string | null>(null);
+  const [refreshingServers, setRefreshingServers] = useState(false);
   const [configCopied, setConfigCopied] = useState(false);
   const [themeVersion, setThemeVersion] = useState(0);
   const [safeArea, setSafeArea] = useState<{ top: number; bottom: number; left: number; right: number } | null>(null);
@@ -230,6 +231,17 @@ export function MiniAppPage() {
         setInitData(resolved);
         const res = await api.post('/mini/status', { initData: resolved });
         setStatus(res.data);
+
+        // Подгружаем список локаций в фоне — чтобы показывать их сразу на главном экране.
+        try {
+          setRefreshingServers(true);
+          const sres = await api.post('/mini/servers', { initData: resolved });
+          setServers(sres.data || []);
+        } catch {
+          // best-effort
+        } finally {
+          setRefreshingServers(false);
+        }
       } catch (e: any) {
         console.error(e);
         setFatalError(e?.response?.data?.message || 'Не удалось загрузить статус.');
@@ -273,30 +285,35 @@ export function MiniAppPage() {
     }
   };
 
-  const handleLoadServers = async () => {
+  const handleRefreshServers = async () => {
     if (!initData) return;
     setToast(null);
     try {
+      setRefreshingServers(true);
       const res = await api.post('/mini/servers', { initData });
       setServers(res.data || []);
-      setScreen('servers');
     } catch (e: any) {
       console.error(e);
       setToast({ type: 'error', message: e?.response?.data?.message || 'Не удалось загрузить список локаций.' });
+    } finally {
+      setRefreshingServers(false);
     }
   };
 
-  const handleActivateServer = async () => {
-    if (!initData || !selectedServer) return;
+  const handleActivateServer = async (serverId: string) => {
+    if (!initData) return;
     setToast(null);
+    setActivatingServerId(serverId);
     try {
-      const res = await api.post('/mini/activate', { initData, serverId: selectedServer.id });
+      const res = await api.post('/mini/activate', { initData, serverId });
       setStatus(res.data);
-      setSelectedServer(null);
-      setScreen('home');
+      tg?.HapticFeedback?.notificationOccurred?.('success');
     } catch (e: any) {
       console.error(e);
       setToast({ type: 'error', message: e?.response?.data?.message || 'Не удалось активировать локацию.' });
+      tg?.HapticFeedback?.notificationOccurred?.('error');
+    } finally {
+      setActivatingServerId(null);
     }
   };
 
@@ -333,6 +350,7 @@ export function MiniAppPage() {
   };
 
   const hasActiveServer = Boolean(status?.servers?.length);
+  const activeServerId = status?.servers?.[0]?.id ?? null;
 
   const handleCopyConfig = async () => {
     if (!configUrl) return;
@@ -360,12 +378,7 @@ export function MiniAppPage() {
     }
 
     const handler = () => {
-      if (screen === 'confirm') {
-        setScreen('servers');
-        return;
-      }
       setScreen('home');
-      setSelectedServer(null);
       setConfigUrl(null);
     };
 
@@ -504,13 +517,22 @@ export function MiniAppPage() {
                       {new Date(status.expiresAt).toLocaleDateString('ru-RU')} {status.daysLeft !== null && `(${status.daysLeft} дн.)`}
                     </span>
                   </div>
-                  {status.daysLeft != null && status.subscription?.periodDays != null && status.daysLeft >= 0 ? (
+                  {status.subscription?.startsAt && status.subscription?.endsAt ? (
                     <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
                       <div
                         className="h-full rounded-full transition-all duration-500"
                         style={{
-                          width: `${Math.min(100, (status.daysLeft / status.subscription.periodDays) * 100)}%`,
-                          background: status.daysLeft <= 7 ? 'rgba(251,191,36,0.8)' : theme.button,
+                          width: `${(() => {
+                            const now = Date.now();
+                            const starts = new Date(status.subscription!.startsAt).getTime();
+                            const ends = new Date(status.subscription!.endsAt).getTime();
+                            if (!Number.isFinite(starts) || !Number.isFinite(ends) || ends <= starts) return 0;
+                            const total = ends - starts;
+                            const left = Math.max(0, ends - now);
+                            const pct = (left / total) * 100;
+                            return Math.max(0, Math.min(100, pct));
+                          })()}%`,
+                          background: (status.daysLeft ?? 0) <= 7 ? 'rgba(251,191,36,0.8)' : theme.button,
                         }}
                       />
                     </div>
@@ -524,12 +546,6 @@ export function MiniAppPage() {
                     <div style={{ color: theme.hint }} className="mb-1">Активная локация</div>
                     <div className="font-medium">{status.servers[0].name}</div>
                   </div>
-                  {status.trafficUsed != null ? (
-                    <div className="text-right shrink-0">
-                      <div style={{ color: theme.hint }} className="mb-1">Трафик</div>
-                      <div className="font-medium">{formatTraffic(status.trafficUsed)}</div>
-                    </div>
-                  ) : null}
                 </div>
               ) : (
                 <p className="text-sm" style={{ color: theme.hint }}>
@@ -539,14 +555,107 @@ export function MiniAppPage() {
             </section>
 
             <section className="rounded-2xl border p-4 space-y-4" style={{ borderColor: 'rgba(255,255,255,0.12)', background: theme.secondaryBg }}>
-              <h2 className="text-sm font-semibold">Локация</h2>
-              <button
-                onClick={handleLoadServers}
-                className={`w-full inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium ${BTN_TAP}`}
-                style={{ background: theme.button, color: theme.buttonText }}
-              >
-                📍 {hasActiveServer ? 'Выбрать другую локацию' : 'Выбрать локацию'}
-              </button>
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold">Локации</h2>
+                <button
+                  onClick={handleRefreshServers}
+                  disabled={refreshingServers}
+                  className={`text-xs disabled:opacity-60 disabled:cursor-not-allowed ${BTN_TAP}`}
+                  style={{ color: theme.link }}
+                >
+                  {refreshingServers ? 'Обновление…' : 'Обновить'}
+                </button>
+              </div>
+
+              {servers.length === 0 ? (
+                <div className="text-sm" style={{ color: theme.hint }}>
+                  Локации не загружены. Нажмите «Обновить».
+                </div>
+              ) : (
+                <div
+                  className="rounded-2xl overflow-hidden border"
+                  style={{ borderColor: 'rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.03)' }}
+                >
+                  {servers.map((s) => {
+                    const isActive = activeServerId != null && s.id === activeServerId;
+                    const isBusy = activatingServerId === s.id;
+                    const isRecommended = s.isRecommended ?? false;
+                    const slotsText = s.freeSlots != null ? `мест: ${s.freeSlots}` : null;
+                    return (
+                      <button
+                        key={s.id}
+                        disabled={isBusy || isActive}
+                        onClick={() => handleActivateServer(s.id)}
+                        className={`w-full text-left px-4 py-3.5 transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed ${BTN_TAP}`}
+                        style={{
+                          background: isActive
+                            ? `linear-gradient(135deg, ${theme.button}38 0%, rgba(255,255,255,0.05) 100%)`
+                            : isBusy
+                              ? 'rgba(255,255,255,0.05)'
+                              : isRecommended
+                                ? 'rgba(255,255,255,0.06)'
+                                : 'transparent',
+                          borderTop: '1px solid rgba(255,255,255,0.08)',
+                          color: theme.text,
+                        }}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span
+                            className="flex shrink-0 w-10 h-10 rounded-xl items-center justify-center text-lg"
+                            style={{
+                              background: isActive ? theme.button + '55' : isRecommended ? theme.button + '22' : 'rgba(255,255,255,0.08)',
+                              border: '1px solid ' + (isActive ? theme.button + '99' : 'rgba(255,255,255,0.10)'),
+                            }}
+                          >
+                            {isActive ? '✓' : isRecommended ? '★' : '📍'}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-semibold text-sm truncate">{s.name}</span>
+                                  {isActive ? (
+                                    <span
+                                      className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                                      style={{ background: theme.button, color: theme.buttonText }}
+                                    >
+                                      Активна
+                                    </span>
+                                  ) : isRecommended ? (
+                                    <span
+                                      className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                                      style={{ background: theme.button + '33', color: theme.text, border: '1px solid ' + theme.button + '66' }}
+                                    >
+                                      Рекомендуем
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <div className="text-[11px] mt-0.5" style={{ color: theme.hint }}>
+                                  {isBusy ? 'Подключаем…' : isActive ? 'Подключено' : 'Нажмите, чтобы подключить'}
+                                </div>
+                              </div>
+
+                              <div className="shrink-0 flex items-center gap-2">
+                                {slotsText ? (
+                                  <span
+                                    className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
+                                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.10)', color: theme.hint }}
+                                  >
+                                    {slotsText}
+                                  </span>
+                                ) : null}
+                                <span className="opacity-60 text-base leading-none" aria-hidden>
+                                  {isActive ? '✓' : '\u203A'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </section>
 
             <section className="rounded-2xl border p-4 space-y-4" style={{ borderColor: 'rgba(255,255,255,0.12)', background: theme.secondaryBg }}>
@@ -561,7 +670,7 @@ export function MiniAppPage() {
               </button>
               {!hasActiveServer ? (
                 <div className="text-xs" style={{ color: theme.hint }}>
-                  Сначала выберите и подтвердите локацию.
+                  Сначала выберите локацию.
                 </div>
               ) : null}
             </section>
@@ -580,142 +689,7 @@ export function MiniAppPage() {
           </>
         )}
 
-        {/* SERVERS */}
-        {screen === 'servers' && (
-          <section className="rounded-2xl border overflow-hidden" style={{ borderColor: 'rgba(255,255,255,0.12)', background: theme.secondaryBg }}>
-            {/* Блок с глобусом сверху */}
-            <div
-              className="relative pt-4 pb-5 px-4 text-center"
-              style={{
-                background: 'linear-gradient(160deg, rgba(99,102,241,0.2) 0%, rgba(99,102,241,0.05) 40%, transparent 70%)',
-              }}
-            >
-              <div className="absolute top-3 right-3">
-                <button onClick={() => setScreen('home')} className={`text-xs ${BTN_TAP}`} style={{ color: theme.link }}>
-                  Назад
-                </button>
-              </div>
-              <div
-                className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-3"
-                style={{
-                  background: `linear-gradient(145deg, ${theme.button}40 0%, ${theme.button}15 100%)`,
-                  border: '1px solid ' + theme.button + '50',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
-                }}
-              >
-                <span className="text-4xl" aria-hidden>🌍</span>
-              </div>
-              <h2 className="text-lg font-bold" style={{ color: theme.text }}>Локации</h2>
-              <p className="text-xs mt-1" style={{ color: theme.hint }}>Выберите сервер для быстрого и стабильного подключения</p>
-            </div>
-
-            <div className="px-4 pt-10 pb-4 space-y-4">
-
-              {servers.length === 0 ? (
-                <div className="text-center py-8">
-                  <span className="text-3xl opacity-50" aria-hidden>📍</span>
-                  <p className="text-sm mt-2" style={{ color: theme.hint }}>Нет доступных локаций.</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {servers.map((s) => {
-                    const isRecommended = s.isRecommended ?? false;
-                    return (
-                      <button
-                        key={s.id}
-                        onClick={() => {
-                          setSelectedServer(s);
-                          setScreen('confirm');
-                        }}
-                        className={`w-full text-left rounded-2xl p-4 transition-all duration-200 ${BTN_TAP}`}
-                        style={{
-                          background: isRecommended
-                            ? 'linear-gradient(135deg, rgba(99,102,241,0.18) 0%, rgba(255,255,255,0.08) 100%)'
-                            : 'rgba(255,255,255,0.06)',
-                          border: `1px solid ${isRecommended ? theme.button + '90' : 'rgba(255,255,255,0.1)'}`,
-                          boxShadow: isRecommended ? '0 4px 20px rgba(0,0,0,0.15)' : 'none',
-                          color: theme.text,
-                        }}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span
-                            className="flex shrink-0 w-11 h-11 rounded-xl items-center justify-center text-xl"
-                            style={{ background: isRecommended ? theme.button + '35' : 'rgba(255,255,255,0.1)' }}
-                          >
-                            🌐
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-semibold text-base">{s.name}</span>
-                              {isRecommended && (
-                                <span
-                                  className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
-                                  style={{ background: theme.button, color: theme.buttonText }}
-                                >
-                                  Рекомендуем
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-xs mt-0.5" style={{ color: theme.hint }}>
-                              {s.freeSlots != null ? `Свободно мест: ${s.freeSlots}` : 'Нажмите для подключения'}
-                            </div>
-                          </div>
-                          <span className="shrink-0 opacity-60" aria-hidden>{'\u203A'}</span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </section>
-        )}
-
-        {/* CONFIRM */}
-        {screen === 'confirm' && selectedServer && (
-          <section className="rounded-2xl border p-4 space-y-4" style={{ borderColor: 'rgba(255,255,255,0.12)', background: theme.secondaryBg }}>
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold">Подтверждение</div>
-              <button onClick={() => setScreen('servers')} className={`text-xs ${BTN_TAP}`} style={{ color: theme.link }}>
-                Назад
-              </button>
-            </div>
-
-            <div
-              className="rounded-2xl p-4 flex items-center gap-3"
-              style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(255,255,255,0.06) 100%)', border: '1px solid ' + theme.button + '99' }}
-            >
-              <span className="flex shrink-0 w-10 h-10 rounded-xl items-center justify-center text-lg" style={{ background: theme.button + '30' }}>
-                🌐
-              </span>
-              <div>
-                <div className="text-xs" style={{ color: theme.hint }}>Выбранная локация</div>
-                <div className="font-semibold text-base" style={{ color: theme.text }}>{selectedServer.name}</div>
-              </div>
-            </div>
-
-            <p className="text-xs leading-relaxed" style={{ color: theme.hint }}>
-              При первом подключении вы получите пробный период на 3 дня.
-            </p>
-
-            <div className="grid gap-2 pt-1">
-              <button
-                onClick={handleActivateServer}
-                className={`w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium ${BTN_TAP}`}
-                style={{ background: theme.button, color: theme.buttonText }}
-              >
-                ✅ Подтвердить и подключить
-              </button>
-              <button
-                onClick={() => setScreen('servers')}
-                className={`w-full inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium ${BTN_TAP}`}
-                style={{ background: 'rgba(255,255,255,0.08)', color: theme.text }}
-              >
-                🔙 Выбрать другую
-              </button>
-            </div>
-          </section>
-        )}
+        {/* Список локаций теперь показывается на home (без отдельного экрана и подтверждения) */}
 
         {/* CONFIG */}
         {screen === 'config' && (

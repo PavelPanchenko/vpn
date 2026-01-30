@@ -55,14 +55,4 @@ export class UsersController {
   activateServer(@Param() params: IdParamDto, @Param('serverId') serverId: string) {
     return this.users.activateServer(params.id, serverId);
   }
-
-  @Get(':id/traffic')
-  getTraffic(@Param() params: IdParamDto) {
-    return this.users.getTraffic(params.id);
-  }
-
-  @Post(':id/traffic/reset')
-  async resetTraffic(@Param() params: IdParamDto) {
-    return this.users.resetTraffic(params.id);
-  }
 }

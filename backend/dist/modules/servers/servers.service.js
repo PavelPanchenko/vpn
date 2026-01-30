@@ -29,6 +29,88 @@ let ServersService = class ServersService {
         const { panelPasswordEnc, ...rest } = server;
         return rest;
     }
+    parseJsonString(value) {
+        if (!value)
+            return null;
+        try {
+            return JSON.parse(value);
+        }
+        catch {
+            return null;
+        }
+    }
+    redactInbound(inbound) {
+        const clone = JSON.parse(JSON.stringify(inbound ?? {}));
+        const parse = (v) => (typeof v === 'string' ? this.parseJsonString(v) ?? v : v);
+        clone.settings = parse(clone.settings);
+        clone.streamSettings = parse(clone.streamSettings);
+        clone.sniffing = parse(clone.sniffing);
+        const stream = clone.streamSettings;
+        if (stream?.realitySettings) {
+            if (typeof stream.realitySettings.privateKey === 'string')
+                stream.realitySettings.privateKey = '[REDACTED]';
+            if (Array.isArray(stream.realitySettings.shortIds))
+                stream.realitySettings.shortIds = ['[REDACTED]'];
+        }
+        clone.redacted = true;
+        return clone;
+    }
+    deriveServerFieldsFromInbound(panelBaseUrl, inbound) {
+        const stream = this.parseJsonString(inbound?.streamSettings) ?? inbound?.streamSettings ?? null;
+        const network = stream?.network;
+        const security = stream?.security;
+        const isWs = network === 'ws';
+        const transport = isWs ? 'WS' : 'TCP';
+        const sec = security === 'reality' ? 'REALITY' : security === 'tls' ? 'TLS' : 'NONE';
+        const wsPath = stream?.wsSettings?.path ?? stream?.wsSettings?.Path ?? null;
+        const path = isWs ? wsPath : null;
+        const reality = stream?.realitySettings ?? null;
+        const sni = reality?.serverNames?.[0] ?? reality?.serverName ?? null;
+        const publicKey = reality?.settings?.publicKey ?? null;
+        const shortId = reality?.shortIds?.[0] ?? null;
+        const hasRealityData = reality &&
+            publicKey &&
+            typeof publicKey === 'string' &&
+            publicKey.trim().length > 0 &&
+            shortId &&
+            typeof shortId === 'string' &&
+            shortId.trim().length > 0;
+        const finalSec = hasRealityData ? 'REALITY' : sec;
+        const external = Array.isArray(stream?.externalProxy) ? stream.externalProxy[0] : null;
+        const host = external?.dest ?? new URL(panelBaseUrl).hostname;
+        const port = Number(external?.port ?? inbound?.port);
+        if (!port || Number.isNaN(port))
+            throw new common_1.BadRequestException('Inbound port invalid');
+        if (finalSec === 'REALITY' && (!publicKey || !shortId)) {
+            throw new common_1.BadRequestException('Inbound missing reality publicKey/shortId');
+        }
+        return {
+            host,
+            port,
+            transport,
+            tls: finalSec !== 'NONE',
+            security: finalSec,
+            sni,
+            path,
+            publicKey: publicKey ?? '',
+            shortId: shortId ?? '',
+        };
+    }
+    async getConnectedInbound(serverId) {
+        const server = await this.prisma.vpnServer.findUnique({ where: { id: serverId } });
+        if (!server)
+            throw new common_1.NotFoundException('Server not found');
+        if (!server.panelBaseUrl || !server.panelUsername || !server.panelPasswordEnc || server.panelInboundId == null) {
+            throw new common_1.BadRequestException('Server is not connected to a panel');
+        }
+        const secret = this.config.getOrThrow('PANEL_CRED_SECRET');
+        const panelPassword = secret_box_1.SecretBox.decrypt(server.panelPasswordEnc, secret);
+        const auth = await this.xui.login(server.panelBaseUrl, server.panelUsername, panelPassword);
+        if (!auth.cookie && !auth.token)
+            throw new common_1.BadRequestException('Panel login failed');
+        const inbound = await this.xui.getInbound(server.panelBaseUrl, server.panelInboundId, auth);
+        return this.redactInbound(inbound);
+    }
     async list() {
         const [servers, activeUsers] = await this.prisma.$transaction([
             this.prisma.vpnServer.findMany({
@@ -142,60 +224,10 @@ let ServersService = class ServersService {
             tag: i.tag ?? '',
         }));
     }
-    parseJsonString(value) {
-        if (!value)
-            return null;
-        try {
-            return JSON.parse(value);
-        }
-        catch {
-            return null;
-        }
-    }
-    deriveServerFieldsFromInbound(panelBaseUrl, inbound) {
-        const stream = this.parseJsonString(inbound?.streamSettings) ?? inbound?.streamSettings ?? null;
-        const network = stream?.network;
-        const security = stream?.security;
-        const isWs = network === 'ws';
-        const transport = isWs ? 'WS' : 'TCP';
-        const sec = security === 'reality' ? 'REALITY' : security === 'tls' ? 'TLS' : 'NONE';
-        const tls = sec !== 'NONE';
-        const wsPath = stream?.wsSettings?.path ?? stream?.wsSettings?.Path ?? null;
-        const path = isWs ? wsPath : null;
-        const reality = stream?.realitySettings ?? null;
-        const sni = reality?.serverNames?.[0] ??
-            reality?.serverName ??
-            null;
-        const publicKey = reality?.settings?.publicKey ??
-            null;
-        const shortId = reality?.shortIds?.[0] ?? null;
-        const hasRealityData = reality && publicKey && typeof publicKey === 'string' && publicKey.trim().length > 0 && shortId && typeof shortId === 'string' && shortId.trim().length > 0;
-        const finalSec = hasRealityData ? 'REALITY' : sec;
-        const external = Array.isArray(stream?.externalProxy) ? stream.externalProxy[0] : null;
-        const host = external?.dest ?? new URL(panelBaseUrl).hostname;
-        const port = Number(external?.port ?? inbound?.port);
-        if (!port || Number.isNaN(port))
-            throw new common_1.BadRequestException('Inbound port invalid');
-        if (finalSec === 'REALITY' && (!publicKey || !shortId)) {
-            throw new common_1.BadRequestException('Inbound missing reality publicKey/shortId');
-        }
-        return {
-            host,
-            port,
-            transport,
-            tls: finalSec !== 'NONE',
-            security: finalSec,
-            sni,
-            path,
-            publicKey: publicKey ?? '',
-            shortId: shortId ?? '',
-        };
-    }
     async createFromPanel(dto) {
         const auth = await this.xui.login(dto.panelBaseUrl, dto.panelUsername, dto.panelPassword);
-        if (!auth.cookie && !auth.token) {
+        if (!auth.cookie && !auth.token)
             throw new common_1.BadRequestException('Panel login failed');
-        }
         const inbound = await this.xui.getInbound(dto.panelBaseUrl, dto.inboundId, auth);
         const derived = this.deriveServerFieldsFromInbound(dto.panelBaseUrl, inbound);
         const secret = this.config.getOrThrow('PANEL_CRED_SECRET');

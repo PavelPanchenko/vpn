@@ -120,7 +120,8 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
             this.bot.command('cancel', async (ctx) => {
                 const telegramId = ctx.from.id.toString();
                 this.supportModeUsers.delete(telegramId);
-                await ctx.reply('✅ Режим поддержки отменен. Используйте /start для возврата в главное меню.');
+                await this.replyHtml(ctx, `✅ <b>Режим поддержки выключен</b>\n\n` +
+                    `Вернуться в меню: <code>/start</code>`);
             });
             this.bot.command('start', async (ctx) => {
                 const telegramId = ctx.from.id.toString();
@@ -157,9 +158,10 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                     const buttons = servers.map((server) => [
                         Markup.button.callback(server.name, `select_server_${server.id}`),
                     ]);
-                    await ctx.reply(`👋 Добро пожаловать, ${userName}!\n\n` +
-                        `🚀 Выберите локацию для подключения:\n\n` +
-                        `После выбора вам будет предоставлен пробный период на 3 дня.`, Markup.inlineKeyboard(buttons));
+                    const trialDays = await this.getTrialDaysForUser(user.id);
+                    await this.replyHtml(ctx, `👋 Привет, <b>${this.esc(userName)}</b>!\n\n` +
+                        `Выберите локацию для подключения.\n` +
+                        `После первого подключения будет <b>пробный период на ${this.esc(trialDays)} дн.</b>`, Markup.inlineKeyboard(buttons));
                 }
                 catch (error) {
                     this.logger.error('Error handling /start command:', error);
@@ -194,7 +196,6 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                     }
                     await ctx.answerCbQuery();
                     const plans = await this.plansService.list(user.id);
-                    const trialPlan = plans.find((p) => p.isTrial);
                     let paidPlans = plans.filter((p) => !p.isTrial && p.active);
                     if (paidPlans.length === 0) {
                         const allActivePlans = await this.prisma.plan.findMany({
@@ -205,35 +206,32 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                     }
                     const displayedPlans = paidPlans.slice(0, 4);
                     const maskedHost = this.maskServerHost(server.host);
-                    let message = `📍 ${server.name}\n\n`;
-                    message += `🌐 Сервер: ${maskedHost}:${server.port}\n`;
-                    message += `🔒 Безопасность: ${server.security || 'NONE'}\n\n`;
-                    if (trialPlan) {
-                        message += `🎁 Пробный период:\n`;
-                        message += `   ${trialPlan.periodDays} дней бесплатно\n\n`;
-                    }
+                    const sec = server.security || 'NONE';
+                    const trialDays = this.getTrialDaysFromPlans(plans);
+                    let message = `📍 <b>${this.esc(server.name)}</b>\n` +
+                        `<i>${this.esc(maskedHost)}:${this.esc(server.port)} · ${this.esc(sec)}</i>\n\n` +
+                        `🎁 Пробный доступ: <b>${this.esc(trialDays)} дн.</b>\n`;
                     if (displayedPlans.length > 0) {
                         const middleIndex = Math.floor(displayedPlans.length / 2);
                         const recommendedPlan = displayedPlans[middleIndex];
                         const minPrice = Math.min(...displayedPlans.map((p) => p.price));
                         const minPricePlan = displayedPlans.find((p) => p.price === minPrice);
-                        message += `💳 Тарифы после пробного периода:\n`;
+                        message += `\n<b>Тарифы после пробного периода</b>\n`;
                         displayedPlans.forEach((plan) => {
-                            const emoji = plan.id === recommendedPlan.id ? '🔥 ' : '   ';
-                            message += `${emoji}${plan.name} - ${plan.price} ${plan.currency} (${plan.periodDays} дн.)\n`;
+                            const tag = plan.id === recommendedPlan?.id ? ' ⭐' : '';
+                            message += `• <b>${this.esc(plan.name)}</b>${tag} — ${this.esc(plan.price)} ${this.esc(plan.currency)} / ${this.esc(plan.periodDays)} дн.\n`;
                         });
                         if (paidPlans.length > displayedPlans.length) {
-                            message += `   ... и еще ${paidPlans.length - displayedPlans.length} тарифов\n`;
+                            message += `• …ещё ${this.esc(paidPlans.length - displayedPlans.length)} тарифов\n`;
                         }
-                        message += `\n`;
-                        message += `💰 От ${minPrice} ${minPricePlan?.currency || 'RUB'}/мес\n\n`;
+                        message += `\n💰 От <b>${this.esc(minPrice)} ${this.esc(minPricePlan?.currency || 'RUB')}</b>\n`;
                     }
-                    message += `После подключения вам будет предоставлен пробный период на ${trialPlan?.periodDays || 3} дня.`;
+                    message += `\nНажмите «Подтвердить», чтобы подключиться.`;
                     const buttons = [
                         [Markup.button.callback('✅ Подтвердить и подключить', `confirm_server_${serverId}`)],
                         [Markup.button.callback('🔙 Выбрать другую локацию', 'back_to_servers')],
                     ];
-                    await ctx.editMessageText(message, Markup.inlineKeyboard(buttons));
+                    await this.editHtml(ctx, message, Markup.inlineKeyboard(buttons));
                 }
                 catch (error) {
                     this.logger.error('Error handling server selection:', error);
@@ -261,13 +259,14 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                         return;
                     }
                     await ctx.answerCbQuery('⏳ Подключаем локацию...');
-                    const result = await this.usersService.addServerAndTrial(user.id, serverId, 3);
+                    const trialDays = await this.getTrialDaysForUser(user.id);
+                    const result = await this.usersService.addServerAndTrial(user.id, serverId, trialDays);
                     const updatedUser = result.updated;
                     if (!updatedUser)
                         return;
                     const expiresAtStr = updatedUser.expiresAt ? new Date(updatedUser.expiresAt).toLocaleDateString('ru-RU') : null;
                     const periodLine = result.trialCreated
-                        ? '🎁 Пробный период: 3 дня\n\n'
+                        ? `🎁 Пробный период: ${this.esc(trialDays)} дн.\n\n`
                         : (expiresAtStr
                             ? `📅 Подписка активна до: ${expiresAtStr}\n\n`
                             : '\n');
@@ -309,9 +308,10 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                     const buttons = allServers.map((server) => [
                         Markup.button.callback(server.name, `select_server_${server.id}`),
                     ]);
+                    const trialDays = user ? await this.getTrialDaysForUser(user.id) : 3;
                     const messageText = user && user.userServers && user.userServers.length > 0
                         ? `📍 Выберите локацию:\n\nВыберите сервер для получения конфигурации или переключения.`
-                        : `🚀 Выберите локацию для подключения:\n\nПосле выбора вам будет предоставлен пробный период на 3 дня.`;
+                        : `🚀 Выберите локацию для подключения:\n\nПосле выбора вам будет предоставлен пробный период на ${this.esc(trialDays)} дн.`;
                     await ctx.editMessageText(messageText, Markup.inlineKeyboard(buttons));
                 }
                 catch (error) {
@@ -340,18 +340,18 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                             orderBy: { price: 'asc' },
                         });
                         if (allActivePlans.length === 0) {
-                            await ctx.reply('❌ Нет доступных тарифов для оплаты.\n\n' +
-                                'Обратитесь к администратору для активации тарифов.');
+                            await this.replyHtml(ctx, `❌ <b>Нет доступных тарифов</b>\n\n` +
+                                `Попробуйте позже или напишите в поддержку: <code>/support</code>`);
                             return;
                         }
                         paidPlans = allActivePlans;
                         this.logger.debug(`Using ${paidPlans.length} active plans as fallback (command /pay)`);
                     }
                     const buttons = paidPlans.map((plan) => [
-                        Markup.button.callback(`${plan.name} - ${plan.price} ${plan.currency} (${plan.periodDays} дн.)`, `select_plan_${plan.id}`),
+                        Markup.button.callback(this.planBtnLabel(plan), `select_plan_${plan.id}`),
                     ]);
-                    await ctx.reply(`💳 Выберите тариф для оплаты:\n\n` +
-                        `После оплаты подписка будет автоматически активирована.`, Markup.inlineKeyboard(buttons));
+                    await this.replyHtml(ctx, `💳 <b>Оплата подписки</b>\n\n` +
+                        `Выберите тариф ниже — после оплаты подписка активируется автоматически.`, Markup.inlineKeyboard(buttons));
                 }
                 catch (error) {
                     this.logger.error('Error handling /pay command:', error);
@@ -385,18 +385,18 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                         status: 'PAID',
                     });
                     try {
-                        await ctx.editMessageText(`✅ Платеж успешно обработан!\n\n` +
-                            `📦 Тариф: ${plan.name}\n` +
-                            `💰 Сумма: ${plan.price} ${plan.currency}\n` +
-                            `📅 Период: ${plan.periodDays} дней\n\n` +
-                            `Подписка активирована. Используйте /config для получения конфигурации.`);
+                        await this.editHtml(ctx, `✅ <b>Оплата прошла</b>\n\n` +
+                            `📦 Тариф: <b>${this.esc(plan.name)}</b>\n` +
+                            `💰 Сумма: <b>${this.esc(plan.price)} ${this.esc(plan.currency)}</b>\n` +
+                            `📅 Период: <b>${this.esc(plan.periodDays)}</b> дн.\n\n` +
+                            `Далее: получить конфиг — <code>/config</code>`);
                     }
                     catch (editError) {
-                        await ctx.reply(`✅ Платеж успешно обработан!\n\n` +
-                            `📦 Тариф: ${plan.name}\n` +
-                            `💰 Сумма: ${plan.price} ${plan.currency}\n` +
-                            `📅 Период: ${plan.periodDays} дней\n\n` +
-                            `Подписка активирована. Используйте /config для получения конфигурации.`);
+                        await this.replyHtml(ctx, `✅ <b>Оплата прошла</b>\n\n` +
+                            `📦 Тариф: <b>${this.esc(plan.name)}</b>\n` +
+                            `💰 Сумма: <b>${this.esc(plan.price)} ${this.esc(plan.currency)}</b>\n` +
+                            `📅 Период: <b>${this.esc(plan.periodDays)}</b> дн.\n\n` +
+                            `Далее: получить конфиг — <code>/config</code>`);
                     }
                 }
                 catch (error) {
@@ -420,64 +420,12 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                             },
                         },
                     });
-                    if (!user) {
-                        await ctx.reply('❌ Пользователь не найден. Используйте /start для регистрации.');
-                        return;
-                    }
-                    if (user.status === 'BLOCKED') {
-                        await ctx.reply('❌ Ваш аккаунт заблокирован. Обратитесь к администратору.');
-                        return;
-                    }
-                    if (user.status === 'EXPIRED') {
-                        await ctx.reply('❌ Ваша подписка истекла. Используйте /pay для продления подписки.');
-                        return;
-                    }
-                    if (!user.userServers || user.userServers.length === 0) {
-                        await ctx.reply('❌ У вас нет активного сервера.\n\n' +
-                            '📍 Используйте /start и выберите локацию для активации пробного периода.');
-                        return;
-                    }
-                    const configResult = await this.usersService.getConfig(user.id);
-                    if (!configResult || !configResult.configs || configResult.configs.length === 0) {
-                        await ctx.reply('❌ Конфигурация недоступна.\n\n' +
-                            'Возможные причины:\n' +
-                            '• У вас нет активного сервера\n' +
-                            '• Сервер временно недоступен\n\n' +
-                            '📍 Используйте /start и выберите локацию для активации.');
-                        return;
-                    }
-                    const configUrl = configResult.configs[0].url;
-                    const serverName = configResult.configs[0].serverName;
-                    try {
-                        const QRCode = await Promise.resolve().then(() => require('qrcode'));
-                        const qrBuffer = await QRCode.toBuffer(configUrl, {
-                            errorCorrectionLevel: 'M',
-                            type: 'png',
-                            width: 400,
-                            margin: 2,
-                        });
-                        await ctx.replyWithPhoto({ source: qrBuffer }, {
-                            caption: `📱 QR код для быстрого подключения (${serverName})\n\nОтсканируйте QR код в вашем VPN клиенте для автоматической настройки.`,
-                        });
-                    }
-                    catch (qrError) {
-                        this.logger.error('Failed to generate QR code:', qrError);
-                        await ctx.reply('⚠️ Не удалось сгенерировать QR код, но конфигурация доступна ниже.');
-                    }
-                    const shortUrl = configUrl.length > 80
-                        ? `${configUrl.substring(0, 60)}...${configUrl.substring(configUrl.length - 20)}`
-                        : configUrl;
-                    await ctx.reply(`📥 Конфигурация VPN (${serverName}):\n\n` +
-                        `\`\`\`\n${configUrl}\n\`\`\`\n\n` +
-                        `Скопируйте ссылку выше или используйте QR код.`, { parse_mode: 'Markdown' });
+                    await this.sendConfigMessage(ctx, user);
                 }
                 catch (error) {
                     this.logger.error('Error handling /config command:', error);
-                    await ctx.reply('❌ Произошла ошибка при получении конфигурации.\n\n' +
-                        'Возможные причины:\n' +
-                        '• Проблемы с подключением к серверу\n' +
-                        '• Временная недоступность сервиса\n\n' +
-                        'Попробуйте позже или обратитесь в поддержку через /support.');
+                    await this.replyHtml(ctx, `❌ <b>Не удалось получить конфиг</b>\n\n` +
+                        `Попробуйте позже или напишите в поддержку: <code>/support</code>`);
                 }
             });
             this.bot.command('support', async (ctx) => {
@@ -489,14 +437,11 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                     });
                     if (!user) {
                         this.logger.warn(`User not found for telegramId: ${telegramId}`);
-                        await ctx.reply('❌ Пользователь не найден. Используйте /start для регистрации.');
+                        await this.replyHtml(ctx, '❌ Пользователь не найден. Нажмите <code>/start</code> для регистрации.');
                         return;
                     }
-                    this.supportModeUsers.set(telegramId, true);
                     this.logger.log(`Support mode activated for user: ${telegramId}`);
-                    await ctx.reply('💬 Режим поддержки активирован.\n\n' +
-                        'Напишите ваш вопрос, и мы ответим вам в ближайшее время.\n\n' +
-                        'Для выхода из режима поддержки используйте команду /cancel или /start');
+                    await this.enableSupportMode(ctx, telegramId);
                 }
                 catch (error) {
                     this.logger.error('Error handling /support command:', error);
@@ -505,43 +450,23 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
             });
             this.bot.command('help', async (ctx) => {
                 try {
-                    const helpMessage = `❓ Помощь и инструкции\n\n` +
-                        `📱 Приложения для подключения:\n\n` +
-                        `• iOS:\n` +
-                        `  - v2rayNG (App Store)\n` +
-                        `  - Shadowrocket (App Store)\n\n` +
-                        `• Android:\n` +
-                        `  - v2rayNG (Google Play / GitHub)\n` +
-                        `  - V2rayTun (Google Play)\n` +
-                        `  - Clash for Android\n\n` +
-                        `• Windows:\n` +
-                        `  - v2rayN (GitHub)\n` +
-                        `  - Clash for Windows\n\n` +
-                        `• macOS:\n` +
-                        `  - ClashX (GitHub)\n` +
-                        `  - v2rayU (GitHub)\n\n` +
-                        `• Linux:\n` +
-                        `  - v2ray-core (GitHub)\n` +
-                        `  - Qv2ray (GitHub)\n\n` +
-                        `📥 Как подключиться:\n\n` +
-                        `1. Скачайте приложение для вашей платформы\n` +
-                        `2. Используйте команду /config для получения конфигурации\n` +
-                        `3. Отсканируйте QR-код или скопируйте ссылку конфигурации\n` +
-                        `4. Импортируйте конфигурацию в приложение\n` +
-                        `5. Включите VPN соединение\n\n` +
-                        `🔗 Полезные ссылки:\n\n` +
-                        `• v2rayNG: https://github.com/2dust/v2rayNG\n` +
-                        `• v2rayN: https://github.com/2dust/v2rayN\n` +
-                        `• Clash: https://github.com/Dreamacro/clash\n\n` +
-                        `💡 Команды бота:\n\n` +
-                        `• /start - Главное меню\n` +
-                        `• /config - Получить конфигурацию\n` +
-                        `• /pay - Оплатить подписку\n` +
-                        `• /status - Статус подписки\n` +
-                        `• /support - Связаться с поддержкой\n` +
-                        `• /help - Показать эту справку\n\n` +
-                        `❓ Если возникли проблемы, используйте команду /support для связи с нами.`;
-                    await ctx.reply(helpMessage);
+                    const helpMessage = `❓ <b>Помощь</b>\n\n` +
+                        `<b>1) Подключение</b>\n` +
+                        `• Получите конфиг: <code>/config</code>\n` +
+                        `• Импортируйте в приложение и включите VPN\n\n` +
+                        `<b>2) Рекомендуемые приложения</b>\n` +
+                        `• iOS: Shadowrocket / v2rayNG\n` +
+                        `• Android: v2rayNG / V2rayTun\n` +
+                        `• Windows: v2rayN\n` +
+                        `• macOS: ClashX\n\n` +
+                        `<b>3) Команды</b>\n` +
+                        `• <code>/start</code> — меню\n` +
+                        `• <code>/config</code> — конфиг\n` +
+                        `• <code>/pay</code> — оплата\n` +
+                        `• <code>/status</code> — статус\n` +
+                        `• <code>/support</code> — поддержка\n\n` +
+                        `Если что-то не работает — напишите в <code>/support</code>.`;
+                    await this.replyHtml(ctx, helpMessage);
                 }
                 catch (error) {
                     this.logger.error('Error handling /help command:', error);
@@ -570,47 +495,48 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                         await ctx.reply('❌ Пользователь не найден. Используйте /start для регистрации.');
                         return;
                     }
-                    const statusEmoji = {
-                        NEW: '🆕',
-                        ACTIVE: '✅',
-                        BLOCKED: '🚫',
-                        EXPIRED: '⏰',
+                    const statusEmoji = { NEW: '🆕', ACTIVE: '✅', BLOCKED: '🚫', EXPIRED: '⏰' };
+                    const statusLabel = {
+                        NEW: 'Без подписки',
+                        ACTIVE: 'Активен',
+                        BLOCKED: 'Заблокирован',
+                        EXPIRED: 'Истёк',
                     };
-                    let message = `${statusEmoji[user.status] || '❓'} Статус аккаунта: ${user.status}\n\n`;
+                    let message = `${statusEmoji[user.status] || 'ℹ️'} <b>Статус</b>: ${this.esc(statusLabel[user.status] || user.status)}\n`;
                     if (user.expiresAt) {
                         const expiresAt = new Date(user.expiresAt);
                         const now = new Date();
                         const daysLeft = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
                         if (daysLeft > 0) {
-                            message += `📅 Подписка действительна до: ${expiresAt.toLocaleDateString('ru-RU')}\n`;
-                            message += `⏳ Осталось дней: ${daysLeft}\n`;
+                            message += `\n📅 До: <b>${this.esc(this.fmtDate(expiresAt))}</b>\n`;
+                            message += `⏳ Осталось: <b>${this.esc(daysLeft)}</b> дн.\n`;
                         }
                         else {
-                            message += `⏰ Подписка истекла\n`;
-                            message += `💳 Используйте /pay для продления подписки\n`;
+                            message += `\n⏰ Подписка истекла\n💳 Продлить: <code>/pay</code>\n`;
                         }
                     }
                     else {
-                        message += `📅 Подписка не установлена\n`;
+                        message += `\n📅 Подписка не активирована\n`;
                         if (!user.userServers || user.userServers.length === 0) {
-                            message += `📍 Используйте /start и выберите локацию для активации пробного периода\n`;
+                            message += `📍 Выберите локацию: <code>/start</code>\n`;
                         }
                     }
                     if (user.userServers && user.userServers.length > 0) {
-                        message += `\n🌐 Активные серверы:\n`;
+                        message += `\n🌐 <b>Локация</b>:\n`;
                         user.userServers.forEach((userServer) => {
-                            message += `  • ${userServer.server.name}\n`;
+                            message += `• ${this.esc(userServer.server.name)}\n`;
                         });
                     }
                     else {
-                        message += `\n🌐 Активных серверов нет\n`;
-                        message += `📍 Используйте /start для выбора локации\n`;
+                        message += `\n🌐 Локация не выбрана\n📍 Выбрать: <code>/start</code>\n`;
                     }
                     if (user.subscriptions && user.subscriptions.length > 0) {
                         const lastSub = user.subscriptions[0];
-                        message += `\n📦 Последний платёж: ${lastSub.periodDays} дн. (${new Date(lastSub.startsAt).toLocaleDateString('ru-RU')} – ${new Date(lastSub.endsAt).toLocaleDateString('ru-RU')})\n`;
+                        message +=
+                            `\n📦 Последний период: <b>${this.esc(lastSub.periodDays)}</b> дн.\n` +
+                                `(${this.esc(this.fmtDate(new Date(lastSub.startsAt)))} – ${this.esc(this.fmtDate(new Date(lastSub.endsAt)))})\n`;
                     }
-                    await ctx.reply(message);
+                    await this.replyHtml(ctx, message);
                 }
                 catch (error) {
                     this.logger.error('Error handling /status command:', error);
@@ -749,7 +675,98 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
         }
         return host.length > 10 ? `${host.substring(0, 3)}***` : '***';
     }
-    async showMainMenu(ctx, user) {
+    esc(s) {
+        return String(s ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+    fmtDate(d) {
+        try {
+            return d.toLocaleDateString('ru-RU');
+        }
+        catch {
+            return String(d);
+        }
+    }
+    getTrialDaysFromPlans(plans) {
+        const trialPlan = plans?.find((p) => p?.isTrial);
+        const n = Number(trialPlan?.periodDays);
+        return Number.isFinite(n) && n > 0 ? n : 3;
+    }
+    async getTrialDaysForUser(userId) {
+        try {
+            const plans = await this.plansService.list(userId);
+            return this.getTrialDaysFromPlans(plans);
+        }
+        catch {
+            return 3;
+        }
+    }
+    async replyHtml(ctx, html, extra) {
+        return ctx.reply(html, { parse_mode: 'HTML', disable_web_page_preview: true, ...(extra ?? {}) });
+    }
+    async editHtml(ctx, html, extra) {
+        return ctx.editMessageText(html, { parse_mode: 'HTML', disable_web_page_preview: true, ...(extra ?? {}) });
+    }
+    planBtnLabel(plan) {
+        const name = String(plan?.name ?? 'Тариф');
+        const price = plan?.price != null ? `${plan.price}` : '?';
+        const cur = String(plan?.currency ?? '');
+        const days = plan?.periodDays != null ? `${plan.periodDays}д` : '';
+        return `${name} · ${price} ${cur} · ${days}`.trim();
+    }
+    async sendConfigMessage(ctx, user) {
+        if (!user) {
+            await this.replyHtml(ctx, '❌ Пользователь не найден. Нажмите <code>/start</code> для регистрации.');
+            return;
+        }
+        if (user.status === 'BLOCKED') {
+            await this.replyHtml(ctx, '🚫 <b>Аккаунт заблокирован</b>\n\nСвяжитесь с поддержкой: <code>/support</code>');
+            return;
+        }
+        if (user.status === 'EXPIRED') {
+            await this.replyHtml(ctx, '⏰ <b>Подписка истекла</b>\n\nПродлить: <code>/pay</code>');
+            return;
+        }
+        const configResult = await this.usersService.getConfig(user.id);
+        if (!configResult?.configs?.length) {
+            await this.replyHtml(ctx, `📍 <b>Локация не выбрана</b>\n\n` +
+                `Откройте меню и выберите локацию: <code>/start</code>`);
+            return;
+        }
+        const configUrl = configResult.configs[0].url;
+        const serverName = configResult.configs[0].serverName;
+        try {
+            const QRCode = await Promise.resolve().then(() => require('qrcode'));
+            const qrBuffer = await QRCode.toBuffer(configUrl, {
+                errorCorrectionLevel: 'M',
+                type: 'png',
+                width: 400,
+                margin: 2,
+            });
+            await ctx.replyWithPhoto({ source: qrBuffer }, {
+                caption: `📱 <b>QR для подключения</b>\n` +
+                    `<i>${this.esc(serverName)}</i>\n\n` +
+                    `Отсканируйте QR в вашем VPN‑клиенте.`,
+                parse_mode: 'HTML',
+            });
+        }
+        catch (qrError) {
+            this.logger.error('Failed to generate QR code:', qrError);
+            await this.replyHtml(ctx, '⚠️ Не удалось сгенерировать QR‑код. Ниже доступна ссылка конфигурации.');
+        }
+        await this.replyHtml(ctx, `📥 <b>Конфигурация</b> <i>(${this.esc(serverName)})</i>\n\n` +
+            `<pre>${this.esc(configUrl)}</pre>\n` +
+            `Скопируйте ссылку и импортируйте в приложение.`);
+    }
+    async enableSupportMode(ctx, telegramId) {
+        this.supportModeUsers.set(telegramId, true);
+        await this.replyHtml(ctx, `💬 <b>Поддержка</b>\n\n` +
+            `Напишите ваш вопрос одним сообщением — мы ответим как можно скорее.\n\n` +
+            `Выйти из режима: <code>/cancel</code> или <code>/start</code>`);
+    }
+    async buildMainMenuKeyboard(user) {
         const { Markup } = await Promise.resolve().then(() => require('telegraf'));
         const miniAppUrl = this.config.get('TELEGRAM_MINI_APP_URL');
         const activeBot = await this.prisma.botConfig.findFirst({
@@ -766,20 +783,25 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
             })
             : user;
         const hasActiveLocation = Boolean(hydratedUser?.serverId || (hydratedUser?.userServers && hydratedUser.userServers.length > 0));
-        const buttons = [];
+        const row1 = [];
+        const row2 = [];
         if (hasActiveLocation) {
-            buttons.push([Markup.button.callback('📥 Получить конфиг', 'get_config')]);
-            buttons.push([Markup.button.callback('📊 Статус подписки', 'show_status')]);
-            buttons.push([Markup.button.callback('📍 Выбрать другую локацию', 'back_to_servers')]);
+            row1.push(Markup.button.callback('📥 Получить конфиг', 'get_config'));
+            row1.push(Markup.button.callback('📊 Статус подписки', 'show_status'));
+            row2.push(Markup.button.callback('📍 Выбрать другую локацию', 'back_to_servers'));
+            row2.push(Markup.button.callback('💳 Оплатить подписку', 'show_pay'));
         }
         else {
-            buttons.push([Markup.button.callback('📍 Выбрать локацию', 'back_to_servers')]);
+            row1.push(Markup.button.callback('📍 Выбрать локацию', 'back_to_servers'));
+            row1.push(Markup.button.callback('💳 Оплатить подписку', 'show_pay'));
         }
-        buttons.push([Markup.button.callback('💳 Оплатить подписку', 'show_pay')]);
         if (activeBot?.useMiniApp && miniAppUrl && miniAppUrl.startsWith('https://')) {
-            buttons.push([Markup.button.webApp('📱 Открыть мини‑приложение', miniAppUrl)]);
+            row2.push(Markup.button.webApp('📱 Открыть мини‑приложение', miniAppUrl));
         }
-        await ctx.reply('🏠 Главное меню:', Markup.inlineKeyboard(buttons));
+        return Markup.inlineKeyboard(row2.length > 0 ? [row1, row2] : [row1]);
+    }
+    async showMainMenu(ctx, user) {
+        await this.replyHtml(ctx, `🏠 <b>Главное меню</b>\n<i>Выберите действие ниже</i>`, await this.buildMainMenuKeyboard(user));
     }
     setupMenuHandlers() {
         this.bot.action('get_config', async (ctx) => {
@@ -791,37 +813,8 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                 await ctx.answerCbQuery('❌ Пользователь не найден');
                 return;
             }
-            if (user.status === 'EXPIRED') {
-                await ctx.answerCbQuery('❌ Подписка истекла. Используйте /pay');
-                return;
-            }
-            const configResult = await this.usersService.getConfig(user.id);
-            if (!configResult || !configResult.configs || configResult.configs.length === 0) {
-                await ctx.answerCbQuery('❌ Конфигурация недоступна');
-                return;
-            }
-            const configUrl = configResult.configs[0].url;
-            const serverName = configResult.configs[0].serverName;
             await ctx.answerCbQuery();
-            try {
-                const QRCode = await Promise.resolve().then(() => require('qrcode'));
-                const { Markup } = await Promise.resolve().then(() => require('telegraf'));
-                const qrBuffer = await QRCode.toBuffer(configUrl, {
-                    errorCorrectionLevel: 'M',
-                    type: 'png',
-                    width: 400,
-                    margin: 2,
-                });
-                await ctx.replyWithPhoto({ source: qrBuffer }, {
-                    caption: `📱 QR код для быстрого подключения (${serverName})\n\nОтсканируйте QR код в вашем VPN клиенте для автоматической настройки.`,
-                });
-            }
-            catch (qrError) {
-                this.logger.error('Failed to generate QR code:', qrError);
-            }
-            await ctx.reply(`📥 Конфигурация VPN (${serverName}):\n\n` +
-                `\`\`\`\n${configUrl}\n\`\`\`\n\n` +
-                `Скопируйте ссылку выше или используйте QR код.`, { parse_mode: 'Markdown' });
+            await this.sendConfigMessage(ctx, user);
         });
         this.bot.action('show_pay', async (ctx) => {
             const telegramId = ctx.from.id.toString();
@@ -845,8 +838,8 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                     });
                     if (allActivePlans.length === 0) {
                         await ctx.answerCbQuery('❌ Нет доступных тарифов');
-                        await ctx.reply('❌ Нет доступных тарифов для оплаты.\n\n' +
-                            'Обратитесь к администратору для активации тарифов.');
+                        await this.replyHtml(ctx, `❌ <b>Нет доступных тарифов</b>\n\n` +
+                            `Попробуйте позже или напишите в поддержку: <code>/support</code>`);
                         return;
                     }
                     paidPlans = allActivePlans;
@@ -854,16 +847,14 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                 }
                 const { Markup } = await Promise.resolve().then(() => require('telegraf'));
                 const buttons = paidPlans.map((plan) => [
-                    Markup.button.callback(`${plan.name} - ${plan.price} ${plan.currency} (${plan.periodDays} дн.)`, `select_plan_${plan.id}`),
+                    Markup.button.callback(this.planBtnLabel(plan), `select_plan_${plan.id}`),
                 ]);
                 await ctx.answerCbQuery();
                 try {
-                    await ctx.editMessageText(`💳 Выберите тариф для оплаты:\n\n` +
-                        `После оплаты подписка будет автоматически активирована.`, Markup.inlineKeyboard(buttons));
+                    await this.editHtml(ctx, `💳 <b>Оплата подписки</b>\n\nВыберите тариф ниже — подписка активируется автоматически.`, Markup.inlineKeyboard(buttons));
                 }
                 catch (editError) {
-                    await ctx.reply(`💳 Выберите тариф для оплаты:\n\n` +
-                        `После оплаты подписка будет автоматически активирована.`, Markup.inlineKeyboard(buttons));
+                    await this.replyHtml(ctx, `💳 <b>Оплата подписки</b>\n\nВыберите тариф ниже — подписка активируется автоматически.`, Markup.inlineKeyboard(buttons));
                 }
             }
             catch (error) {
@@ -935,39 +926,21 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                 else {
                     statusText += `\n📅 Подписка не установлена`;
                 }
-                const { Markup } = await Promise.resolve().then(() => require('telegraf'));
-                const miniAppUrl = this.config.get('TELEGRAM_MINI_APP_URL');
-                const activeBot = await this.prisma.botConfig.findFirst({
-                    where: { active: true },
-                    orderBy: { createdAt: 'desc' },
-                    select: { useMiniApp: true },
-                });
                 const userWithActive = await this.prisma.vpnUser.findFirst({
                     where: { telegramId },
                     include: {
                         userServers: { where: { isActive: true } },
                     },
                 });
-                const hasActiveLocation = Boolean(userWithActive?.serverId || (userWithActive?.userServers && userWithActive.userServers.length > 0));
-                const buttons = [];
-                if (hasActiveLocation) {
-                    buttons.push([Markup.button.callback('📥 Получить конфиг', 'get_config')]);
-                    buttons.push([Markup.button.callback('📊 Статус подписки', 'show_status')]);
-                    buttons.push([Markup.button.callback('📍 Выбрать другую локацию', 'back_to_servers')]);
-                }
-                else {
-                    buttons.push([Markup.button.callback('📍 Выбрать локацию', 'back_to_servers')]);
-                }
-                buttons.push([Markup.button.callback('💳 Оплатить подписку', 'show_pay')]);
-                if (activeBot?.useMiniApp && miniAppUrl && miniAppUrl.startsWith('https://')) {
-                    buttons.push([Markup.button.webApp('📱 Открыть мини‑приложение', miniAppUrl)]);
-                }
+                const menuKeyboard = await this.buildMainMenuKeyboard(userWithActive ?? user);
                 await ctx.answerCbQuery();
                 try {
-                    await ctx.editMessageText(`🏠 Главное меню:${statusText}`, Markup.inlineKeyboard(buttons));
+                    const { Markup } = await Promise.resolve().then(() => require('telegraf'));
+                    await ctx.editMessageText(`🏠 Главное меню:${statusText}`, menuKeyboard);
                 }
                 catch (editError) {
-                    await ctx.reply(`🏠 Главное меню:${statusText}`, Markup.inlineKeyboard(buttons));
+                    const { Markup } = await Promise.resolve().then(() => require('telegraf'));
+                    await ctx.reply(`🏠 Главное меню:${statusText}`, menuKeyboard);
                 }
             }
             catch (error) {
@@ -985,11 +958,8 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                     await ctx.answerCbQuery('❌ Пользователь не найден');
                     return;
                 }
-                this.supportModeUsers.set(telegramId, true);
                 await ctx.answerCbQuery();
-                await ctx.reply('💬 Режим поддержки активирован.\n\n' +
-                    'Напишите ваш вопрос, и мы ответим вам в ближайшее время.\n\n' +
-                    'Для выхода из режима поддержки используйте команду /cancel или /start');
+                await this.enableSupportMode(ctx, telegramId);
             }
             catch (error) {
                 this.logger.error('Error starting support mode:', error);
@@ -1022,9 +992,9 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                     type: client_1.SupportMessageType.USER_MESSAGE,
                     message: messageText,
                 });
-                await ctx.reply('✅ Ваше сообщение отправлено в поддержку. Мы ответим вам в ближайшее время.\n\n' +
-                    'Вы можете продолжить общение, просто отправьте новое сообщение.\n' +
-                    'Для выхода из режима поддержки используйте команду /cancel или /start');
+                await this.replyHtml(ctx, `✅ <b>Сообщение отправлено</b>\n\n` +
+                    `Если хотите добавить детали — отправьте ещё одно сообщение.\n` +
+                    `Выйти: <code>/cancel</code> или <code>/start</code>`);
             }
             catch (error) {
                 this.logger.error('Error handling user message:', error);
@@ -1044,7 +1014,7 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
         }
         try {
             this.logger.log(`Sending support reply to ${telegramId}`);
-            await this.bot.telegram.sendMessage(telegramId, `💬 Ответ от поддержки:\n\n${message}`);
+            await this.bot.telegram.sendMessage(telegramId, `💬 <b>Ответ поддержки</b>\n\n${this.esc(message)}`, { parse_mode: 'HTML', disable_web_page_preview: true });
             this.logger.log(`Support reply sent successfully to ${telegramId}`);
         }
         catch (error) {

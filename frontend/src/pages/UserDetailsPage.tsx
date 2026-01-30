@@ -74,21 +74,7 @@ export function UserDetailsPage() {
     onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to activate server'),
   });
 
-  const trafficQ = useQuery({
-    queryKey: ['user-traffic', id],
-    queryFn: async () => (await api.get<{ traffic: Array<{ serverId: string; serverName: string; panelEmail: string; up: number; down: number; total: number; reset: number; lastOnline: number }> }>(`/users/${id}/traffic`)).data,
-    enabled: Boolean(id),
-    refetchInterval: 30000, // Обновляем каждые 30 секунд
-  });
-
-  const resetTrafficM = useMutation({
-    mutationFn: async () => (await api.post(`/users/${id}/traffic/reset`)).data,
-    onSuccess: async () => {
-      toast.success('Traffic reset');
-      await qc.invalidateQueries({ queryKey: ['user-traffic', id] });
-    },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to reset traffic'),
-  });
+  // Traffic отключён
 
   function formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
@@ -147,62 +133,7 @@ export function UserDetailsPage() {
         )}
       </Card>
 
-      {u && (u.userServers?.some((us) => us.isActive) || u.serverId) && (
-        <Card
-          title="Traffic statistics"
-          right={
-            <Button
-              variant="secondary"
-              disabled={resetTrafficM.isPending || !trafficQ.data?.traffic.length}
-              onClick={() => {
-                if (confirm('Reset traffic statistics? This action cannot be undone.')) {
-                  resetTrafficM.mutate();
-                }
-              }}
-            >
-              Reset traffic
-            </Button>
-          }
-        >
-          {trafficQ.isLoading ? (
-            <div className="text-sm text-slate-600">Loading traffic...</div>
-          ) : trafficQ.error ? (
-            <div className="text-sm text-red-600">
-              {trafficQ.error instanceof Error ? trafficQ.error.message : 'Failed to load traffic'}
-            </div>
-          ) : trafficQ.data && trafficQ.data.traffic.length > 0 ? (
-            trafficQ.data.traffic.map((t) => (
-              <div key={t.serverId} className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-medium text-slate-900">{t.serverName}</div>
-                </div>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <div className="text-xs text-slate-500">Upload</div>
-                    <div className="font-medium text-slate-900">{formatBytes(t.up)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500">Download</div>
-                    <div className="font-medium text-slate-900">{formatBytes(t.down)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500">Total</div>
-                    <div className="font-medium text-slate-900">{formatBytes(t.total)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-slate-500">Last online</div>
-                    <div className="font-medium text-slate-900">
-                      {t.lastOnline ? new Date(t.lastOnline).toLocaleString('ru-RU') : 'Never'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="text-sm text-slate-500">No traffic data available</div>
-          )}
-        </Card>
-      )}
+      {/* Traffic statistics отключены */}
 
       <Card
         title="VPN configs"

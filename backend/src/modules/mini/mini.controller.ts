@@ -120,7 +120,8 @@ export class MiniController {
         subscriptions: {
           where: { active: true },
           orderBy: { endsAt: 'desc' },
-          take: 1,
+          // Берём несколько на случай исторической рассинхронизации (помогает корректно выбрать подписку для прогресса)
+          take: 5,
         },
       },
     });
@@ -134,7 +135,7 @@ export class MiniController {
           subscriptions: {
             where: { active: true },
             orderBy: { endsAt: 'desc' },
-            take: 1,
+            take: 5,
           },
         },
       });
@@ -152,6 +153,14 @@ export class MiniController {
 
     const activeServers = (user.userServers || []).filter((us: any) => us.isActive);
 
+    const subs: any[] = Array.isArray(user.subscriptions) ? user.subscriptions : [];
+    const subscriptionForUi =
+      user.expiresAt && subs.length > 0
+        ? (subs.find((s: any) => s?.endsAt && new Date(s.endsAt).getTime() === new Date(user.expiresAt).getTime()) ??
+          subs[0] ??
+          null)
+        : (subs[0] ?? null);
+
     return {
       id: user.id,
       status: user.status,
@@ -162,12 +171,12 @@ export class MiniController {
         id: us.server.id,
         name: us.server.name,
       })),
-      subscription: user.subscriptions?.[0]
+      subscription: subscriptionForUi
         ? {
-            id: user.subscriptions[0].id,
-            periodDays: user.subscriptions[0].periodDays,
-            startsAt: user.subscriptions[0].startsAt,
-            endsAt: user.subscriptions[0].endsAt,
+            id: subscriptionForUi.id,
+            periodDays: subscriptionForUi.periodDays,
+            startsAt: subscriptionForUi.startsAt,
+            endsAt: subscriptionForUi.endsAt,
           }
         : null,
     };
@@ -192,14 +201,12 @@ export class MiniController {
   async status(@Body() dto: MiniInitDataDto) {
     const { telegramId, name } = await this.validateInitData(dto.initData);
     const user = await this.getOrCreateUser(telegramId, name);
-    let trafficUsed: number | null = null;
-    try {
-      const { traffic } = await this.usersService.getTraffic(user.id);
-      const first = traffic?.[0];
-      if (first != null && typeof first.total === 'number') trafficUsed = first.total;
-    } catch {
-      // best-effort: панель может быть недоступна
+    // DRY: синхронизируем expiresAt по активной подписке перед расчётом daysLeft/прогресса
+    const synced = await this.usersService.syncExpiresAtWithActiveSubscription(user.id);
+    if (synced?.endsAt) {
+      user.expiresAt = synced.endsAt;
     }
+    const trafficUsed: number | null = null;
     const bot = await this.botService.getBotMe();
     return {
       ...this.buildStatusPayload(user, trafficUsed),

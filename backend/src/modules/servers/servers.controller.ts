@@ -55,5 +55,10 @@ export class ServersController {
   syncFromPanel(@Param() params: IdParamDto, @Body() dto: SyncServerFromPanelDto) {
     return this.servers.syncFromPanel(params.id, dto);
   }
+
+  @Get(':id/panel/inbound')
+  getConnectedInbound(@Param() params: IdParamDto) {
+    return this.servers.getConnectedInbound(params.id);
+  }
 }
 

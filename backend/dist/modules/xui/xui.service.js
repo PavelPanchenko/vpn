@@ -78,34 +78,70 @@ let XuiService = XuiService_1 = class XuiService {
         }));
         const data = res.data;
         const obj = data?.obj ?? data;
-        const clientStats = obj?.clientStats ?? obj?.client_stats ?? (Array.isArray(data?.clientStats) ? data.clientStats : []);
-        return { ...obj, clientStats };
+        const clientStats = obj?.clientStats ??
+            obj?.client_stats ??
+            (Array.isArray(data?.clientStats) ? data.clientStats : null) ??
+            (Array.isArray(data?.client_stats) ? data.client_stats : null) ??
+            (Array.isArray(data?.result?.clientStats) ? data.result.clientStats : null) ??
+            (Array.isArray(data?.result?.client_stats) ? data.result.client_stats : null) ??
+            [];
+        return { ...obj, clientStats: Array.isArray(clientStats) ? clientStats : [] };
     }
-    async getClientTraffic(baseUrl, auth, inboundId, email) {
+    async getClientTraffic(baseUrl, auth, inboundId, email, uuid, _serverId) {
         const inbound = await this.getInbound(baseUrl, inboundId, auth);
         const settings = typeof inbound.settings === 'string' ? JSON.parse(inbound.settings) : inbound.settings;
         const clients = settings?.clients || [];
-        const client = clients.find((c) => (c.email ?? c.Email) === email);
+        const emailNorm = String(email ?? '').trim().toLowerCase();
+        let client = clients.find((c) => String(c?.email ?? c?.Email ?? '').trim().toLowerCase() === emailNorm);
+        if (!client && uuid)
+            client = clients.find((c) => (c?.id ?? c?.Id) === uuid);
         if (!client) {
-            this.logger.warn(`getClientTraffic: client not found (email=${email})`);
+            this.logger.warn(`getClientTraffic: client not found (email=${email}${uuid ? `, uuid=${uuid}` : ''})`);
             throw new common_1.BadRequestException('Client not found in panel');
         }
         const clientStats = inbound.clientStats ?? inbound.client_stats ?? [];
-        let stats = clientStats.find((s) => (s.email ?? s.Email) === email);
-        if (!stats && client.id)
-            stats = clientStats.find((s) => (s.id ?? s.Id) === client.id);
-        const t = stats?.traffic ?? stats?.Traffic;
-        const up = Number(stats?.up ?? stats?.Up ?? t?.up ?? t?.Up ?? 0);
-        const down = Number(stats?.down ?? stats?.Down ?? t?.down ?? t?.Down ?? 0);
-        const allTime = Number(stats?.allTime ?? stats?.all_time ?? 0);
-        const totalUsed = allTime > 0 ? allTime : up + down;
-        return {
-            up,
-            down,
-            total: totalUsed,
-            reset: Number(stats?.reset ?? stats?.Reset ?? 0),
-            lastOnline: Number(stats?.lastOnline ?? stats?.last_online ?? 0),
-        };
+        const hasClientStats = Array.isArray(clientStats) && clientStats.length > 0;
+        let stats = null;
+        if (hasClientStats) {
+            if (client.id)
+                stats = clientStats.find((s) => s?.uuid === client.id);
+            if (!stats)
+                stats = clientStats.find((s) => String(s?.email ?? s?.Email ?? '').trim().toLowerCase() === emailNorm);
+            if (!stats && (client.email ?? client.Email)) {
+                const clientEmailNorm = String(client.email ?? client.Email ?? '').trim().toLowerCase();
+                stats = clientStats.find((s) => String(s?.email ?? s?.Email ?? '').trim().toLowerCase() === clientEmailNorm);
+            }
+        }
+        let up;
+        let down;
+        let totalUsed;
+        let reset;
+        let lastOnline;
+        if (stats) {
+            const t = stats?.traffic ?? stats?.Traffic;
+            up = Number(stats?.up ?? stats?.Up ?? t?.up ?? t?.Up ?? 0);
+            down = Number(stats?.down ?? stats?.Down ?? t?.down ?? t?.Down ?? 0);
+            const allTime = Number(stats?.allTime ?? stats?.all_time ?? 0);
+            totalUsed = allTime > 0 ? allTime : up + down;
+            reset = Number(stats?.reset ?? stats?.Reset ?? 0);
+            lastOnline = Number(stats?.lastOnline ?? stats?.last_online ?? 0);
+        }
+        else {
+            if (clients.length === 1) {
+                up = Number(inbound.up ?? 0);
+                down = Number(inbound.down ?? 0);
+                const allTime = Number(inbound.allTime ?? 0);
+                totalUsed = allTime > 0 ? allTime : up + down;
+            }
+            else {
+                up = 0;
+                down = 0;
+                totalUsed = 0;
+            }
+            reset = Number(client?.reset ?? 0);
+            lastOnline = 0;
+        }
+        return { up, down, total: totalUsed, reset, lastOnline };
     }
     async resetClientTraffic(baseUrl, auth, inboundId, email) {
         const url = `${this.normalizeBaseUrl(baseUrl)}/panel/api/inbounds/${inboundId}/resetClientTraffic/${encodeURIComponent(email)}`;

@@ -52,12 +52,6 @@ let UsersController = class UsersController {
     activateServer(params, serverId) {
         return this.users.activateServer(params.id, serverId);
     }
-    getTraffic(params) {
-        return this.users.getTraffic(params.id);
-    }
-    async resetTraffic(params) {
-        return this.users.resetTraffic(params.id);
-    }
 };
 exports.UsersController = UsersController;
 __decorate([
@@ -126,20 +120,6 @@ __decorate([
     __metadata("design:paramtypes", [id_param_dto_1.IdParamDto, String]),
     __metadata("design:returntype", void 0)
 ], UsersController.prototype, "activateServer", null);
-__decorate([
-    (0, common_1.Get)(':id/traffic'),
-    __param(0, (0, common_1.Param)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [id_param_dto_1.IdParamDto]),
-    __metadata("design:returntype", void 0)
-], UsersController.prototype, "getTraffic", null);
-__decorate([
-    (0, common_1.Post)(':id/traffic/reset'),
-    __param(0, (0, common_1.Param)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [id_param_dto_1.IdParamDto]),
-    __metadata("design:returntype", Promise)
-], UsersController.prototype, "resetTraffic", null);
 exports.UsersController = UsersController = __decorate([
     (0, common_1.Controller)('users'),
     (0, admin_auth_decorator_1.AdminAuth)(),

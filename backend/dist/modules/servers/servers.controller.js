@@ -52,6 +52,9 @@ let ServersController = class ServersController {
     syncFromPanel(params, dto) {
         return this.servers.syncFromPanel(params.id, dto);
     }
+    getConnectedInbound(params) {
+        return this.servers.getConnectedInbound(params.id);
+    }
 };
 exports.ServersController = ServersController;
 __decorate([
@@ -118,6 +121,13 @@ __decorate([
     __metadata("design:paramtypes", [id_param_dto_1.IdParamDto, panel_auth_dto_1.SyncServerFromPanelDto]),
     __metadata("design:returntype", void 0)
 ], ServersController.prototype, "syncFromPanel", null);
+__decorate([
+    (0, common_1.Get)(':id/panel/inbound'),
+    __param(0, (0, common_1.Param)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [id_param_dto_1.IdParamDto]),
+    __metadata("design:returntype", void 0)
+], ServersController.prototype, "getConnectedInbound", null);
 exports.ServersController = ServersController = __decorate([
     (0, common_1.Controller)('servers'),
     (0, admin_auth_decorator_1.AdminAuth)(),

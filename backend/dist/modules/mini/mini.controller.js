@@ -112,7 +112,7 @@ let MiniController = class MiniController {
                 subscriptions: {
                     where: { active: true },
                     orderBy: { endsAt: 'desc' },
-                    take: 1,
+                    take: 5,
                 },
             },
         });
@@ -125,7 +125,7 @@ let MiniController = class MiniController {
                     subscriptions: {
                         where: { active: true },
                         orderBy: { endsAt: 'desc' },
-                        take: 1,
+                        take: 5,
                     },
                 },
             });
@@ -139,6 +139,12 @@ let MiniController = class MiniController {
             daysLeft = Math.ceil((user.expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
         }
         const activeServers = (user.userServers || []).filter((us) => us.isActive);
+        const subs = Array.isArray(user.subscriptions) ? user.subscriptions : [];
+        const subscriptionForUi = user.expiresAt && subs.length > 0
+            ? (subs.find((s) => s?.endsAt && new Date(s.endsAt).getTime() === new Date(user.expiresAt).getTime()) ??
+                subs[0] ??
+                null)
+            : (subs[0] ?? null);
         return {
             id: user.id,
             status: user.status,
@@ -149,12 +155,12 @@ let MiniController = class MiniController {
                 id: us.server.id,
                 name: us.server.name,
             })),
-            subscription: user.subscriptions?.[0]
+            subscription: subscriptionForUi
                 ? {
-                    id: user.subscriptions[0].id,
-                    periodDays: user.subscriptions[0].periodDays,
-                    startsAt: user.subscriptions[0].startsAt,
-                    endsAt: user.subscriptions[0].endsAt,
+                    id: subscriptionForUi.id,
+                    periodDays: subscriptionForUi.periodDays,
+                    startsAt: subscriptionForUi.startsAt,
+                    endsAt: subscriptionForUi.endsAt,
                 }
                 : null,
         };
@@ -173,15 +179,11 @@ let MiniController = class MiniController {
     async status(dto) {
         const { telegramId, name } = await this.validateInitData(dto.initData);
         const user = await this.getOrCreateUser(telegramId, name);
-        let trafficUsed = null;
-        try {
-            const { traffic } = await this.usersService.getTraffic(user.id);
-            const first = traffic?.[0];
-            if (first != null && typeof first.total === 'number')
-                trafficUsed = first.total;
+        const synced = await this.usersService.syncExpiresAtWithActiveSubscription(user.id);
+        if (synced?.endsAt) {
+            user.expiresAt = synced.endsAt;
         }
-        catch {
-        }
+        const trafficUsed = null;
         const bot = await this.botService.getBotMe();
         return {
             ...this.buildStatusPayload(user, trafficUsed),

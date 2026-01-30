@@ -23,6 +23,98 @@ export class ServersService {
     return rest;
   }
 
+  private parseJsonString(value?: string) {
+    if (!value) return null;
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+
+  private redactInbound(inbound: any) {
+    const clone: any = JSON.parse(JSON.stringify(inbound ?? {}));
+    const parse = (v: any) => (typeof v === 'string' ? this.parseJsonString(v) ?? v : v);
+    clone.settings = parse(clone.settings);
+    clone.streamSettings = parse(clone.streamSettings);
+    clone.sniffing = parse(clone.sniffing);
+
+    const stream = clone.streamSettings;
+    if (stream?.realitySettings) {
+      if (typeof stream.realitySettings.privateKey === 'string') stream.realitySettings.privateKey = '[REDACTED]';
+      if (Array.isArray(stream.realitySettings.shortIds)) stream.realitySettings.shortIds = ['[REDACTED]'];
+    }
+    clone.redacted = true;
+    return clone;
+  }
+
+  private deriveServerFieldsFromInbound(panelBaseUrl: string, inbound: any) {
+    const stream = this.parseJsonString(inbound?.streamSettings) ?? inbound?.streamSettings ?? null;
+    const network = stream?.network;
+    const security = stream?.security;
+
+    const isWs = network === 'ws';
+    const transport: 'WS' | 'TCP' = isWs ? 'WS' : 'TCP';
+
+    const sec: 'REALITY' | 'TLS' | 'NONE' =
+      security === 'reality' ? 'REALITY' : security === 'tls' ? 'TLS' : 'NONE';
+
+    const wsPath = stream?.wsSettings?.path ?? stream?.wsSettings?.Path ?? null;
+    const path = isWs ? wsPath : null;
+
+    const reality = stream?.realitySettings ?? null;
+    const sni = reality?.serverNames?.[0] ?? reality?.serverName ?? null;
+    const publicKey = reality?.settings?.publicKey ?? null;
+    const shortId = reality?.shortIds?.[0] ?? null;
+
+    const hasRealityData =
+      reality &&
+      publicKey &&
+      typeof publicKey === 'string' &&
+      publicKey.trim().length > 0 &&
+      shortId &&
+      typeof shortId === 'string' &&
+      shortId.trim().length > 0;
+
+    const finalSec: 'REALITY' | 'TLS' | 'NONE' = hasRealityData ? 'REALITY' : sec;
+
+    const external = Array.isArray(stream?.externalProxy) ? stream.externalProxy[0] : null;
+    const host = (external?.dest as string | undefined) ?? new URL(panelBaseUrl).hostname;
+    const port = Number(external?.port ?? inbound?.port);
+    if (!port || Number.isNaN(port)) throw new BadRequestException('Inbound port invalid');
+    if (finalSec === 'REALITY' && (!publicKey || !shortId)) {
+      throw new BadRequestException('Inbound missing reality publicKey/shortId');
+    }
+
+    return {
+      host,
+      port,
+      transport,
+      tls: finalSec !== 'NONE',
+      security: finalSec,
+      sni,
+      path,
+      publicKey: publicKey ?? '',
+      shortId: shortId ?? '',
+    };
+  }
+
+  async getConnectedInbound(serverId: string) {
+    const server = await this.prisma.vpnServer.findUnique({ where: { id: serverId } });
+    if (!server) throw new NotFoundException('Server not found');
+    if (!server.panelBaseUrl || !server.panelUsername || !server.panelPasswordEnc || server.panelInboundId == null) {
+      throw new BadRequestException('Server is not connected to a panel');
+    }
+
+    const secret = this.config.getOrThrow<string>('PANEL_CRED_SECRET');
+    const panelPassword = SecretBox.decrypt(server.panelPasswordEnc, secret);
+    const auth = await this.xui.login(server.panelBaseUrl, server.panelUsername, panelPassword);
+    if (!auth.cookie && !auth.token) throw new BadRequestException('Panel login failed');
+
+    const inbound = await this.xui.getInbound(server.panelBaseUrl, server.panelInboundId, auth);
+    return this.redactInbound(inbound);
+  }
+
   async list() {
     const [servers, activeUsers] = await this.prisma.$transaction([
       this.prisma.vpnServer.findMany({
@@ -45,8 +137,7 @@ export class ServersService {
     return servers.map((s) => {
       const usersOnServer = s._count.userServers;
       const activeUsersCount = activeByServer.get(s.id) ?? 0;
-      const freeSlots =
-        s.maxUsers > 0 ? Math.max(0, s.maxUsers - usersOnServer) : null;
+      const freeSlots = s.maxUsers > 0 ? Math.max(0, s.maxUsers - usersOnServer) : null;
 
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { _count, ...rest } = s;
@@ -95,7 +186,6 @@ export class ServersService {
       await this.prisma.vpnServer.updateMany({ where: { id: { not: id } }, data: { isRecommended: false } });
     }
 
-    // Определяем security: если передано явно - используем его, иначе вычисляем из tls
     let security: 'NONE' | 'TLS' | 'REALITY' | undefined;
     if (dto.security !== undefined) {
       security = dto.security;
@@ -149,75 +239,10 @@ export class ServersService {
     }));
   }
 
-  private parseJsonString(value?: string) {
-    if (!value) return null;
-    try {
-      return JSON.parse(value);
-    } catch {
-      return null;
-    }
-  }
-
-  private deriveServerFieldsFromInbound(panelBaseUrl: string, inbound: any) {
-    const stream = this.parseJsonString(inbound?.streamSettings) ?? inbound?.streamSettings ?? null;
-    const network = stream?.network;
-    const security = stream?.security;
-
-    const isWs = network === 'ws';
-    const transport: 'WS' | 'TCP' = isWs ? 'WS' : 'TCP';
-
-    const sec: 'REALITY' | 'TLS' | 'NONE' =
-      security === 'reality' ? 'REALITY' : security === 'tls' ? 'TLS' : 'NONE';
-    const tls = sec !== 'NONE';
-
-    const wsPath = stream?.wsSettings?.path ?? stream?.wsSettings?.Path ?? null;
-    const path = isWs ? wsPath : null;
-
-    const reality = stream?.realitySettings ?? null;
-    const sni =
-      reality?.serverNames?.[0] ??
-      reality?.serverName ??
-      null;
-    const publicKey =
-      reality?.settings?.publicKey ??
-      null;
-    const shortId =
-      reality?.shortIds?.[0] ?? null;
-
-    // Если есть realitySettings с publicKey и shortId, это REALITY (даже если security не указан явно)
-    // Проверяем что publicKey и shortId не пустые строки
-    const hasRealityData = reality && publicKey && typeof publicKey === 'string' && publicKey.trim().length > 0 && shortId && typeof shortId === 'string' && shortId.trim().length > 0;
-    const finalSec: 'REALITY' | 'TLS' | 'NONE' =
-      hasRealityData ? 'REALITY' : sec;
-
-    // Prefer public endpoint if panel is behind reverse proxy (x-ui-pro commonly uses externalProxy).
-    const external = Array.isArray(stream?.externalProxy) ? stream.externalProxy[0] : null;
-    const host = (external?.dest as string | undefined) ?? new URL(panelBaseUrl).hostname;
-    const port = Number(external?.port ?? inbound?.port);
-
-    if (!port || Number.isNaN(port)) throw new BadRequestException('Inbound port invalid');
-    if (finalSec === 'REALITY' && (!publicKey || !shortId)) {
-      throw new BadRequestException('Inbound missing reality publicKey/shortId');
-    }
-
-    return {
-      host,
-      port,
-      transport,
-      tls: finalSec !== 'NONE',
-      security: finalSec,
-      sni,
-      path,
-      publicKey: publicKey ?? '',
-      shortId: shortId ?? '',
-    };
-  }
-
   async createFromPanel(dto: CreateServerFromPanelDto) {
     const auth = await this.xui.login(dto.panelBaseUrl, dto.panelUsername, dto.panelPassword);
-    if (!auth.cookie && !auth.token) {
-      throw new BadRequestException('Panel login failed');
-    }
+    if (!auth.cookie && !auth.token) throw new BadRequestException('Panel login failed');
+
     const inbound = await this.xui.getInbound(dto.panelBaseUrl, dto.inboundId, auth);
     const derived = this.deriveServerFieldsFromInbound(dto.panelBaseUrl, inbound);
 
@@ -294,7 +319,6 @@ export class ServersService {
       await this.prisma.vpnServer.delete({ where: { id } });
     } catch (e: unknown) {
       if (e instanceof Prisma.PrismaClientKnownRequestError) {
-        // FK constraint (есть пользователи) — не даём удалить "тихо"
         if (e.code === 'P2003') {
           throw new ConflictException('Cannot delete server with existing users');
         }

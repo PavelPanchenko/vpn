@@ -8,23 +8,19 @@ import { SecretBox } from '../../common/crypto/secret-box';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
-/** Читаемый panelEmail: имя + telegram id (или короткий uuid, если нет tg). */
-function buildReadablePanelEmail(
-  name: string,
-  uuid: string,
-  serverIdPrefix: string,
-  telegramId?: string | null,
-): string {
-  const sanitized = name
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-zа-яё0-9-]/gi, '')
-    .slice(0, 24);
-  const namePart = sanitized || uuid.slice(0, 8);
-  const suffix = telegramId != null && telegramId !== '' ? telegramId : uuid.slice(-6);
-  return `${namePart}-${suffix}@vpn-${serverIdPrefix}`;
+/** Единый формат panelEmail: только uuid и serverId. Одинаковый при создании и при поиске. */
+function buildPanelEmail(uuid: string, serverId: string): string {
+  const prefix = serverId.slice(0, 8);
+  return `${uuid}@vpn-${prefix}`;
 }
+
+function addDaysUtc(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d;
+}
+
+type EnsurePanelClientOptions = { expiryTime?: number; enable?: boolean };
 
 @Injectable()
 export class UsersService {
@@ -35,6 +31,106 @@ export class UsersService {
     private readonly xui: XuiService,
     private readonly config: ConfigService,
   ) {}
+
+  /** Единая точка: добавить/обновить клиента на панели. */
+  private async ensurePanelClient(
+    server: { panelBaseUrl: string | null; panelUsername: string | null; panelPasswordEnc: string | null; panelInboundId: number | null; security?: string },
+    userUuid: string,
+    panelEmail: string,
+    options?: EnsurePanelClientOptions,
+  ): Promise<void> {
+    if (!server.panelBaseUrl || !server.panelUsername || !server.panelPasswordEnc || server.panelInboundId == null) return;
+    const secret = this.config.get<string>('PANEL_CRED_SECRET');
+    if (!secret) return;
+    try {
+      const panelPassword = SecretBox.decrypt(server.panelPasswordEnc, secret);
+      const auth = await this.xui.login(server.panelBaseUrl, server.panelUsername, panelPassword);
+      if (!auth.cookie && !auth.token) return;
+      const expiryTime = options?.expiryTime ?? 0;
+      try {
+        await this.xui.addClient(server.panelBaseUrl, auth, server.panelInboundId, {
+          id: userUuid,
+          email: panelEmail,
+          flow: server.security === 'REALITY' ? 'xtls-rprx-vision' : '',
+          expiryTime: expiryTime > 0 ? expiryTime : undefined,
+          enable: options?.enable,
+        });
+      } catch (addErr: any) {
+        if (addErr instanceof BadRequestException && addErr.message?.includes('already exists')) {
+          await this.xui.updateClient(server.panelBaseUrl, auth, server.panelInboundId, panelEmail, {
+            ...(options?.enable !== undefined && { enable: options.enable }),
+            ...(options?.expiryTime !== undefined && { expiryTime: options.expiryTime }),
+          });
+        } else {
+          throw addErr;
+        }
+      }
+    } catch (e: any) {
+      this.logger.warn(`ensurePanelClient: ${e?.message ?? e}`);
+    }
+  }
+
+  /** Единая точка: привязать пользователя к серверу (БД + опционально клиент на панели). */
+  private async attachUserToServer(
+    userId: string,
+    serverId: string,
+    options: { isActive: boolean; addToPanel: boolean; expiryTime?: number },
+  ): Promise<void> {
+    const user = await this.prisma.vpnUser.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    const server = await this.prisma.vpnServer.findUnique({ where: { id: serverId } });
+    if (!server || !server.active) throw new NotFoundException('Server not found');
+    const count = await this.prisma.vpnServer.findUnique({
+      where: { id: serverId },
+      include: { _count: { select: { userServers: true } } },
+    }).then((s) => s?._count?.userServers ?? 0);
+    if (server.maxUsers > 0 && count >= server.maxUsers) throw new BadRequestException('Server is full');
+    const panelEmail = buildPanelEmail(user.uuid, serverId);
+    if (options.addToPanel) {
+      await this.ensurePanelClient(server, user.uuid, panelEmail, {
+        expiryTime: options.expiryTime,
+        enable: options.isActive ? true : undefined,
+      });
+    }
+    await this.prisma.userServer.create({
+      data: { vpnUserId: userId, serverId, panelEmail, active: true, isActive: options.isActive },
+    });
+  }
+
+  /**
+   * DRY: привести expiresAt/статус к самой поздней активной подписке.
+   * Это устраняет рассинхрон между `vpnUser.expiresAt` и `subscription.endsAt`, который ломает шкалу в UI.
+   */
+  async syncExpiresAtWithActiveSubscription(
+    userId: string,
+  ): Promise<{ endsAt: Date; periodDays: number } | null> {
+    const [user, sub] = await Promise.all([
+      this.prisma.vpnUser.findUnique({ where: { id: userId }, select: { expiresAt: true, status: true } }),
+      this.prisma.subscription.findFirst({
+        where: { vpnUserId: userId, active: true },
+        orderBy: { endsAt: 'desc' },
+        select: { endsAt: true, periodDays: true },
+      }),
+    ]);
+    if (!user || !sub) return null;
+    if (user.status === 'BLOCKED') return { endsAt: sub.endsAt, periodDays: sub.periodDays };
+
+    const now = new Date();
+    const nextStatus: 'NEW' | 'ACTIVE' | 'BLOCKED' | 'EXPIRED' =
+      sub.endsAt.getTime() < now.getTime() ? 'EXPIRED' : 'ACTIVE';
+
+    const shouldUpdate =
+      !user.expiresAt || user.expiresAt.getTime() !== sub.endsAt.getTime() || user.status !== nextStatus;
+
+    if (shouldUpdate) {
+      await this.prisma.vpnUser.update({
+        where: { id: userId },
+        data: { expiresAt: sub.endsAt, status: nextStatus },
+      });
+    }
+
+    return { endsAt: sub.endsAt, periodDays: sub.periodDays };
+  }
 
   async refreshExpiredStatuses() {
     const now = new Date();
@@ -74,7 +170,7 @@ export class UsersService {
     const uuid = randomUUID();
     const server = await this.prisma.vpnServer.findUnique({ where: { id: dto.serverId } });
     if (!server) throw new NotFoundException('Server not found');
-    const panelEmail = buildReadablePanelEmail(dto.name, uuid, dto.serverId.slice(0, 8), dto.telegramId);
+    const panelEmail = buildPanelEmail(uuid, dto.serverId);
     let trialEndsAt: Date | null = null;
     if (dto.trialDays) {
       const t = new Date();
@@ -92,25 +188,10 @@ export class UsersService {
       },
       include: { server: true, userServers: { include: { server: true } } },
     });
-    if (server.panelBaseUrl && server.panelUsername && server.panelPasswordEnc && server.panelInboundId != null) {
-      try {
-        const secret = this.config.getOrThrow<string>('PANEL_CRED_SECRET');
-        const panelPassword = SecretBox.decrypt(server.panelPasswordEnc, secret);
-        const auth = await this.xui.login(server.panelBaseUrl, server.panelUsername, panelPassword);
-        if (auth.cookie || auth.token) {
-          await this.xui.addClient(server.panelBaseUrl, auth, server.panelInboundId, {
-            id: uuid,
-            email: panelEmail,
-            flow: server.security === 'REALITY' ? 'xtls-rprx-vision' : '',
-            expiryTime: trialEndsAt ? trialEndsAt.getTime() : 0,
-          });
-        }
-      } catch (e: any) {
-        this.logger.warn(`create: panel addClient failed — ${e?.message ?? e}`);
-      }
-    }
-    await this.prisma.userServer.create({
-      data: { vpnUserId: user.id, serverId: dto.serverId, panelEmail, isActive: true },
+    await this.attachUserToServer(user.id, dto.serverId, {
+      isActive: true,
+      addToPanel: true,
+      expiryTime: trialEndsAt ? trialEndsAt.getTime() : undefined,
     });
     if (dto.trialDays && trialEndsAt) {
       const now = new Date();
@@ -142,12 +223,55 @@ export class UsersService {
     if (dto.name != null) updates.name = dto.name;
     if (dto.telegramId !== undefined) updates.telegramId = dto.telegramId;
     if (dto.status != null) updates.status = dto.status;
-    if (dto.expiresAt !== undefined) updates.expiresAt = dto.expiresAt ? new Date(dto.expiresAt) : null;
+    // Админка может прислать либо expiresAt (ISO), либо trialDays (число дней).
+    // trialDays трактуем как "выдать доступ на N дней от текущего момента" и синхронизируем подписку + пользователя.
+    const now = new Date();
+    const expiresAtFromTrialDays =
+      dto.trialDays != null ? addDaysUtc(now, Number(dto.trialDays)) : null;
+
+    const effectiveExpiresAt =
+      dto.trialDays != null ? expiresAtFromTrialDays : (dto.expiresAt !== undefined ? (dto.expiresAt ? new Date(dto.expiresAt) : null) : undefined);
+
+    if (effectiveExpiresAt !== undefined) updates.expiresAt = effectiveExpiresAt;
     if (dto.serverId !== undefined) {
       updates.server = dto.serverId ? { connect: { id: dto.serverId } } : { disconnect: true };
     }
 
-    await this.prisma.vpnUser.update({ where: { id }, data: updates });
+    // Если админ задаёт trialDays — обновляем активную подписку так же, иначе UI будет показывать старые "3 дня".
+    if (dto.trialDays != null) {
+      const endsAt = expiresAtFromTrialDays!;
+      const periodDays = Number(dto.trialDays);
+      const nextStatus: 'NEW' | 'ACTIVE' | 'BLOCKED' | 'EXPIRED' =
+        (dto.status ?? user.status) === 'BLOCKED'
+          ? 'BLOCKED'
+          : endsAt.getTime() < now.getTime()
+            ? 'EXPIRED'
+            : 'ACTIVE';
+
+      await this.prisma.$transaction(async (tx) => {
+        // Делаем единственную активную подписку (DRY-инвариант)
+        await tx.subscription.updateMany({ where: { vpnUserId: id, active: true }, data: { active: false } });
+        await tx.subscription.create({
+          data: {
+            vpnUserId: id,
+            paymentId: null,
+            periodDays,
+            startsAt: now,
+            endsAt,
+            active: true,
+          },
+        });
+        await tx.vpnUser.update({
+          where: { id },
+          data: {
+            ...updates,
+            status: dto.status ?? nextStatus,
+          },
+        });
+      });
+    } else {
+      await this.prisma.vpnUser.update({ where: { id }, data: updates });
+    }
 
     const activeUserServer = user.userServers.find((us) => us.isActive);
     const server = activeUserServer?.server ?? user.server;
@@ -158,9 +282,16 @@ export class UsersService {
           const secret = this.config.getOrThrow<string>('PANEL_CRED_SECRET');
           const panelPassword = SecretBox.decrypt(server.panelPasswordEnc, secret);
           const auth = await this.xui.login(server.panelBaseUrl, server.panelUsername, panelPassword);
-          if ((auth.cookie || auth.token) && dto.expiresAt !== undefined) {
-            const expiryTime = dto.expiresAt ? new Date(dto.expiresAt).getTime() : 0;
+          if (auth.cookie || auth.token) {
+            const expiryTime =
+              effectiveExpiresAt === undefined
+                ? undefined
+                : effectiveExpiresAt
+                  ? effectiveExpiresAt.getTime()
+                  : 0;
+            if (expiryTime !== undefined) {
             await this.xui.updateClient(server.panelBaseUrl, auth, server.panelInboundId, email, { expiryTime });
+            }
           }
         } catch (e: any) {
           this.logger.warn(`update: panel sync failed — ${e?.message ?? e}`);
@@ -258,149 +389,63 @@ export class UsersService {
     return { configs };
   }
 
-  async getTraffic(userId: string): Promise<{ traffic: Array<{ serverId: string; serverName: string; panelEmail: string; up: number; down: number; total: number; reset: number; lastOnline: number }> }> {
-    const user = await this.prisma.vpnUser.findUnique({
-      where: { id: userId },
-      include: {
-        userServers: { where: { active: true, isActive: true }, include: { server: true } },
-        server: true,
-      },
-    });
-    if (!user) throw new NotFoundException('User not found');
-    const trafficData: Array<{ serverId: string; serverName: string; panelEmail: string; up: number; down: number; total: number; reset: number; lastOnline: number }> = [];
-    const activeUs = user.userServers?.find((us) => us.isActive);
-    if (activeUs) {
-      const server = activeUs.server;
-      if (server.panelBaseUrl && server.panelUsername && server.panelPasswordEnc && server.panelInboundId != null) {
-        try {
-          const secret = this.config.getOrThrow<string>('PANEL_CRED_SECRET');
-          const panelPassword = SecretBox.decrypt(server.panelPasswordEnc, secret);
-          const auth = await this.xui.login(server.panelBaseUrl, server.panelUsername, panelPassword);
-          if (auth.cookie || auth.token) {
-            const traffic = await this.xui.getClientTraffic(server.panelBaseUrl, auth, server.panelInboundId, activeUs.panelEmail);
-            trafficData.push({
-              serverId: server.id,
-              serverName: server.name,
-              panelEmail: activeUs.panelEmail,
-              up: traffic.up,
-              down: traffic.down,
-              total: traffic.total,
-              reset: traffic.reset,
-              lastOnline: traffic.lastOnline,
-            });
-          }
-        } catch (e: any) {
-          this.logger.warn(`getTraffic(userId=${userId}): ${e?.message ?? e}`);
-        }
-      }
-    } else if (user.panelEmail && user.server) {
-      const server = user.server;
-      if (server.panelBaseUrl && server.panelUsername && server.panelPasswordEnc && server.panelInboundId != null) {
-        try {
-          const secret = this.config.getOrThrow<string>('PANEL_CRED_SECRET');
-          const panelPassword = SecretBox.decrypt(server.panelPasswordEnc, secret);
-          const auth = await this.xui.login(server.panelBaseUrl, server.panelUsername, panelPassword);
-          if (auth.cookie || auth.token) {
-            const traffic = await this.xui.getClientTraffic(server.panelBaseUrl, auth, server.panelInboundId, user.panelEmail);
-            trafficData.push({
-              serverId: server.id,
-              serverName: server.name,
-              panelEmail: user.panelEmail,
-              up: traffic.up,
-              down: traffic.down,
-              total: traffic.total,
-              reset: traffic.reset,
-              lastOnline: traffic.lastOnline,
-            });
-          }
-        } catch (e: any) {
-          this.logger.warn(`getTraffic(userId=${userId}, legacy): ${e?.message ?? e}`);
-        }
-      }
-    }
-    return { traffic: trafficData };
-  }
-
-  async resetTraffic(userId: string): Promise<{ ok: boolean }> {
-    const user = await this.prisma.vpnUser.findUnique({
-      where: { id: userId },
-      include: {
-        userServers: { where: { active: true, isActive: true }, include: { server: true } },
-        server: true,
-      },
-    });
-    if (!user) throw new NotFoundException('User not found');
-    const activeUs = user.userServers?.find((us) => us.isActive);
-    const server = activeUs?.server ?? user.server;
-    const email = activeUs?.panelEmail ?? user.panelEmail;
-    if (!server?.panelBaseUrl || !server.panelUsername || !server.panelPasswordEnc || server.panelInboundId == null || !email) {
-      throw new BadRequestException('No panel client to reset');
-    }
-    const secret = this.config.getOrThrow<string>('PANEL_CRED_SECRET');
-    const panelPassword = SecretBox.decrypt(server.panelPasswordEnc, secret);
-    const auth = await this.xui.login(server.panelBaseUrl, server.panelUsername, panelPassword);
-    if (!auth.cookie && !auth.token) throw new BadRequestException('Panel login failed');
-    await this.xui.resetClientTraffic(server.panelBaseUrl, auth, server.panelInboundId, email);
-    return { ok: true };
-  }
-
   async addServer(userId: string, serverId: string) {
-    const server = await this.prisma.vpnServer.findUnique({ where: { id: serverId } });
-    if (!server || !server.active) throw new NotFoundException('Server not found');
-    const user = await this.prisma.vpnUser.findUnique({ where: { id: userId }, include: { userServers: true } });
-    if (!user) throw new NotFoundException('User not found');
-    const count = await this.prisma.vpnServer.findUnique({
-      where: { id: serverId },
-      include: { _count: { select: { userServers: true } } },
-    }).then((s) => s?._count?.userServers ?? 0);
-    if (server.maxUsers > 0 && count >= server.maxUsers) throw new BadRequestException('Server is full');
-    const panelEmail = buildReadablePanelEmail(user.name, user.uuid, serverId.slice(0, 8), user.telegramId);
-    await this.prisma.userServer.create({
-      data: { vpnUserId: userId, serverId, panelEmail, active: true, isActive: false },
-    });
+    await this.attachUserToServer(userId, serverId, { isActive: false, addToPanel: false });
     return this.get(userId);
   }
 
   async addServerAndTrial(userId: string, serverId: string, trialDays: number): Promise<{ updated: any; trialCreated: boolean }> {
-    const server = await this.prisma.vpnServer.findUnique({ where: { id: serverId } });
-    if (!server || !server.active) throw new NotFoundException('Server not found');
     const user = await this.prisma.vpnUser.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
-    const count = await this.prisma.vpnServer.findUnique({
-      where: { id: serverId },
-      include: { _count: { select: { userServers: true } } },
-    }).then((s) => s?._count?.userServers ?? 0);
-    if (server.maxUsers > 0 && count >= server.maxUsers) throw new BadRequestException('Server is full');
     const existing = await this.prisma.userServer.findUnique({
       where: { vpnUserId_serverId: { vpnUserId: userId, serverId } },
     });
-    let trialCreated = false;
     if (existing) {
+      // На всякий случай синхронизируем expiry со подпиской перед активацией (DRY, чтобы панель не получала "короткий" expiresAt)
+      await this.syncExpiresAtWithActiveSubscription(userId);
       await this.activateServer(userId, serverId);
       return { updated: await this.get(userId), trialCreated: false };
     }
-    const panelEmail = buildReadablePanelEmail(user.name, user.uuid, serverId.slice(0, 8), user.telegramId);
+
     const now = new Date();
+    const activeSub = await this.prisma.subscription.findFirst({
+      where: { vpnUserId: userId, active: true },
+      orderBy: { endsAt: 'desc' },
+      select: { endsAt: true },
+    });
+
+    // Если уже есть активная (не истёкшая) подписка — НЕ создаём триал и НЕ перезаписываем expiresAt.
+    if (activeSub && activeSub.endsAt.getTime() > now.getTime()) {
+      await this.prisma.$transaction(async (tx) => {
+        // Переключаем активную локацию
+        await tx.userServer.updateMany({ where: { vpnUserId: userId }, data: { isActive: false } });
+      });
+
+      await this.attachUserToServer(userId, serverId, {
+        isActive: true,
+        addToPanel: true,
+        expiryTime: activeSub.endsAt.getTime(),
+      });
+
+      // Убеждаемся, что expiresAt у пользователя соответствует подписке (DRY)
+      await this.syncExpiresAtWithActiveSubscription(userId);
+
+      return { updated: await this.get(userId), trialCreated: false };
+    }
+
     const endsAt = new Date(now);
     endsAt.setUTCDate(endsAt.getUTCDate() + trialDays);
-    if (server.panelBaseUrl && server.panelUsername && server.panelPasswordEnc && server.panelInboundId != null) {
-      const secret = this.config.getOrThrow<string>('PANEL_CRED_SECRET');
-      const panelPassword = SecretBox.decrypt(server.panelPasswordEnc, secret);
-      const auth = await this.xui.login(server.panelBaseUrl, server.panelUsername, panelPassword);
-      if (auth.cookie || auth.token) {
-        await this.xui.addClient(server.panelBaseUrl, auth, server.panelInboundId, {
-          id: user.uuid,
-          email: panelEmail,
-          flow: server.security === 'REALITY' ? 'xtls-rprx-vision' : '',
-          expiryTime: endsAt.getTime(),
-        });
-      }
-    }
     await this.prisma.$transaction(async (tx) => {
       await tx.userServer.updateMany({ where: { vpnUserId: userId }, data: { isActive: false } });
-      await tx.userServer.create({
-        data: { vpnUserId: userId, serverId, panelEmail, active: true, isActive: true },
-      });
+    });
+    await this.attachUserToServer(userId, serverId, {
+      isActive: true,
+      addToPanel: true,
+      expiryTime: endsAt.getTime(),
+    });
+    await this.prisma.$transaction(async (tx) => {
+      // Гарантируем единственную активную подписку (иначе ломается шкала в UI)
+      await tx.subscription.updateMany({ where: { vpnUserId: userId, active: true }, data: { active: false } });
       await tx.subscription.create({
         data: { vpnUserId: userId, periodDays: trialDays, startsAt: now, endsAt, active: true },
       });
@@ -412,8 +457,7 @@ export class UsersService {
         },
       });
     });
-    trialCreated = true;
-    return { updated: await this.get(userId), trialCreated };
+    return { updated: await this.get(userId), trialCreated: true };
   }
 
   async activateServer(userId: string, serverId: string) {
@@ -431,6 +475,9 @@ export class UsersService {
     if (!us) throw new NotFoundException('User server not found');
     if (!user) throw new NotFoundException('User not found');
 
+    // DRY: перед синхронизацией на панель убедимся, что expiresAt соответствует активной подписке
+    await this.syncExpiresAtWithActiveSubscription(userId);
+
     await this.prisma.$transaction([
       this.prisma.userServer.updateMany({ where: { vpnUserId: userId }, data: { isActive: false } }),
       this.prisma.userServer.update({ where: { id: us.id }, data: { isActive: true } }),
@@ -443,42 +490,17 @@ export class UsersService {
           const panelPassword = SecretBox.decrypt(previousActive.server.panelPasswordEnc, secret);
           const auth = await this.xui.login(previousActive.server.panelBaseUrl, previousActive.server.panelUsername, panelPassword);
           if (auth.cookie || auth.token) {
-            await this.xui.deleteClient(previousActive.server.panelBaseUrl, auth, previousActive.server.panelInboundId, previousActive.panelEmail);
+            const emailForPanel = buildPanelEmail(user.uuid, previousActive.server.id);
+            await this.xui.deleteClient(previousActive.server.panelBaseUrl, auth, previousActive.server.panelInboundId, emailForPanel);
           }
         } catch (e: any) {
           this.logger.warn(`activateServer: delete previous client failed — ${e?.message ?? e}`);
         }
       }
-      if (us.server?.panelBaseUrl && us.server.panelUsername && us.server.panelPasswordEnc && us.server.panelInboundId != null) {
-        const s = us.server;
-        const baseUrl = s.panelBaseUrl!;
-        const username = s.panelUsername!;
-        const passwordEnc = s.panelPasswordEnc!;
-        const inboundId = s.panelInboundId!;
+      if (us.server) {
         const expiryTime = user.expiresAt ? new Date(user.expiresAt).getTime() : 0;
-        try {
-          const panelPassword = SecretBox.decrypt(passwordEnc, secret);
-          const auth = await this.xui.login(baseUrl, username, panelPassword);
-          if (auth.cookie || auth.token) {
-            try {
-              await this.xui.addClient(baseUrl, auth, inboundId, {
-                id: user.uuid,
-                email: us.panelEmail,
-                flow: s.security === 'REALITY' ? 'xtls-rprx-vision' : '',
-                expiryTime: expiryTime || undefined,
-                enable: true,
-              });
-            } catch (addErr: any) {
-              if (addErr instanceof BadRequestException && addErr.message?.includes('already exists')) {
-                await this.xui.updateClient(baseUrl, auth, inboundId, us.panelEmail, { enable: true });
-              } else {
-                throw addErr;
-              }
-            }
-          }
-        } catch (e: any) {
-          this.logger.warn(`activateServer: add/enable new client failed — ${e?.message ?? e}`);
-        }
+        const emailForPanel = buildPanelEmail(user.uuid, us.server.id);
+        await this.ensurePanelClient(us.server, user.uuid, emailForPanel, { expiryTime, enable: true });
       }
     }
     return this.get(userId);
@@ -493,10 +515,16 @@ export class UsersService {
     const server = us.server;
     if (server.panelBaseUrl && server.panelUsername && server.panelPasswordEnc && server.panelInboundId != null) {
       try {
-        const secret = this.config.getOrThrow<string>('PANEL_CRED_SECRET');
-        const panelPassword = SecretBox.decrypt(server.panelPasswordEnc, secret);
-        const auth = await this.xui.login(server.panelBaseUrl, server.panelUsername, panelPassword);
-        if (auth.cookie || auth.token) await this.xui.deleteClient(server.panelBaseUrl, auth, server.panelInboundId, us.panelEmail);
+        const user = await this.prisma.vpnUser.findUnique({ where: { id: userId }, select: { uuid: true } });
+        if (user) {
+          const secret = this.config.getOrThrow<string>('PANEL_CRED_SECRET');
+          const panelPassword = SecretBox.decrypt(server.panelPasswordEnc, secret);
+          const auth = await this.xui.login(server.panelBaseUrl, server.panelUsername, panelPassword);
+          if (auth.cookie || auth.token) {
+            const emailForPanel = buildPanelEmail(user.uuid, server.id);
+            await this.xui.deleteClient(server.panelBaseUrl, auth, server.panelInboundId, emailForPanel);
+          }
+        }
       } catch (e: any) {
         this.logger.warn(`removeServer: panel deleteClient failed — ${e?.message ?? e}`);
       }
