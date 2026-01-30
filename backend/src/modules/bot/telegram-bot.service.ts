@@ -7,6 +7,7 @@ import { PaymentsService } from '../payments/payments.service';
 import { SupportService } from '../support/support.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SupportMessageType } from '@prisma/client';
+import { buildSubscriptionMetrics } from '../../common/subscription/subscription-metrics';
 
 @Injectable()
 export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
@@ -661,15 +662,22 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
             EXPIRED: 'Истёк',
           };
 
+          const lastSub = user.subscriptions?.[0] ?? null;
+          const metrics = buildSubscriptionMetrics({
+            currentStatus: user.status,
+            expiresAt: user.expiresAt,
+            startsAt: lastSub?.startsAt,
+            endsAt: lastSub?.endsAt,
+            periodDays: lastSub?.periodDays ?? null,
+          });
+
           let message =
-            `${statusEmoji[user.status] || 'ℹ️'} <b>Статус</b>: ${this.esc(statusLabel[user.status] || user.status)}\n`;
+            `${statusEmoji[metrics.status] || 'ℹ️'} <b>Статус</b>: ${this.esc(statusLabel[metrics.status] || metrics.status)}\n`;
 
           // Информация о подписке
-          if (user.expiresAt) {
-            const expiresAt = new Date(user.expiresAt);
-            const now = new Date();
-            const daysLeft = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-
+          if (metrics.expiresAtIso) {
+            const expiresAt = new Date(metrics.expiresAtIso);
+            const daysLeft = metrics.daysLeft ?? 0;
             if (daysLeft > 0) {
               message += `\n📅 До: <b>${this.esc(this.fmtDate(expiresAt))}</b>\n`;
               message += `⏳ Осталось: <b>${this.esc(daysLeft)}</b> дн.\n`;
@@ -694,8 +702,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
           }
 
           // Детали последней подписки (одна запись; общий срок уже выше — «Осталось дней»)
-          if (user.subscriptions && user.subscriptions.length > 0) {
-            const lastSub = user.subscriptions[0];
+          if (lastSub) {
             message +=
               `\n📦 Последний период: <b>${this.esc(lastSub.periodDays)}</b> дн.\n` +
               `(${this.esc(this.fmtDate(new Date(lastSub.startsAt)))} – ${this.esc(this.fmtDate(new Date(lastSub.endsAt)))})\n`;
@@ -1187,13 +1194,20 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         };
 
         // Формируем текст статуса
-        let statusText = `\n\n${statusEmoji[user.status] || '❓'} Статус: ${user.status}`;
+        const lastSub = user.subscriptions?.[0] ?? null;
+        const metrics = buildSubscriptionMetrics({
+          currentStatus: user.status,
+          expiresAt: user.expiresAt,
+          startsAt: lastSub?.startsAt,
+          endsAt: lastSub?.endsAt,
+          periodDays: lastSub?.periodDays ?? null,
+        });
 
-        if (user.expiresAt) {
-          const expiresAt = new Date(user.expiresAt);
-          const now = new Date();
-          const daysLeft = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        let statusText = `\n\n${statusEmoji[metrics.status] || '❓'} Статус: ${metrics.status}`;
 
+        if (metrics.expiresAtIso) {
+          const expiresAt = new Date(metrics.expiresAtIso);
+          const daysLeft = metrics.daysLeft ?? 0;
           if (daysLeft > 0) {
             statusText += `\n📅 До: ${expiresAt.toLocaleDateString('ru-RU')}`;
             statusText += `\n⏳ Осталось: ${daysLeft} дн.`;

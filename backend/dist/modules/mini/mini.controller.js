@@ -23,6 +23,7 @@ const plans_service_1 = require("../plans/plans.service");
 const payments_service_1 = require("../payments/payments.service");
 const servers_service_1 = require("../servers/servers.service");
 const bot_service_1 = require("../bot/bot.service");
+const subscription_metrics_1 = require("../../common/subscription/subscription-metrics");
 const crypto = require("crypto");
 const getOrCreateLocks = new Map();
 let MiniController = class MiniController {
@@ -133,11 +134,6 @@ let MiniController = class MiniController {
         return user;
     }
     buildStatusPayload(user, trafficUsed = null) {
-        let daysLeft = null;
-        if (user.expiresAt) {
-            const now = new Date();
-            daysLeft = Math.ceil((user.expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-        }
         const activeServers = (user.userServers || []).filter((us) => us.isActive);
         const subs = Array.isArray(user.subscriptions) ? user.subscriptions : [];
         const subscriptionForUi = user.expiresAt && subs.length > 0
@@ -145,11 +141,19 @@ let MiniController = class MiniController {
                 subs[0] ??
                 null)
             : (subs[0] ?? null);
+        const metrics = (0, subscription_metrics_1.buildSubscriptionMetrics)({
+            currentStatus: user.status,
+            expiresAt: user.expiresAt,
+            startsAt: subscriptionForUi?.startsAt,
+            endsAt: subscriptionForUi?.endsAt,
+            periodDays: subscriptionForUi?.periodDays ?? null,
+        });
         return {
             id: user.id,
-            status: user.status,
-            expiresAt: user.expiresAt,
-            daysLeft,
+            status: metrics.status,
+            expiresAt: metrics.expiresAtIso,
+            daysLeft: metrics.daysLeft,
+            progressLeftPct: metrics.progressLeftPct,
             trafficUsed,
             servers: activeServers.map((us) => ({
                 id: us.server.id,
@@ -159,8 +163,8 @@ let MiniController = class MiniController {
                 ? {
                     id: subscriptionForUi.id,
                     periodDays: subscriptionForUi.periodDays,
-                    startsAt: subscriptionForUi.startsAt,
-                    endsAt: subscriptionForUi.endsAt,
+                    startsAt: subscriptionForUi.startsAt instanceof Date ? subscriptionForUi.startsAt.toISOString() : subscriptionForUi.startsAt,
+                    endsAt: subscriptionForUi.endsAt instanceof Date ? subscriptionForUi.endsAt.toISOString() : subscriptionForUi.endsAt,
                 }
                 : null,
         };

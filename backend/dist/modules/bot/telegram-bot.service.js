@@ -23,6 +23,7 @@ const payments_service_1 = require("../payments/payments.service");
 const support_service_1 = require("../support/support.service");
 const prisma_service_1 = require("../prisma/prisma.service");
 const client_1 = require("@prisma/client");
+const subscription_metrics_1 = require("../../common/subscription/subscription-metrics");
 let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
     botService;
     usersService;
@@ -502,11 +503,18 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                         BLOCKED: 'Заблокирован',
                         EXPIRED: 'Истёк',
                     };
-                    let message = `${statusEmoji[user.status] || 'ℹ️'} <b>Статус</b>: ${this.esc(statusLabel[user.status] || user.status)}\n`;
-                    if (user.expiresAt) {
-                        const expiresAt = new Date(user.expiresAt);
-                        const now = new Date();
-                        const daysLeft = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                    const lastSub = user.subscriptions?.[0] ?? null;
+                    const metrics = (0, subscription_metrics_1.buildSubscriptionMetrics)({
+                        currentStatus: user.status,
+                        expiresAt: user.expiresAt,
+                        startsAt: lastSub?.startsAt,
+                        endsAt: lastSub?.endsAt,
+                        periodDays: lastSub?.periodDays ?? null,
+                    });
+                    let message = `${statusEmoji[metrics.status] || 'ℹ️'} <b>Статус</b>: ${this.esc(statusLabel[metrics.status] || metrics.status)}\n`;
+                    if (metrics.expiresAtIso) {
+                        const expiresAt = new Date(metrics.expiresAtIso);
+                        const daysLeft = metrics.daysLeft ?? 0;
                         if (daysLeft > 0) {
                             message += `\n📅 До: <b>${this.esc(this.fmtDate(expiresAt))}</b>\n`;
                             message += `⏳ Осталось: <b>${this.esc(daysLeft)}</b> дн.\n`;
@@ -530,8 +538,7 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                     else {
                         message += `\n🌐 Локация не выбрана\n📍 Выбрать: <code>/start</code>\n`;
                     }
-                    if (user.subscriptions && user.subscriptions.length > 0) {
-                        const lastSub = user.subscriptions[0];
+                    if (lastSub) {
                         message +=
                             `\n📦 Последний период: <b>${this.esc(lastSub.periodDays)}</b> дн.\n` +
                                 `(${this.esc(this.fmtDate(new Date(lastSub.startsAt)))} – ${this.esc(this.fmtDate(new Date(lastSub.endsAt)))})\n`;
@@ -910,11 +917,18 @@ let TelegramBotService = TelegramBotService_1 = class TelegramBotService {
                     BLOCKED: '🚫',
                     EXPIRED: '⏰',
                 };
-                let statusText = `\n\n${statusEmoji[user.status] || '❓'} Статус: ${user.status}`;
-                if (user.expiresAt) {
-                    const expiresAt = new Date(user.expiresAt);
-                    const now = new Date();
-                    const daysLeft = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                const lastSub = user.subscriptions?.[0] ?? null;
+                const metrics = (0, subscription_metrics_1.buildSubscriptionMetrics)({
+                    currentStatus: user.status,
+                    expiresAt: user.expiresAt,
+                    startsAt: lastSub?.startsAt,
+                    endsAt: lastSub?.endsAt,
+                    periodDays: lastSub?.periodDays ?? null,
+                });
+                let statusText = `\n\n${statusEmoji[metrics.status] || '❓'} Статус: ${metrics.status}`;
+                if (metrics.expiresAtIso) {
+                    const expiresAt = new Date(metrics.expiresAtIso);
+                    const daysLeft = metrics.daysLeft ?? 0;
                     if (daysLeft > 0) {
                         statusText += `\n📅 До: ${expiresAt.toLocaleDateString('ru-RU')}`;
                         statusText += `\n⏳ Осталось: ${daysLeft} дн.`;

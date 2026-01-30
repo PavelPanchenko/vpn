@@ -8,6 +8,7 @@ import { PlansService } from '../plans/plans.service';
 import { PaymentsService } from '../payments/payments.service';
 import { ServersService } from '../servers/servers.service';
 import { BotService } from '../bot/bot.service';
+import { buildSubscriptionMetrics } from '../../common/subscription/subscription-metrics';
 import * as crypto from 'crypto';
 
 /** Очередь операций "найти или создать" по telegramId — устраняет гонку при двойном вызове (например React Strict Mode). */
@@ -145,12 +146,6 @@ export class MiniController {
   }
 
   private buildStatusPayload(user: any, trafficUsed: number | null = null) {
-    let daysLeft: number | null = null;
-    if (user.expiresAt) {
-      const now = new Date();
-      daysLeft = Math.ceil((user.expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    }
-
     const activeServers = (user.userServers || []).filter((us: any) => us.isActive);
 
     const subs: any[] = Array.isArray(user.subscriptions) ? user.subscriptions : [];
@@ -161,11 +156,20 @@ export class MiniController {
           null)
         : (subs[0] ?? null);
 
+    const metrics = buildSubscriptionMetrics({
+      currentStatus: user.status,
+      expiresAt: user.expiresAt,
+      startsAt: subscriptionForUi?.startsAt,
+      endsAt: subscriptionForUi?.endsAt,
+      periodDays: subscriptionForUi?.periodDays ?? null,
+    });
+
     return {
       id: user.id,
-      status: user.status,
-      expiresAt: user.expiresAt,
-      daysLeft,
+      status: metrics.status,
+      expiresAt: metrics.expiresAtIso,
+      daysLeft: metrics.daysLeft,
+      progressLeftPct: metrics.progressLeftPct,
       trafficUsed,
       servers: activeServers.map((us: any) => ({
         id: us.server.id,
@@ -175,8 +179,8 @@ export class MiniController {
         ? {
             id: subscriptionForUi.id,
             periodDays: subscriptionForUi.periodDays,
-            startsAt: subscriptionForUi.startsAt,
-            endsAt: subscriptionForUi.endsAt,
+            startsAt: subscriptionForUi.startsAt instanceof Date ? subscriptionForUi.startsAt.toISOString() : subscriptionForUi.startsAt,
+            endsAt: subscriptionForUi.endsAt instanceof Date ? subscriptionForUi.endsAt.toISOString() : subscriptionForUi.endsAt,
           }
         : null,
     };

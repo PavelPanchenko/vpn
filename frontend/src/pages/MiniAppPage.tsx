@@ -24,6 +24,7 @@ type MiniStatus = {
   status: string;
   expiresAt: string | null;
   daysLeft: number | null;
+  progressLeftPct?: number | null;
   trafficUsed: number | null;
   servers: { id: string; name: string }[];
   botName?: string;
@@ -87,6 +88,7 @@ export function MiniAppPage() {
   };
 
   const tg = window.Telegram?.WebApp;
+  const [viewportVersion, setViewportVersion] = useState(0);
   const theme = useMemo(() => {
     const tp = tg?.themeParams || {};
     const get = (snake: string, camel: string) => (tp as any)[snake] ?? (tp as any)[camel];
@@ -153,6 +155,25 @@ export function MiniAppPage() {
     return () => {
       try {
         w.offEvent?.('themeChanged', onTheme);
+      } catch {
+        // ignore
+      }
+    };
+  }, []);
+
+  // Viewport (Telegram WebApp API): корректная высота внутри Telegram
+  useEffect(() => {
+    const w = window.Telegram?.WebApp;
+    if (!w) return;
+    const onViewport = () => setViewportVersion((v) => v + 1);
+    try {
+      w.onEvent?.('viewportChanged', onViewport);
+    } catch {
+      // ignore
+    }
+    return () => {
+      try {
+        w.offEvent?.('viewportChanged', onViewport);
       } catch {
         // ignore
       }
@@ -439,6 +460,12 @@ export function MiniAppPage() {
       style={{
         background: theme.bg,
         color: theme.text,
+        minHeight:
+          typeof tg?.viewportStableHeight === 'number'
+            ? `${tg.viewportStableHeight}px`
+            : typeof tg?.viewportHeight === 'number'
+              ? `${tg.viewportHeight}px`
+              : undefined,
         ...containerSafeStyle,
       }}
     >
@@ -517,21 +544,12 @@ export function MiniAppPage() {
                       {new Date(status.expiresAt).toLocaleDateString('ru-RU')} {status.daysLeft !== null && `(${status.daysLeft} дн.)`}
                     </span>
                   </div>
-                  {status.subscription?.startsAt && status.subscription?.endsAt ? (
+                  {status.progressLeftPct != null ? (
                     <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
                       <div
                         className="h-full rounded-full transition-all duration-500"
                         style={{
-                          width: `${(() => {
-                            const now = Date.now();
-                            const starts = new Date(status.subscription!.startsAt).getTime();
-                            const ends = new Date(status.subscription!.endsAt).getTime();
-                            if (!Number.isFinite(starts) || !Number.isFinite(ends) || ends <= starts) return 0;
-                            const total = ends - starts;
-                            const left = Math.max(0, ends - now);
-                            const pct = (left / total) * 100;
-                            return Math.max(0, Math.min(100, pct));
-                          })()}%`,
+                          width: `${Math.max(0, Math.min(100, status.progressLeftPct))}%`,
                           background: (status.daysLeft ?? 0) <= 7 ? 'rgba(251,191,36,0.8)' : theme.button,
                         }}
                       />
