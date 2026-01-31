@@ -1,11 +1,7 @@
 import type { Logger } from '@nestjs/common';
 import type { UsersService } from '../../users/users.service';
 import type { TelegramMessageCtx, TelegramReplyOptions } from '../telegram-runtime.types';
-
-type UserForConfigMessage = {
-  id: string;
-  status?: string | null;
-} | null;
+import type { UserForConfigMessage } from '../bot-user.types';
 
 export async function sendConfigMessage(args: {
   ctx: TelegramMessageCtx & {

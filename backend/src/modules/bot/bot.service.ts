@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException, Inject, forwardRef } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, Inject, forwardRef, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateBotConfigDto } from './dto/create-bot-config.dto';
@@ -8,6 +8,7 @@ import { TelegramBotService } from './telegram-bot.service';
 
 @Injectable()
 export class BotService {
+  private readonly logger = new Logger(BotService.name);
   private botMeCache: { value: { name: string; username?: string | null }; expiresAt: number } | null = null;
 
   constructor(
@@ -111,7 +112,7 @@ export class BotService {
     if (created.active) {
       this.telegramBotService.restartBot().catch((err) => {
         // Логируем ошибку, но не блокируем ответ
-        console.error('Failed to restart bot after creation:', err);
+        this.logger.error('Failed to restart bot after creation:', err);
       });
       
       // Логируем информацию о доступности существующих пользователей
@@ -119,7 +120,9 @@ export class BotService {
         where: { telegramId: { not: null } },
       });
       if (usersCount > 0) {
-        console.log(`New bot activated. ${usersCount} existing users will be automatically available (identified by telegramId).`);
+        this.logger.log(
+          `New bot activated. ${usersCount} existing users will be automatically available (identified by telegramId).`,
+        );
       }
     }
 
@@ -165,7 +168,7 @@ export class BotService {
     if (isTokenChanging || dto.active !== undefined || dto.useMiniApp !== undefined) {
       this.telegramBotService.restartBot().catch((err) => {
         // Логируем ошибку, но не блокируем ответ
-        console.error('Failed to restart bot after update:', err);
+        this.logger.error('Failed to restart bot after update:', err);
       });
       
       // Логируем информацию о миграции пользователей
@@ -173,7 +176,9 @@ export class BotService {
         const usersCount = await this.prisma.vpnUser.count({
           where: { telegramId: { not: null } },
         });
-        console.log(`Bot token updated. ${usersCount} existing users will be automatically available in the new bot (identified by telegramId).`);
+        this.logger.log(
+          `Bot token updated. ${usersCount} existing users will be automatically available in the new bot (identified by telegramId).`,
+        );
       }
     }
 
@@ -189,7 +194,7 @@ export class BotService {
     // Если удаляемая конфигурация была активной, останавливаем бота
     if (config.active) {
       this.telegramBotService.stopBot().catch((err) => {
-        console.error('Failed to stop bot before deletion:', err);
+        this.logger.error('Failed to stop bot before deletion:', err);
       });
     }
 

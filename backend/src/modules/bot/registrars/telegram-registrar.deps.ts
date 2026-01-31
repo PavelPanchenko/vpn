@@ -7,11 +7,7 @@ import type { SupportService } from '../../support/support.service';
 import type { UsersService } from '../../users/users.service';
 import type { TelegramBot, TelegramCallbackCtx, TelegramMessageCtx, TelegramReplyOptions } from '../telegram-runtime.types';
 import type { PlanLike } from '../bot-domain.types';
-
-type UserForConfigMessage = {
-  id: string;
-  status?: string | null;
-} | null;
+import type { UserForConfigMessage } from '../bot-user.types';
 
 export type TelegramRegistrarDeps = {
   bot: TelegramBot;

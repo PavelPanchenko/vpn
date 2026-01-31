@@ -23,6 +23,7 @@ import {
 } from './registrars/bot-bootstrap.registrar';
 import type { PlanLike } from './bot-domain.types';
 import type { TelegramReplyOptions } from './telegram-runtime.types';
+import type { UserForConfigMessage } from './bot-user.types';
 
 @Injectable()
 export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
@@ -249,7 +250,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     return planBtnLabel(plan);
   }
 
-  private async sendConfigMessage(ctx: TelegramMessageCtx, user: { id: string; status?: string | null } | null) {
+  private async sendConfigMessage(ctx: TelegramMessageCtx, user: UserForConfigMessage) {
     return sendConfigMessage({
       ctx,
       user,
