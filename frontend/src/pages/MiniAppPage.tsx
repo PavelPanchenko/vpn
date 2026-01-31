@@ -8,6 +8,7 @@ import { MiniAppFatalError } from '../components/MiniAppFatalError';
 import { MiniAppHeader } from '../components/MiniAppHeader';
 import { MiniAppFooter } from '../components/MiniAppFooter';
 import { useMiniAppController } from '../hooks/useMiniAppController';
+import { MiniAppPaymentMethodSheet } from '../components/MiniAppPaymentMethodSheet';
 
 const FALLBACK_APP_TITLE = 'VPN';
 
@@ -95,17 +96,40 @@ export function MiniAppPage() {
           <MiniAppPlans
             theme={theme}
             btnTapClass={BTN_TAP}
-            plans={controller.plans}
-            payingPlanId={controller.payingPlanId}
+            planGroups={controller.planGroups}
+            payingPlanKey={controller.payingPlanKey}
             onRefresh={controller.handleLoadPlans}
             onBack={controller.goHome}
-            onPay={controller.handlePay}
+            onSelectPlan={controller.openPaymentMethodsForGroup}
           />
         )}
         </div>
       </div>
 
       <MiniAppFooter theme={theme} />
+
+      <MiniAppPaymentMethodSheet
+        theme={theme}
+        btnTapClass={BTN_TAP}
+        open={controller.paymentSheetOpen}
+        title={controller.selectedPlanGroup ? `Оплата: ${controller.selectedPlanGroup.name}` : 'Выберите способ оплаты'}
+        options={[
+          {
+            id: 'TELEGRAM_STARS',
+            title: 'Telegram Stars',
+            subtitle: 'Оплата внутри Telegram',
+            badge: 'XTR',
+          },
+          {
+            id: 'EXTERNAL_URL',
+            title: 'Карта / RUB (внешняя)',
+            subtitle: 'Переход на страницу оплаты',
+            badge: 'RUB',
+          },
+        ]}
+        onClose={controller.closePaymentSheet}
+        onSelect={controller.choosePaymentMethod}
+      />
     </div>
   );
 }

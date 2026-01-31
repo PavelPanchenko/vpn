@@ -31,3 +31,12 @@ export async function payMiniPlan(initData: string, planId: string): Promise<Min
   return res.data;
 }
 
+export async function payMiniPlanWithProvider(
+  initData: string,
+  planId: string,
+  provider: 'TELEGRAM_STARS' | 'EXTERNAL_URL',
+): Promise<MiniPayResponse> {
+  const res = await api.post<MiniPayResponse>('/mini/pay', { initData, planId, provider });
+  return res.data;
+}
+

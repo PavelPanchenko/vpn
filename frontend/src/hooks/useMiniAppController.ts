@@ -7,11 +7,12 @@ import {
   fetchMiniPlans,
   fetchMiniServers,
   fetchMiniStatus,
-  payMiniPlan,
+  payMiniPlanWithProvider,
 } from '../lib/miniApi';
 import type { MiniPlan, MiniServer, MiniStatus } from '../lib/miniTypes';
 import type { MiniToastState } from '../components/MiniAppToast';
 import type { TelegramWebApp } from '../lib/telegramWebAppTypes';
+import { groupPlans, type MiniPlanGroup } from '../lib/planGrouping';
 
 function getInitDataFromUrl(): string {
   try {
@@ -50,13 +51,22 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
   const [toast, setToast] = useState<MiniToastState>(null);
   const [configUrl, setConfigUrl] = useState<string | null>(null);
   const [plans, setPlans] = useState<MiniPlan[]>([]);
-  const [payingPlanId, setPayingPlanId] = useState<string | null>(null);
+  const [payingPlanKey, setPayingPlanKey] = useState<string | null>(null);
   const [servers, setServers] = useState<MiniServer[]>([]);
   const [screen, setScreen] = useState<MiniScreen>('home');
   const [activatingServerId, setActivatingServerId] = useState<string | null>(null);
   const [refreshingServers, setRefreshingServers] = useState(false);
   const [configCopied, setConfigCopied] = useState(false);
   const [screenEntered, setScreenEntered] = useState(true);
+
+  const [paymentSheetOpen, setPaymentSheetOpen] = useState(false);
+  const [selectedPlanGroupKey, setSelectedPlanGroupKey] = useState<string | null>(null);
+
+  const planGroups: MiniPlanGroup[] = useMemo(() => groupPlans(plans), [plans]);
+  const selectedPlanGroup = useMemo(
+    () => (selectedPlanGroupKey ? planGroups.find((g) => g.key === selectedPlanGroupKey) ?? null : null),
+    [planGroups, selectedPlanGroupKey],
+  );
 
   const showErrorToast = useCallback((error: unknown, fallback: string) => {
     logDevError(error);
@@ -219,25 +229,83 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
   }, [initData]);
 
   const handlePay = useCallback(
-    async (planId: string) => {
+    async (planId: string, provider: 'TELEGRAM_STARS' | 'EXTERNAL_URL', payingKey: string) => {
       if (!initData) {
         setToast({ type: 'error', message: 'Сессия истекла. Закройте и откройте приложение снова.' });
         return;
       }
       setToast(null);
-      setPayingPlanId(planId);
+      setPayingPlanKey(payingKey);
       try {
-        await payMiniPlan(initData, planId);
+        const res = await payMiniPlanWithProvider(initData, planId, provider);
+
+        if ('invoiceLink' in res && res.invoiceLink) {
+          if (!tg?.openInvoice) {
+            setToast({ type: 'error', message: 'Оплата доступна только внутри Telegram.' });
+            return;
+          }
+
+          const status = await new Promise<'paid' | 'cancelled' | 'failed'>((resolve) => {
+            tg.openInvoice?.(res.invoiceLink, (s) => resolve(s));
+          });
+
+          await handleLoadStatusSilent();
+
+          if (status === 'paid') {
+            tg?.HapticFeedback?.notificationOccurred?.('success');
+            showSuccessToast('Оплата прошла. Подписка продлена.');
+          } else if (status === 'cancelled') {
+            setToast({ type: 'error', message: 'Оплата отменена.' });
+          } else {
+            setToast({ type: 'error', message: 'Не удалось выполнить оплату.' });
+          }
+          return;
+        }
+
+        if ('paymentUrl' in res && res.paymentUrl) {
+          if (tg?.openLink) tg.openLink(res.paymentUrl);
+          else window.open(res.paymentUrl, '_blank', 'noopener,noreferrer');
+          setToast({ type: 'success', message: 'Открываем страницу оплаты…' });
+          return;
+        }
+
         await handleLoadStatusSilent();
         tg?.HapticFeedback?.notificationOccurred?.('success');
         showSuccessToast('Оплата прошла. Подписка продлена.');
       } catch (e: unknown) {
         showErrorToast(e, 'Не удалось выполнить оплату.');
       } finally {
-        setPayingPlanId(null);
+        setPayingPlanKey(null);
       }
     },
     [initData, handleLoadStatusSilent, showErrorToast, showSuccessToast, tg],
+  );
+
+  const openPaymentMethodsForGroup = useCallback((groupKey: string) => {
+    setSelectedPlanGroupKey(groupKey);
+    setPaymentSheetOpen(true);
+  }, []);
+
+  const closePaymentSheet = useCallback(() => setPaymentSheetOpen(false), []);
+
+  const choosePaymentMethod = useCallback(
+    async (provider: 'TELEGRAM_STARS' | 'EXTERNAL_URL') => {
+      if (!selectedPlanGroup) return;
+
+      const variant =
+        provider === 'TELEGRAM_STARS'
+          ? selectedPlanGroup.variants.find((v) => v.currency === 'XTR')
+          : selectedPlanGroup.variants.find((v) => v.currency !== 'XTR');
+
+      if (!variant) {
+        setToast({ type: 'error', message: 'Этот способ оплаты недоступен для выбранного тарифа.' });
+        return;
+      }
+
+      setPaymentSheetOpen(false);
+      await handlePay(variant.id, provider, selectedPlanGroup.key);
+    },
+    [handlePay, selectedPlanGroup],
   );
 
   const handleCopyConfig = useCallback(async () => {
@@ -272,13 +340,16 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
     status,
     servers,
     plans,
+    planGroups,
     configUrl,
     configCopied,
-    payingPlanId,
+    payingPlanKey,
     activatingServerId,
     refreshingServers,
     hasActiveServer,
     activeServerId,
+    paymentSheetOpen,
+    selectedPlanGroup,
 
     // actions
     goHome,
@@ -289,6 +360,9 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
     handleActivateServer,
     handlePay,
     handleCopyConfig,
+    openPaymentMethodsForGroup,
+    closePaymentSheet,
+    choosePaymentMethod,
   };
 }
 

@@ -7,7 +7,7 @@ import { getMarkup } from '../telegram-markup.utils';
 import { editOrReplyHtml } from '../telegram-reply.utils';
 import { cbThenReplyHtml, cbThenReplyText } from '../telegram-callback.utils';
 import type { TelegramCallbackCtx, TelegramMessageCtx } from '../telegram-runtime.types';
-import type { PlanLike } from '../bot-domain.types';
+import { formatPlanGroupButtonLabel, groupPlansByNameAndPeriod } from '../plans/plan-grouping.utils';
 
 export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
   args.bot.action('get_config', async (ctx: TelegramCallbackCtx) => {
@@ -53,8 +53,9 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
       }
 
       const Markup = await getMarkup();
-      const buttons = paidPlans.map((plan: PlanLike) => [
-        Markup.button.callback(args.planBtnLabel(plan), `select_plan_${plan.id}`),
+      const groups = groupPlansByNameAndPeriod(paidPlans);
+      const buttons = groups.map((g) => [
+        Markup.button.callback(formatPlanGroupButtonLabel(g), `select_plan_${g.representative.id}`),
       ]);
 
       await ctx.answerCbQuery();

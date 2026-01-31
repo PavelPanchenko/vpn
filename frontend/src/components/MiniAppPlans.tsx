@@ -1,17 +1,17 @@
 import type { TelegramTheme } from '../hooks/useTelegramWebAppUi';
-import type { MiniPlan } from '../lib/miniTypes';
-import { formatPrice } from '../lib/formatters';
+import type { MiniPlanGroup } from '../lib/planGrouping';
+import { formatPlanGroupPrice } from '../lib/planGrouping';
 
 export function MiniAppPlans(props: {
   theme: TelegramTheme;
   btnTapClass: string;
-  plans: MiniPlan[];
-  payingPlanId: string | null;
+  planGroups: MiniPlanGroup[];
+  payingPlanKey: string | null;
   onRefresh: () => void;
   onBack: () => void;
-  onPay: (planId: string) => void;
+  onSelectPlan: (groupKey: string) => void;
 }) {
-  const { theme, btnTapClass, plans, payingPlanId, onRefresh, onBack, onPay } = props;
+  const { theme, btnTapClass, planGroups, payingPlanKey, onRefresh, onBack, onSelectPlan } = props;
 
   return (
     <section
@@ -30,17 +30,19 @@ export function MiniAppPlans(props: {
         </div>
       </div>
 
-      {plans.length === 0 ? (
+      {planGroups.length === 0 ? (
         <p className="text-sm py-4" style={{ color: theme.hint }}>
           Нажмите «Обновить», чтобы загрузить доступные тарифы.
         </p>
       ) : (
         <div className="space-y-4">
-          {plans.map((p) => {
-            const isTop = p.isTop ?? false;
+          {planGroups.map((g) => {
+            const isTop = g.isTop ?? false;
+            const hasStars = g.variants.some((v) => v.currency === 'XTR');
+            const hasExternal = g.variants.some((v) => v.currency !== 'XTR');
             return (
               <div
-                key={p.id}
+                key={g.key}
                 className="rounded-2xl p-4 transition-all duration-200"
                 style={{
                   background: isTop
@@ -54,7 +56,7 @@ export function MiniAppPlans(props: {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-base" style={{ color: theme.text }}>
-                        {p.name}
+                        {g.name}
                       </span>
                       {isTop && (
                         <span
@@ -66,30 +68,36 @@ export function MiniAppPlans(props: {
                       )}
                     </div>
                     <div className="mt-1 text-sm" style={{ color: theme.hint }}>
-                      {p.periodDays} {p.periodDays === 1 ? 'день' : p.periodDays < 5 ? 'дня' : 'дней'}
+                      {g.periodDays} {g.periodDays === 1 ? 'день' : g.periodDays < 5 ? 'дня' : 'дней'}
                     </div>
-                    {p.description ? (
+                    {g.description ? (
                       <p className="mt-2 text-xs leading-snug" style={{ color: theme.hint }}>
-                        {p.description}
+                        {g.description}
                       </p>
                     ) : null}
+                    <div className="mt-2 text-xs" style={{ color: theme.hint }}>
+                      Способы оплаты:{' '}
+                      {hasStars ? <span style={{ color: theme.text }}>Stars</span> : null}
+                      {hasStars && hasExternal ? ' · ' : null}
+                      {hasExternal ? <span style={{ color: theme.text }}>Карта</span> : null}
+                    </div>
                   </div>
                   <div className="shrink-0 text-right">
                     <div className="text-lg font-bold" style={{ color: theme.text }}>
-                      {formatPrice(p.price, p.currency)}
+                      {formatPlanGroupPrice(g)}
                     </div>
                     <button
                       type="button"
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        onPay(p.id);
+                        onSelectPlan(g.key);
                       }}
-                      disabled={payingPlanId === p.id}
+                      disabled={payingPlanKey === g.key}
                       className={`mt-2 inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed ${btnTapClass}`}
                       style={{ background: theme.button, color: theme.buttonText }}
                     >
-                      {payingPlanId === p.id ? 'Оплата...' : 'Оплатить'}
+                      {payingPlanKey === g.key ? 'Оплата...' : 'Оплатить'}
                     </button>
                   </div>
                 </div>

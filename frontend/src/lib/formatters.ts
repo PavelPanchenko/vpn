@@ -7,6 +7,7 @@ export function formatTraffic(bytes: number): string {
 
 export function formatPrice(price: number, currency: string): string {
   if (currency === 'RUB') return `${price} ₽`;
+  if (currency === 'XTR') return `${price} ⭐`;
   return `${price} ${currency}`;
 }
 

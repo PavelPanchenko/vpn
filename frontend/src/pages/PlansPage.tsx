@@ -10,6 +10,7 @@ import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
 import { Table, Td, Th } from '../components/Table';
 import { Badge } from '../components/Badge';
+import { CURRENCY_CODES } from '../lib/currencies';
 
 type Plan = {
   id: string;
@@ -284,8 +285,11 @@ export function PlansPage() {
               className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               {...createForm.register('currency', { required: 'Required' })}
             >
-              <option value="RUB">RUB</option>
-              <option value="USD">USD</option>
+              {CURRENCY_CODES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
             </select>
           </label>
           <label className="block">
@@ -384,8 +388,11 @@ export function PlansPage() {
               className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               {...editForm.register('currency', { required: 'Required' })}
             >
-              <option value="RUB">RUB</option>
-              <option value="USD">USD</option>
+              {CURRENCY_CODES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
             </select>
           </label>
           <label className="block">

@@ -1,4 +1,5 @@
 import { BadRequestException, Body, Controller, Post, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { MiniInitDataDto } from './dto/mini-auth.dto';
 import { MiniPayDto } from './dto/mini-pay.dto';
 import { MiniActivateServerDto } from './dto/mini-activate.dto';
@@ -11,6 +12,8 @@ import { BotService } from '../bot/bot.service';
 import { buildSubscriptionMetrics, type VpnUserStatus } from '../../common/subscription/subscription-metrics';
 import { toDateLike, type DateLike } from '../../common/subscription/user-like';
 import * as crypto from 'crypto';
+import { createTelegramStarsPaymentIntent } from '../payments/payment-providers/telegram-stars.provider';
+import { createExternalUrlPaymentIntent } from '../payments/payment-providers/external-url.provider';
 
 /** Очередь операций "найти или создать" по telegramId — устраняет гонку при двойном вызове (например React Strict Mode). */
 const getOrCreateLocks = new Map<string, Promise<unknown>>();
@@ -24,6 +27,7 @@ export class MiniController {
     private readonly paymentsService: PaymentsService,
     private readonly serversService: ServersService,
     private readonly botService: BotService,
+    private readonly configService: ConfigService,
   ) {}
 
   private async requireUserByTelegramId(telegramId: string) {
@@ -307,24 +311,29 @@ export class MiniController {
       throw new BadRequestException('Plan is not available');
     }
 
-    const payment = await this.paymentsService.create({
-      vpnUserId: user.id,
-      planId: plan.id,
-      amount: plan.price,
-      currency: plan.currency,
-      status: 'PAID',
-    });
+    const provider = dto.provider ?? (plan.currency === 'XTR' ? 'TELEGRAM_STARS' : 'EXTERNAL_URL');
 
-    if (!payment) {
-      // Теоретически create не должен возвращать null, но этот guard оставлен
-      // из-за строгой типизации и на случай изменений в реализации сервиса.
-      throw new BadRequestException('Failed to create payment');
+    const intent =
+      provider === 'TELEGRAM_STARS'
+        ? await createTelegramStarsPaymentIntent({
+            prisma: this.prisma,
+            config: this.configService,
+            botService: this.botService,
+            data: { vpnUserId: user.id, planId: plan.id },
+          })
+        : await createExternalUrlPaymentIntent({
+            config: this.configService,
+            data: { vpnUserId: user.id, planId: plan.id },
+          });
+
+    if (intent.type === 'UNSUPPORTED') {
+      throw new BadRequestException(intent.reason);
     }
 
-    return {
-      paymentId: payment.id,
-      status: payment.status,
-    };
+    if (intent.type === 'INVOICE_LINK') {
+      return { provider: intent.provider, invoiceLink: intent.invoiceLink };
+    }
+    return { provider: intent.provider, paymentUrl: intent.paymentUrl };
   }
 }
 

@@ -120,6 +120,94 @@ export class PaymentsService {
     });
   }
 
+  /**
+   * Идемпотентное подтверждение оплаты Telegram Stars по telegram_payment_charge_id.
+   * Важно: мы НЕ создаём payment до успешной оплаты (у нас нет статуса PENDING в БД),
+   * поэтому создаём запись только после successful_payment.
+   */
+  async createPaidFromTelegramStars(args: {
+    telegramPaymentChargeId: string;
+    vpnUserId: string;
+    planId: string;
+    amount: number;
+    currency: string; // ожидаем XTR
+  }) {
+    const user = await this.prisma.vpnUser.findUnique({ where: { id: args.vpnUserId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const plan = await this.prisma.plan.findUnique({ where: { id: args.planId } });
+    if (!plan) throw new NotFoundException('Plan not found');
+    if (!plan.active) throw new BadRequestException('Plan is not active');
+    if (plan.isTrial) throw new BadRequestException('Cannot pay for trial plan');
+
+    if (args.currency !== plan.currency) {
+      throw new BadRequestException(`Currency must be ${plan.currency} for this plan`);
+    }
+    if (args.amount !== plan.price) {
+      throw new BadRequestException('Payment amount mismatch');
+    }
+
+    // 1) payment (idempotent by charge id)
+    const payment = await this.prisma.payment.upsert({
+      where: { id: args.telegramPaymentChargeId },
+      update: {
+        // если уже есть — не меняем сумму/валюту, только гарантируем статус
+        status: 'PAID',
+      },
+      create: {
+        id: args.telegramPaymentChargeId,
+        vpnUserId: args.vpnUserId,
+        planId: plan.id,
+        amount: args.amount,
+        currency: args.currency,
+        planPriceAtPurchase: plan.price,
+        status: 'PAID',
+      },
+      include: {
+        vpnUser: { include: { server: true, userServers: { include: { server: true } } } },
+        plan: true,
+      },
+    });
+
+    // 2) firstPaidAt (один раз)
+    if (!user.firstPaidAt) {
+      await this.prisma.vpnUser.update({
+        where: { id: args.vpnUserId },
+        data: { firstPaidAt: payment.createdAt },
+      });
+    }
+
+    // 3) subscription (idempotent by unique paymentId)
+    const existingSubscription = await this.prisma.subscription.findUnique({
+      where: { paymentId: payment.id },
+    });
+    if (!existingSubscription) {
+      const now = new Date();
+      let startsAt = now;
+      const activeSubscription = await this.prisma.subscription.findFirst({
+        where: { vpnUserId: args.vpnUserId, active: true },
+        orderBy: { endsAt: 'desc' },
+      });
+      if (activeSubscription && activeSubscription.endsAt > now) {
+        startsAt = activeSubscription.endsAt;
+      }
+
+      try {
+        await this.subscriptions.create({
+          vpnUserId: args.vpnUserId,
+          paymentId: payment.id,
+          planId: plan.id,
+          periodDays: plan.periodDays,
+          startsAt: startsAt.toISOString(),
+        });
+      } catch {
+        // возможен race при дублирующемся update (уникальный paymentId) — игнорируем
+      }
+    }
+
+    return payment;
+  }
+
   async update(id: string, dto: UpdatePaymentDto) {
     await this.get(id);
     return this.prisma.payment.update({

@@ -33,6 +33,9 @@ export type TelegramWebApp = {
   expand?: () => void;
   close?: () => void;
 
+  openInvoice?: (url: string, cb: (status: 'paid' | 'cancelled' | 'failed') => void) => void;
+  openLink?: (url: string, options?: { try_instant_view?: boolean }) => void;
+
   setHeaderColor?: (color: string) => void;
   setBackgroundColor?: (color: string) => void;
 

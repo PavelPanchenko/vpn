@@ -11,6 +11,8 @@ import type { UserForConfigMessage } from '../bot-user.types';
 
 export type TelegramRegistrarDeps = {
   bot: TelegramBot;
+  /** Текущий токен, с которым запущен бот (нужен для Payments Stars и подписи payload). */
+  botToken: string;
   logger: Logger;
   config: ConfigService;
   prisma: PrismaService;

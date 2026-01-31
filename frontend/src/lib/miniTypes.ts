@@ -39,8 +39,18 @@ export type MiniConfigResponse = {
   configs?: Array<{ url: string; serverName?: string }>;
 };
 
-export type MiniPayResponse = {
-  paymentId: string;
-  status: string;
-};
+export type MiniPayResponse =
+  | {
+      provider: 'TELEGRAM_STARS';
+      invoiceLink: string;
+    }
+  | {
+      provider: 'EXTERNAL_URL';
+      paymentUrl: string;
+    }
+  | {
+      // legacy / future providers
+      paymentId: string;
+      status: string;
+    };
 

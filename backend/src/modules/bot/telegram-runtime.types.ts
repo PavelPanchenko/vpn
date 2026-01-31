@@ -39,6 +39,16 @@ export type TelegramBotTelegramApi = {
   setMyCommands: (commands: Array<{ command: string; description: string }>) => Promise<unknown>;
   deleteWebhook: (args?: { drop_pending_updates?: boolean }) => Promise<unknown>;
   sendMessage: (chatId: string | number, text: string, extra?: TelegramReplyOptions) => Promise<unknown>;
+  sendInvoice?: (
+    chatId: string | number,
+    title: string,
+    description: string,
+    payload: string,
+    providerToken: string,
+    currency: string,
+    prices: Array<{ label: string; amount: number }>,
+    extra?: TelegramReplyOptions,
+  ) => Promise<unknown>;
 };
 
 export type TelegramBot = {
@@ -49,7 +59,12 @@ export type TelegramBot = {
     (trigger: RegExp, handler: (ctx: TelegramCallbackCtx<TelegramCallbackMatch>) => Promise<unknown> | unknown): unknown;
     (trigger: string, handler: (ctx: TelegramCallbackCtx) => Promise<unknown> | unknown): unknown;
   };
-  on: (event: 'text', handler: (ctx: TelegramMessageCtx & { message: TelegramMessage }) => Promise<unknown> | unknown) => unknown;
+  on: {
+    (event: 'text', handler: (ctx: TelegramMessageCtx & { message: TelegramMessage }) => Promise<unknown> | unknown): unknown;
+    // Payment events (Telegram Bot Payments)
+    (event: 'pre_checkout_query', handler: (ctx: any) => Promise<unknown> | unknown): unknown;
+    (event: 'successful_payment', handler: (ctx: any) => Promise<unknown> | unknown): unknown;
+  };
   catch: (handler: (err: unknown, ctx: TelegramMessageCtx) => unknown) => unknown;
 
   launch: () => Promise<unknown>;

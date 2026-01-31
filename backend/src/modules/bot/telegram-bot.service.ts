@@ -15,6 +15,7 @@ import { registerTelegramCommands } from './registrars/telegram-commands.registr
 import { registerMainMenuHandlers } from './registrars/main-menu.registrar';
 import { registerOnboardingHandlers } from './registrars/onboarding.registrar';
 import { registerPaymentsHandlers } from './registrars/payments.registrar';
+import { registerTelegramStarsPayments } from './registrars/stars-payments.registrar';
 import type { TelegramRegistrarDeps } from './registrars/telegram-registrar.deps';
 import type { TelegramBot } from './telegram-runtime.types';
 import type { TelegramCallbackCtx, TelegramMessageCtx } from './telegram-runtime.types';
@@ -161,6 +162,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
 
       const registrarDeps: TelegramRegistrarDeps = {
         bot: this.bot,
+        botToken: token,
         logger: this.logger,
         config: this.config,
         prisma: this.prisma,
@@ -191,6 +193,9 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       registerTelegramCommands(registrarDeps);
 
       registerMainMenuHandlers(registrarDeps);
+
+      // Telegram Stars payments (pre_checkout_query + successful_payment)
+      registerTelegramStarsPayments(registrarDeps);
 
       // Запуск bота (bootstrap: catch, commands menu, optional deleteWebhook, launch, graceful stop)
       await bootstrapLongPollingBot({ deps: registrarDeps, token, onStop: () => this.stopBot() });

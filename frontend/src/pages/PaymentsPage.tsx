@@ -5,6 +5,8 @@ import { toast } from 'react-toastify';
 import { api } from '../lib/api';
 import { getApiErrorMessage } from '../lib/apiError';
 import { type Payment, type PaymentStatus, type VpnUser, type Plan } from '../lib/types';
+import type { CurrencyCode } from '../lib/currencies';
+import { CURRENCY_CODES } from '../lib/currencies';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -23,7 +25,7 @@ type CreatePaymentForm = {
   vpnUserId: string;
   planId: string;
   amount: number;
-  currency: 'RUB' | 'USD';
+  currency: CurrencyCode;
   status: PaymentStatus;
 };
 
@@ -75,7 +77,7 @@ export function PaymentsPage() {
   useEffect(() => {
     if (selectedPlan) {
       createForm.setValue('amount', selectedPlan.price);
-      createForm.setValue('currency', selectedPlan.currency as 'RUB' | 'USD');
+      createForm.setValue('currency', selectedPlan.currency as CurrencyCode);
     }
   }, [selectedPlan, createForm]);
 
@@ -278,8 +280,11 @@ export function PaymentsPage() {
               className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               {...createForm.register('currency', { required: true })}
             >
-              <option value="RUB">RUB</option>
-              <option value="USD">USD</option>
+              {CURRENCY_CODES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
             </select>
             {selectedPlan && (
               <div className="mt-1 text-xs text-slate-500">Currency is set from selected plan (can be changed for existing clients)</div>
