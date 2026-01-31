@@ -32,15 +32,15 @@ export class PlansService {
     const isExistingUser = user?.firstPaidAt !== null;
 
     // Логика видимости тарифов:
-    // - Новые пользователи (firstPaidAt IS NULL): только новые тарифы (legacy=false, availableFor IN ("ALL", "NEW_USERS"))
-    // - Существующие пользователи (firstPaidAt IS NOT NULL): все тарифы (availableFor IN ("ALL", "EXISTING_USERS"), legacy может быть любым)
+    // - Новые пользователи (firstPaidAt IS NULL): доступность определяется availableFor IN ("ALL", "NEW_USERS")
+    // - Существующие пользователи (firstPaidAt IS NOT NULL): доступность определяется availableFor IN ("ALL", "EXISTING_USERS")
+    // NOTE: поле legacy — это метка для админки/миграции цен, но не должно само по себе скрывать тариф у новых пользователей
     // Trial не показываем в списке — он выдаётся автоматически при первом подключении
     where.isTrial = false;
 
     if (isExistingUser) {
       where.availableFor = { in: ['ALL', 'EXISTING_USERS'] };
     } else {
-      where.legacy = false;
       where.availableFor = { in: ['ALL', 'NEW_USERS'] };
     }
 
