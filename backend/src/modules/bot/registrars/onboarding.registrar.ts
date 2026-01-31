@@ -112,20 +112,27 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       if (displayedPlans.length > 0) {
         const middleIndex = Math.floor(displayedPlans.length / 2);
         const recommendedPlan = displayedPlans[middleIndex];
-        const minPrice = Math.min(...displayedPlans.map((p: PlanLike) => p.price));
-        const minPricePlan = displayedPlans.find((p: PlanLike) => p.price === minPrice);
+        const minPrice = Math.min(
+          ...displayedPlans.map((p: PlanLike) => Math.min(...((p.variants ?? []).map((v) => v.price)))),
+        );
+        const minPricePlan = displayedPlans.find((p: PlanLike) =>
+          (p.variants ?? []).some((v) => v.price === minPrice),
+        );
 
         message += `\n<b>Тарифы после пробного периода</b>\n`;
         displayedPlans.forEach((plan: PlanLike) => {
           const tag = plan.id === recommendedPlan?.id ? ' ⭐' : '';
-          message += `• <b>${args.esc(plan.name)}</b>${tag} — ${args.esc(plan.price)} ${args.esc(plan.currency)} / ${args.esc(
-            plan.periodDays,
-          )} дн.\n`;
+          const prices = (plan.variants ?? [])
+            .map((v) => `${args.esc(v.price)} ${args.esc(v.currency)}`)
+            .join(' | ');
+          message += `• <b>${args.esc(plan.name)}</b>${tag} — ${prices} / ${args.esc(plan.periodDays)} дн.\n`;
         });
         if (paidPlans.length > displayedPlans.length) {
           message += `• …ещё ${args.esc(paidPlans.length - displayedPlans.length)} тарифов\n`;
         }
-        message += `\n💰 От <b>${args.esc(minPrice)} ${args.esc(minPricePlan?.currency || 'RUB')}</b>\n`;
+        const minPriceCurrency =
+          (minPricePlan?.variants ?? []).find((v) => v.price === minPrice)?.currency ?? 'RUB';
+        message += `\n💰 От <b>${args.esc(minPrice)} ${args.esc(minPriceCurrency)}</b>\n`;
       }
 
       message += `\nНажмите «Подтвердить», чтобы подключиться.`;

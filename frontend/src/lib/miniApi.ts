@@ -26,17 +26,17 @@ export async function activateMiniServer(initData: string, serverId: string): Pr
   return res.data;
 }
 
-export async function payMiniPlan(initData: string, planId: string): Promise<MiniPayResponse> {
-  const res = await api.post<MiniPayResponse>('/mini/pay', { initData, planId });
+export async function payMiniPlan(initData: string, variantId: string): Promise<MiniPayResponse> {
+  const res = await api.post<MiniPayResponse>('/mini/pay', { initData, variantId });
   return res.data;
 }
 
 export async function payMiniPlanWithProvider(
   initData: string,
-  planId: string,
+  variantId: string,
   provider: 'TELEGRAM_STARS' | 'EXTERNAL_URL',
 ): Promise<MiniPayResponse> {
-  const res = await api.post<MiniPayResponse>('/mini/pay', { initData, planId, provider });
+  const res = await api.post<MiniPayResponse>('/mini/pay', { initData, variantId, provider });
   return res.data;
 }
 

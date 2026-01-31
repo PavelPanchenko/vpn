@@ -3,7 +3,7 @@ import { MiniInitDataDto } from './mini-auth.dto';
 
 export class MiniPayDto extends MiniInitDataDto {
   @IsString()
-  planId!: string;
+  variantId!: string;
 
   @IsOptional()
   @IsIn(['TELEGRAM_STARS', 'EXTERNAL_URL'])

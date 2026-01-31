@@ -19,7 +19,8 @@ export class PlansService {
     if (!userId) {
       return this.prisma.plan.findMany({
         where,
-        orderBy: { price: 'asc' },
+        include: { variants: { orderBy: { price: 'asc' } } },
+        orderBy: [{ isTrial: 'desc' }, { periodDays: 'asc' }, { createdAt: 'asc' }],
       });
     }
 
@@ -46,14 +47,16 @@ export class PlansService {
 
     let result = await this.prisma.plan.findMany({
       where,
-      orderBy: { price: 'asc' },
+      include: { variants: { where: { active: true }, orderBy: { price: 'asc' } } },
+      orderBy: [{ periodDays: 'asc' }, { createdAt: 'asc' }],
     });
 
     // Fallback: если для пользователя ничего не подошло — показываем все активные нетриальные (чтобы в Mini App всегда было что выбрать)
     if (result.length === 0) {
       result = await this.prisma.plan.findMany({
         where: { active: true, isTrial: false },
-        orderBy: { price: 'asc' },
+        include: { variants: { where: { active: true }, orderBy: { price: 'asc' } } },
+        orderBy: [{ periodDays: 'asc' }, { createdAt: 'asc' }],
       });
     }
 
@@ -70,7 +73,34 @@ export class PlansService {
     if (dto.isTop) {
       await this.prisma.plan.updateMany({ data: { isTop: false } });
     }
-    return this.prisma.plan.create({ data: dto });
+    if (!dto.variants || dto.variants.length === 0) {
+      throw new Error('Plan variants are required');
+    }
+
+    const variants = dto.variants.map((v) => ({
+      code: v.code,
+      currency: v.currency,
+      price: v.price,
+      provider: v.provider ?? (v.currency === 'XTR' ? 'TELEGRAM_STARS' : 'EXTERNAL_URL'),
+      active: v.active ?? true,
+    }));
+
+    const created = await this.prisma.plan.create({
+      data: {
+        code: dto.code,
+        name: dto.name,
+        description: dto.description,
+        periodDays: dto.periodDays,
+        isTrial: dto.isTrial ?? false,
+        active: dto.active ?? true,
+        legacy: dto.legacy ?? false,
+        availableFor: dto.availableFor ?? 'ALL',
+        isTop: dto.isTop ?? false,
+        variants: { create: variants },
+      },
+      include: { variants: { orderBy: { price: 'asc' } } },
+    });
+    return created;
   }
 
   async update(id: string, dto: UpdatePlanDto) {
@@ -78,7 +108,11 @@ export class PlansService {
     if (dto.isTop === true) {
       await this.prisma.plan.updateMany({ where: { id: { not: id } }, data: { isTop: false } });
     }
-    return this.prisma.plan.update({ where: { id }, data: dto });
+    return this.prisma.plan.update({
+      where: { id },
+      data: dto,
+      include: { variants: { orderBy: { price: 'asc' } } },
+    });
   }
 
   async remove(id: string) {

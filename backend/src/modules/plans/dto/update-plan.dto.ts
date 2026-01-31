@@ -16,15 +16,6 @@ export class UpdatePlanDto {
   periodDays?: number;
 
   @IsOptional()
-  @IsInt()
-  @Min(0)
-  price?: number;
-
-  @IsOptional()
-  @IsString()
-  currency?: string;
-
-  @IsOptional()
   @IsBoolean()
   isTrial?: boolean;
 

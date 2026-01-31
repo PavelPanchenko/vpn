@@ -16,16 +16,22 @@ export function fmtDateRu(d: Date): string {
 export function planBtnLabel(plan: unknown): string {
   const p = plan as {
     name?: unknown;
-    price?: unknown;
-    currency?: unknown;
     periodDays?: unknown;
+    variants?: Array<{ price?: unknown; currency?: unknown }>;
   } | null;
   // Короткая подпись для inline-кнопки (Telegram ограничивает длину)
   const name = String(p?.name ?? 'Тариф');
-  const price = p?.price != null ? `${p.price}` : '?';
-  const cur = String(p?.currency ?? '');
+  const variants = Array.isArray(p?.variants) ? p?.variants : [];
+  const prices =
+    variants.length > 0
+      ? variants
+          .map((v) => `${String(v?.price ?? '?')} ${String(v?.currency ?? '')}`.trim())
+          .filter(Boolean)
+          .slice(0, 2)
+          .join(' | ')
+      : '?';
   const days = p?.periodDays != null ? `${p.periodDays}д` : '';
-  return `${name} · ${price} ${cur} · ${days}`.trim();
+  return `${name} · ${prices} · ${days}`.trim();
 }
 
 /** Маскирует host сервера для безопасности (IP/домен). */

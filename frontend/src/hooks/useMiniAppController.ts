@@ -229,7 +229,7 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
   }, [initData]);
 
   const handlePay = useCallback(
-    async (planId: string, provider: 'TELEGRAM_STARS' | 'EXTERNAL_URL', payingKey: string) => {
+    async (variantId: string, provider: 'TELEGRAM_STARS' | 'EXTERNAL_URL', payingKey: string) => {
       if (!initData) {
         setToast({ type: 'error', message: 'Сессия истекла. Закройте и откройте приложение снова.' });
         return;
@@ -237,7 +237,7 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
       setToast(null);
       setPayingPlanKey(payingKey);
       try {
-        const res = await payMiniPlanWithProvider(initData, planId, provider);
+        const res = await payMiniPlanWithProvider(initData, variantId, provider);
 
         if ('invoiceLink' in res && res.invoiceLink) {
           if (!tg?.openInvoice) {

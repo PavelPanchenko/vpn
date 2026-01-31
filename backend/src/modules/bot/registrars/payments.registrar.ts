@@ -5,10 +5,10 @@ import { getMarkup } from '../telegram-markup.utils';
 import { editOrReplyHtml } from '../telegram-reply.utils';
 import type { TelegramCallbackCtx, TelegramCallbackMatch, TelegramMessageCtx } from '../telegram-runtime.types';
 import { getErrorMessage } from '../telegram-error.utils';
-import { buildTelegramStarsInvoicePayload } from '../../payments/telegram-stars/telegram-stars.payload';
-import { createExternalUrlPaymentIntent } from '../../payments/payment-providers/external-url.provider';
 import { formatPlanGroupButtonLabel, groupPlansByNameAndPeriod } from '../plans/plan-grouping.utils';
 import { sendTelegramStarsInvoice } from '../../payments/telegram-stars/telegram-bot-api';
+import { buildTelegramStarsInvoicePayload } from '../../payments/telegram-stars/telegram-stars.payload';
+import { createExternalUrlPaymentIntent } from '../../payments/payment-providers/external-url.provider';
 
 export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
   // /pay - показываем тарифы
@@ -70,39 +70,39 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
         return;
       }
 
-      const plan = await args.prisma.plan.findUnique({ where: { id: planId } });
+      const plan = await args.prisma.plan.findUnique({
+        where: { id: planId },
+        include: { variants: { where: { active: true }, orderBy: { price: 'asc' } } },
+      });
 
       if (!plan || !plan.active || plan.isTrial) {
         await ctx.reply(BotMessages.planUnavailableText);
         return;
       }
 
-      // Шаг 2: выбор способа оплаты для "группы" (варианты определяем по name + periodDays)
-      const variants = await args.prisma.plan.findMany({
-        where: { active: true, isTrial: false, name: plan.name, periodDays: plan.periodDays },
-        orderBy: { price: 'asc' },
-      });
-
-      const starsPlan = variants.find((v) => v.currency === 'XTR') ?? null;
-      const externalPlan =
-        variants.find((v) => v.currency === 'RUB') ?? variants.find((v) => v.currency !== 'XTR') ?? null;
+      const variants = (plan as any).variants ?? [];
+      const starsVariant = variants.find((v: any) => v.currency === 'XTR') ?? null;
+      const externalVariant =
+        variants.find((v: any) => v.currency === 'RUB') ?? variants.find((v: any) => v.currency !== 'XTR') ?? null;
 
       const Markup = await getMarkup();
       const methodButtons: Array<Array<ReturnType<typeof Markup.button.callback>>> = [];
 
-      if (starsPlan) methodButtons.push([Markup.button.callback('⭐ Telegram Stars', `pay_with_TELEGRAM_STARS_${starsPlan.id}`)]);
-      if (externalPlan) methodButtons.push([Markup.button.callback('💳 Карта / RUB', `pay_with_EXTERNAL_URL_${externalPlan.id}`)]);
+      if (starsVariant)
+        methodButtons.push([
+          Markup.button.callback('⭐ Telegram Stars', `pay_with_TELEGRAM_STARS_${starsVariant.id}`),
+        ]);
+      if (externalVariant)
+        methodButtons.push([
+          Markup.button.callback('💳 Карта / RUB', `pay_with_EXTERNAL_URL_${externalVariant.id}`),
+        ]);
 
       if (methodButtons.length === 0) {
         await editOrReplyHtml(ctx, BotMessages.noPaidPlansHtml);
         return;
       }
 
-      await editOrReplyHtml(
-        ctx,
-        `💳 <b>${args.esc(plan.name)}</b>\n\nВыберите способ оплаты:`,
-        Markup.inlineKeyboard(methodButtons),
-      );
+      await editOrReplyHtml(ctx, `💳 <b>${args.esc(plan.name)}</b>\n\nВыберите способ оплаты:`, Markup.inlineKeyboard(methodButtons));
     } catch (error: unknown) {
       args.logger.error('Error handling plan selection:', error);
       await ctx.answerCbQuery(BotMessages.paymentCreateCbErrorText);
@@ -119,7 +119,7 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
     /^pay_with_(TELEGRAM_STARS|EXTERNAL_URL)_(.+)$/,
     async (ctx: TelegramCallbackCtx<TelegramCallbackMatch>) => {
       const provider = ctx.match[1] as 'TELEGRAM_STARS' | 'EXTERNAL_URL';
-      const planId = ctx.match[2];
+      const variantId = ctx.match[2];
       const telegramId = ctx.from.id.toString();
 
       try {
@@ -131,15 +131,20 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
           return;
         }
 
-        const plan = await args.prisma.plan.findUnique({ where: { id: planId } });
-        if (!plan || !plan.active || plan.isTrial) {
+        const variant = await (args.prisma as any).planVariant.findUnique({
+          where: { id: variantId },
+          include: { plan: true },
+        });
+
+        const plan = variant?.plan;
+        if (!variant || !plan || !plan.active || plan.isTrial || !variant.active) {
           await ctx.reply(BotMessages.planUnavailableText);
           return;
         }
 
         if (provider === 'TELEGRAM_STARS') {
-          if (plan.currency !== 'XTR') {
-            await editOrReplyHtml(ctx, `⚠️ Этот тариф нельзя оплатить через Stars (валюта: <b>${args.esc(plan.currency)}</b>).`);
+          if (variant.currency !== 'XTR') {
+            await editOrReplyHtml(ctx, `⚠️ Этот вариант нельзя оплатить через Stars (валюта: <b>${args.esc(variant.currency)}</b>).`);
             return;
           }
 
@@ -147,6 +152,7 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
           const payload = buildTelegramStarsInvoicePayload({
             userId: user.id,
             planId: plan.id,
+            variantId: variant.id,
             issuedAt: Date.now(),
             secret,
           });
@@ -158,19 +164,19 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
             description: `Подписка на ${plan.periodDays} дней`,
             payload,
             currency: 'XTR',
-            prices: [{ label: plan.name, amount: plan.price }],
+            prices: [{ label: plan.name, amount: variant.price }],
           });
 
           await editOrReplyHtml(
             ctx,
             `💳 Счёт отправлен.\n\n` +
-              `Оплатите <b>${args.esc(plan.price)} XTR</b>, затем подписка активируется автоматически.`,
+              `Оплатите <b>${args.esc(variant.price)} XTR</b>, затем подписка активируется автоматически.`,
           );
           return;
         }
 
         // EXTERNAL_URL
-        if (plan.currency === 'XTR') {
+        if (variant.currency === 'XTR') {
           await editOrReplyHtml(ctx, `⚠️ Этот тариф предназначен для Stars. Выберите оплату Stars.`);
           return;
         }

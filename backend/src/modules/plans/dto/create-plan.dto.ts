@@ -1,4 +1,6 @@
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, Min, ValidateNested, ArrayMinSize } from 'class-validator';
+import { Type } from 'class-transformer';
+import { CreatePlanVariantDto } from './create-plan-variant.dto';
 
 export class CreatePlanDto {
   @IsString()
@@ -16,12 +18,10 @@ export class CreatePlanDto {
   @Max(3650)
   periodDays!: number;
 
-  @IsInt()
-  @Min(0)
-  price!: number;
-
-  @IsString()
-  currency!: string;
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => CreatePlanVariantDto)
+  variants!: CreatePlanVariantDto[];
 
   @IsOptional()
   @IsBoolean()

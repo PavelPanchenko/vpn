@@ -186,8 +186,6 @@ model Plan {
   name        String
   description String?
   periodDays  Int
-  price       Int
-  currency    String   @default("RUB")
   isTrial     Boolean  @default(false)
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
@@ -199,9 +197,33 @@ model Plan {
   // UI
   isTop        Boolean @default(false)
 
+  variants     PlanVariant[]
   payments     Payment[]
 
   @@map("plans")
+}
+
+model PlanVariant {
+  id        String   @id @default(cuid())
+  planId    String
+
+  /// Уникальный код варианта (сохраняем текущие 1m / 1m_stars и т.п.)
+  code      String   @unique
+
+  currency  String
+  price     Int
+
+  /// Ключ провайдера оплаты (например TELEGRAM_STARS / EXTERNAL_URL).
+  provider  String
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([planId, currency])
+  @@index([planId])
+  @@map("plan_variants")
 }
 
 model SupportMessage {

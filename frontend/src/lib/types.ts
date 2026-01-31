@@ -61,20 +61,30 @@ export type Subscription = {
 
 export type PaymentStatus = 'PAID' | 'FAILED';
 
+export type PlanVariant = {
+  id: string;
+  planId: string;
+  code: string;
+  currency: string;
+  price: number;
+  provider: string;
+  active: boolean;
+  createdAt: string;
+};
+
 export type Plan = {
   id: string;
   code: string;
   name: string;
   description: string | null;
   periodDays: number;
-  price: number;
-  currency: string;
   isTrial: boolean;
   active: boolean;
   legacy: boolean;
   availableFor: 'ALL' | 'NEW_USERS' | 'EXISTING_USERS';
   isTop: boolean;
   createdAt: string;
+  variants?: PlanVariant[];
 };
 
 export type Payment = {

@@ -11,16 +11,20 @@ export async function createTelegramStarsPaymentIntent(args: {
   botService: BotService;
   data: CreatePaymentIntentArgs;
 }): Promise<CreatePaymentIntentResult> {
-  const plan = await args.prisma.plan.findUnique({ where: { id: args.data.planId } });
+  const plan = await args.prisma.plan.findUnique({
+    where: { id: args.data.planId },
+    include: { variants: { where: { active: true } } },
+  });
   if (!plan || !plan.active || plan.isTrial) {
     return { provider: 'TELEGRAM_STARS', type: 'UNSUPPORTED', reason: 'Plan is not available' };
   }
 
-  if (plan.currency !== 'XTR') {
+  const starsVariant = (plan as any).variants?.find((v: any) => v.currency === 'XTR') ?? null;
+  if (!starsVariant) {
     return {
       provider: 'TELEGRAM_STARS',
       type: 'UNSUPPORTED',
-      reason: 'This plan is not available for Telegram Stars payment (currency must be XTR)',
+      reason: 'This plan has no Telegram Stars variant (currency XTR)',
     };
   }
 
@@ -33,6 +37,7 @@ export async function createTelegramStarsPaymentIntent(args: {
   const payload = buildTelegramStarsInvoicePayload({
     userId: args.data.vpnUserId,
     planId: plan.id,
+    variantId: starsVariant.id,
     issuedAt: Date.now(),
     secret,
   });
@@ -43,7 +48,7 @@ export async function createTelegramStarsPaymentIntent(args: {
     description: `Подписка на ${plan.periodDays} дней`,
     payload,
     currency: 'XTR',
-    prices: [{ label: plan.name, amount: plan.price }],
+    prices: [{ label: plan.name, amount: starsVariant.price }],
   });
 
   return { provider: 'TELEGRAM_STARS', type: 'INVOICE_LINK', invoiceLink };

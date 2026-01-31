@@ -24,6 +24,7 @@ type CreatePaymentPayload = {
 type CreatePaymentForm = {
   vpnUserId: string;
   planId: string;
+  variantId: string;
   amount: number;
   currency: CurrencyCode;
   status: PaymentStatus;
@@ -37,6 +38,7 @@ export function PaymentsPage() {
     defaultValues: {
       vpnUserId: '',
       planId: '',
+      variantId: '',
       amount: 0,
       currency: 'RUB',
       status: 'PAID',
@@ -73,13 +75,39 @@ export function PaymentsPage() {
     return availablePlans.find((p) => p.id === selectedPlanId);
   }, [availablePlans, selectedPlanId]);
 
+  const selectedVariantId = createForm.watch('variantId');
+  const selectedVariant = useMemo(() => {
+    const vars = selectedPlan?.variants ?? [];
+    if (!selectedPlan) return null;
+    const byId = vars.find((v) => v.id === selectedVariantId) ?? null;
+    if (byId) return byId;
+    const rub = vars.find((v) => v.currency === 'RUB') ?? null;
+    const nonXtr = vars.find((v) => v.currency !== 'XTR') ?? null;
+    return rub ?? nonXtr ?? vars[0] ?? null;
+  }, [selectedPlan, selectedVariantId]);
+
   // Автоматически заполняем сумму и валюту при выборе тарифа
   useEffect(() => {
     if (selectedPlan) {
-      createForm.setValue('amount', selectedPlan.price);
-      createForm.setValue('currency', selectedPlan.currency as CurrencyCode);
+      // при смене тарифа — выбираем дефолтный вариант
+      const vars = selectedPlan.variants ?? [];
+      const rub = vars.find((v) => v.currency === 'RUB') ?? null;
+      const nonXtr = vars.find((v) => v.currency !== 'XTR') ?? null;
+      const def = rub ?? nonXtr ?? vars[0] ?? null;
+      createForm.setValue('variantId', def?.id ?? '');
+      if (def) {
+        createForm.setValue('amount', def.price);
+        createForm.setValue('currency', def.currency as CurrencyCode);
+      }
     }
   }, [selectedPlan, createForm]);
+
+  useEffect(() => {
+    if (selectedVariant) {
+      createForm.setValue('amount', selectedVariant.price);
+      createForm.setValue('currency', selectedVariant.currency as CurrencyCode);
+    }
+  }, [selectedVariant, createForm]);
 
   const createM = useMutation({
     mutationFn: async (payload: CreatePaymentPayload) => (await api.post<Payment>('/payments', payload)).data,
@@ -105,6 +133,16 @@ export function PaymentsPage() {
 
   const users = useMemo(() => usersQ.data ?? [], [usersQ.data]);
   const payments = useMemo(() => paymentsQ.data ?? [], [paymentsQ.data]);
+
+  function formatPlanVariantsShort(plan: Plan) {
+    const vars = plan.variants ?? [];
+    if (vars.length === 0) return '—';
+    return vars
+      .slice()
+      .sort((a, b) => a.price - b.price)
+      .map((v) => `${v.price} ${v.currency}`)
+      .join(' | ');
+  }
 
   return (
     <div className="grid gap-6">
@@ -252,7 +290,7 @@ export function PaymentsPage() {
               <option value="">Manual payment (no plan)</option>
               {availablePlans.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name} — {p.price} {p.currency} ({p.periodDays} days)
+                  {p.name} — {formatPlanVariantsShort(p)} ({p.periodDays} days)
                 </option>
               ))}
             </select>
@@ -263,13 +301,30 @@ export function PaymentsPage() {
             )}
           </label>
 
+          {selectedPlan && (selectedPlan.variants ?? []).length > 0 ? (
+            <label className="block">
+              <div className="text-sm font-medium text-slate-700">Variant (for autofill)</div>
+              <select
+                className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                {...createForm.register('variantId')}
+              >
+                {(selectedPlan.variants ?? []).map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.currency} — {v.price} ({v.provider}) {v.active ? '' : ' (INACTIVE)'}
+                  </option>
+                ))}
+              </select>
+              <div className="mt-1 text-xs text-slate-500">Используется только для автозаполнения суммы/валюты.</div>
+            </label>
+          ) : null}
+
           <Input
             label="Amount *"
             type="number"
             {...createForm.register('amount', { required: true, min: 1, valueAsNumber: true })}
             hint={
-              selectedPlan
-                ? `Current plan price: ${selectedPlan.price} ${selectedPlan.currency}. You can change this for existing clients.`
+              selectedVariant
+                ? `Текущий вариант: ${selectedVariant.currency} ${selectedVariant.price}. Можно изменить вручную.`
                 : undefined
             }
           />

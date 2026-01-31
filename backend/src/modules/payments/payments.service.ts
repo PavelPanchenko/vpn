@@ -42,23 +42,26 @@ export class PaymentsService {
     let plan = null;
     let planPriceAtPurchase: number | null = null;
     if (dto.planId) {
-      plan = await this.prisma.plan.findUnique({ where: { id: dto.planId } });
+      plan = await (this.prisma as any).plan.findUnique({
+        where: { id: dto.planId },
+        include: { variants: { where: { active: true } } },
+      });
       if (!plan) throw new NotFoundException('Plan not found');
       if (!plan.active) throw new BadRequestException('Plan is not active');
       if (plan.isTrial) throw new BadRequestException('Cannot pay for trial plan');
-      
-      // Сохраняем текущую цену тарифа на момент покупки
-      planPriceAtPurchase = plan.price;
-      
-      // Проверяем валюту (цена может отличаться для старых клиентов)
-      if (dto.currency !== plan.currency) {
-        throw new BadRequestException(`Currency must be ${plan.currency} for this plan`);
+
+      const variant = (plan as any).variants?.find((v: any) => v.currency === dto.currency) ?? null;
+      if (!variant) {
+        throw new BadRequestException(`Plan does not support currency ${dto.currency}`);
       }
-      
+
+      // Сохраняем текущую цену варианта на момент покупки
+      planPriceAtPurchase = Number(variant.price);
+
       // Предупреждение, если сумма отличается от текущей цены (но не блокируем)
       // Это позволяет применять старые цены для существующих клиентов
-      if (dto.amount !== plan.price) {
-        // Логируем, но не блокируем - это может быть старая цена для существующего клиента
+      if (dto.amount !== planPriceAtPurchase) {
+        // best-effort: можно логировать, но не блокируем
       }
     }
 
@@ -129,6 +132,7 @@ export class PaymentsService {
     telegramPaymentChargeId: string;
     vpnUserId: string;
     planId: string;
+    variantId: string;
     amount: number;
     currency: string; // ожидаем XTR
   }) {
@@ -140,10 +144,15 @@ export class PaymentsService {
     if (!plan.active) throw new BadRequestException('Plan is not active');
     if (plan.isTrial) throw new BadRequestException('Cannot pay for trial plan');
 
-    if (args.currency !== plan.currency) {
-      throw new BadRequestException(`Currency must be ${plan.currency} for this plan`);
+    const variant = await (this.prisma as any).planVariant.findUnique({ where: { id: args.variantId } });
+    if (!variant || !variant.active || variant.planId !== plan.id) {
+      throw new BadRequestException('Plan variant is not available');
     }
-    if (args.amount !== plan.price) {
+
+    if (args.currency !== variant.currency) {
+      throw new BadRequestException(`Currency must be ${variant.currency} for this plan variant`);
+    }
+    if (args.amount !== variant.price) {
       throw new BadRequestException('Payment amount mismatch');
     }
 
@@ -160,7 +169,7 @@ export class PaymentsService {
         planId: plan.id,
         amount: args.amount,
         currency: args.currency,
-        planPriceAtPurchase: plan.price,
+        planPriceAtPurchase: variant.price,
         status: 'PAID',
       },
       include: {

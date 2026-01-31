@@ -30,9 +30,15 @@ export function registerTelegramStarsPayments(args: TelegramRegistrarDeps) {
         return;
       }
 
+      const variant = await (args.prisma as any).planVariant.findUnique({ where: { id: data.variantId } });
+      if (!variant || !variant.active || variant.planId !== data.planId) {
+        await ctx.answerPreCheckoutQuery(false, 'Вариант тарифа недоступен.');
+        return;
+      }
+
       const amount = Number(q?.total_amount);
       const currency = String(q?.currency ?? '');
-      if (currency !== plan.currency || amount !== plan.price) {
+      if (currency !== variant.currency || amount !== variant.price) {
         await ctx.answerPreCheckoutQuery(false, 'Сумма платежа не совпадает. Попробуйте заново.');
         return;
       }
@@ -83,6 +89,7 @@ export function registerTelegramStarsPayments(args: TelegramRegistrarDeps) {
         telegramPaymentChargeId: telegramChargeId,
         vpnUserId: user.id,
         planId: data.planId,
+        variantId: data.variantId,
         amount,
         currency,
       });

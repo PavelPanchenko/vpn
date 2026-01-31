@@ -295,7 +295,36 @@ export class MiniController {
   async plans(@Body() dto: MiniInitDataDto) {
     const { telegramId, name } = await this.validateInitData(dto.initData);
     const user = await this.getOrCreateUser(telegramId, name);
-    return this.plansService.list(user.id);
+    const plans = await this.plansService.list(user.id);
+
+    // Для mini-app отдаём плоский список вариантов (как раньше), чтобы UI остался простым:
+    // id == variantId, а name/periodDays/description берём из плана.
+    const out: Array<{
+      id: string;
+      name: string;
+      price: number;
+      currency: string;
+      periodDays: number;
+      description?: string | null;
+      isTop?: boolean;
+    }> = [];
+
+    for (const p of plans as any[]) {
+      const vars = p.variants ?? [];
+      for (const v of vars) {
+        out.push({
+          id: v.id,
+          name: p.name,
+          price: v.price,
+          currency: v.currency,
+          periodDays: p.periodDays,
+          description: p.description ?? null,
+          isTop: p.isTop ?? false,
+        });
+      }
+    }
+
+    return out;
   }
 
   @Post('pay')
@@ -303,15 +332,22 @@ export class MiniController {
     const { telegramId } = await this.validateInitData(dto.initData);
     const user = await this.requireUserByTelegramId(telegramId);
 
-    const plan = await this.prisma.plan.findUnique({
-      where: { id: dto.planId },
+    const variant = await (this.prisma as any).planVariant.findUnique({
+      where: { id: dto.variantId },
+      include: { plan: true },
     });
-
-    if (!plan || !plan.active || plan.isTrial) {
-      throw new BadRequestException('Plan is not available');
+    const plan = variant?.plan;
+    if (!variant || !plan || !plan.active || plan.isTrial || !variant.active) {
+      throw new BadRequestException('Plan variant is not available');
     }
 
-    const provider = dto.provider ?? (plan.currency === 'XTR' ? 'TELEGRAM_STARS' : 'EXTERNAL_URL');
+    const provider = dto.provider ?? (variant.currency === 'XTR' ? 'TELEGRAM_STARS' : 'EXTERNAL_URL');
+    if (provider === 'TELEGRAM_STARS' && variant.currency !== 'XTR') {
+      throw new BadRequestException('This plan variant cannot be paid with Telegram Stars');
+    }
+    if (provider === 'EXTERNAL_URL' && variant.currency === 'XTR') {
+      throw new BadRequestException('This plan variant is intended for Telegram Stars');
+    }
 
     const intent =
       provider === 'TELEGRAM_STARS'
