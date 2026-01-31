@@ -190,8 +190,6 @@ model Plan {
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
 
-  // legacy visibility / segmentation
-  legacy       Boolean @default(false)
   availableFor String  @default("ALL")
 
   // UI

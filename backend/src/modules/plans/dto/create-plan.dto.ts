@@ -32,10 +32,6 @@ export class CreatePlanDto {
   active?: boolean;
 
   @IsOptional()
-  @IsBoolean()
-  legacy?: boolean; // Старые тарифы для существующих пользователей
-
-  @IsOptional()
   @IsIn(['ALL', 'NEW_USERS', 'EXISTING_USERS'])
   availableFor?: string; // Для кого доступен тариф
 

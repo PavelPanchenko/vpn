@@ -35,7 +35,7 @@ export class PlansService {
     // Логика видимости тарифов:
     // - Новые пользователи (firstPaidAt IS NULL): доступность определяется availableFor IN ("ALL", "NEW_USERS")
     // - Существующие пользователи (firstPaidAt IS NOT NULL): доступность определяется availableFor IN ("ALL", "EXISTING_USERS")
-    // NOTE: поле legacy — это метка для админки/миграции цен, но не должно само по себе скрывать тариф у новых пользователей
+    // NOTE: видимость тарифов контролируется только availableFor (legacy удалён)
     // Trial не показываем в списке — он выдаётся автоматически при первом подключении
     where.isTrial = false;
 
@@ -93,7 +93,6 @@ export class PlansService {
         periodDays: dto.periodDays,
         isTrial: dto.isTrial ?? false,
         active: dto.active ?? true,
-        legacy: dto.legacy ?? false,
         availableFor: dto.availableFor ?? 'ALL',
         isTop: dto.isTop ?? false,
         variants: { create: variants },

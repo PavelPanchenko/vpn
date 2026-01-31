@@ -24,10 +24,6 @@ export class UpdatePlanDto {
   active?: boolean;
 
   @IsOptional()
-  @IsBoolean()
-  legacy?: boolean;
-
-  @IsOptional()
   @IsIn(['ALL', 'NEW_USERS', 'EXISTING_USERS'])
   availableFor?: string;
 
