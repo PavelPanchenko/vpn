@@ -33,22 +33,19 @@ export function groupPlansByNameAndPeriod(plans: PlanLike[]): PlanGroup[] {
 
   const groups: PlanGroup[] = [];
   for (const g of map.values()) {
-    // предпочитаем non-XTR как representative (чтобы клик по тарифу не выглядел как “только Stars”)
-    const representative =
-      g.variants.find((v) => v.currency !== 'XTR') ??
-      g.variants.find((v) => v.currency === 'XTR') ??
-      g.variants[0];
+    // представитель — просто один из планов группы
+    const representative = g.variants[0];
     groups.push({ ...g, representative });
   }
 
-  // Сортировка: сначала те, где есть non-XTR, затем по periodDays, затем по min price
+  // Сортировка: сначала те, где есть non-XTR variant, затем по periodDays, затем по min price
   groups.sort((a, b) => {
-    const aHasNonXtr = a.variants.some((v) => v.currency !== 'XTR');
-    const bHasNonXtr = b.variants.some((v) => v.currency !== 'XTR');
+    const aHasNonXtr = a.variants.some((p) => (p.variants ?? []).some((v) => v.currency !== 'XTR'));
+    const bHasNonXtr = b.variants.some((p) => (p.variants ?? []).some((v) => v.currency !== 'XTR'));
     if (aHasNonXtr !== bHasNonXtr) return aHasNonXtr ? -1 : 1;
     if (a.periodDays !== b.periodDays) return a.periodDays - b.periodDays;
-    const aMin = Math.min(...a.variants.map((v) => v.price));
-    const bMin = Math.min(...b.variants.map((v) => v.price));
+    const aMin = Math.min(...a.variants.flatMap((p) => (p.variants ?? []).map((v) => v.price)));
+    const bMin = Math.min(...b.variants.flatMap((p) => (p.variants ?? []).map((v) => v.price)));
     return aMin - bMin;
   });
 
@@ -56,14 +53,14 @@ export function groupPlansByNameAndPeriod(plans: PlanLike[]): PlanGroup[] {
 }
 
 export function formatPlanGroupButtonLabel(group: PlanGroup): string {
-  const stars = group.variants.find((v) => v.currency === 'XTR');
-  const nonXtr = group.variants.find((v) => v.currency !== 'XTR');
-
+  const plan = group.representative;
+  const variants = plan.variants ?? [];
+  const nonXtr = variants.find((v) => v.currency !== 'XTR');
+  const stars = variants.find((v) => v.currency === 'XTR');
   const prices = [nonXtr, stars]
     .filter(Boolean)
-    .map((p) => formatPriceShort((p as PlanLike).price, (p as PlanLike).currency))
+    .map((v) => formatPriceShort((v as any).price, (v as any).currency))
     .join(' | ');
-
   return prices ? `${group.name} — ${prices}` : group.name;
 }
 
