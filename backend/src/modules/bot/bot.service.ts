@@ -21,7 +21,7 @@ export class BotService {
     return this.config.getOrThrow<string>('PANEL_CRED_SECRET');
   }
 
-  private maskConfig(config: any) {
+  private maskConfig<T extends { tokenEnc?: unknown }>(config: T): Omit<T, 'tokenEnc'> {
     // never return encrypted token to frontend
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { tokenEnc, ...rest } = config;
@@ -67,7 +67,9 @@ export class BotService {
 
     try {
       const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
-      const json: any = await res.json();
+      const json = (await res.json()) as
+        | { ok?: boolean; result?: { first_name?: string; username?: string } }
+        | undefined;
       const name =
         json?.ok && json?.result
           ? (json.result.first_name || json.result.username || 'VPN')
@@ -138,7 +140,7 @@ export class BotService {
       });
     }
 
-    const updateData: any = {};
+    const updateData: Partial<Pick<typeof config, 'tokenEnc' | 'active' | 'useMiniApp'>> = {};
     const isTokenChanging = dto.token !== undefined;
     
     if (isTokenChanging && dto.token) {

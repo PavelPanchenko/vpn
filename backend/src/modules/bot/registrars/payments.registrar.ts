@@ -3,7 +3,9 @@ import { getPaidPlansWithFallback } from '../plans/paid-plans.utils';
 import { BotMessages } from '../messages/common.messages';
 import { getMarkup } from '../telegram-markup.utils';
 import { editOrReplyHtml } from '../telegram-reply.utils';
-import type { TelegramCallbackCtx, TelegramMessageCtx } from '../telegram-runtime.types';
+import type { TelegramCallbackCtx, TelegramCallbackMatch, TelegramMessageCtx } from '../telegram-runtime.types';
+import type { PlanLike } from '../bot-domain.types';
+import { getErrorMessage } from '../telegram-error.utils';
 
 export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
   // /pay - показываем тарифы
@@ -34,7 +36,7 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
       }
 
       const Markup = await getMarkup();
-      const buttons = paidPlans.map((plan: any) => [
+      const buttons = paidPlans.map((plan: PlanLike) => [
         Markup.button.callback(args.planBtnLabel(plan), `select_plan_${plan.id}`),
       ]);
 
@@ -43,14 +45,14 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
         `💳 <b>Оплата подписки</b>\n\n` + `Выберите тариф ниже — после оплаты подписка активируется автоматически.`,
         Markup.inlineKeyboard(buttons),
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
       args.logger.error('Error handling /pay command:', error);
       await ctx.reply(BotMessages.errorTryLaterText);
     }
   });
 
   // Выбор тарифа
-  args.bot.action(/^select_plan_(.+)$/, async (ctx: TelegramCallbackCtx) => {
+  args.bot.action(/^select_plan_(.+)$/, async (ctx: TelegramCallbackCtx<TelegramCallbackMatch>) => {
     const planId = ctx.match[1];
     const telegramId = ctx.from.id.toString();
 
@@ -88,12 +90,12 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
         `Далее: получить конфиг — <code>/config</code>`;
 
       await editOrReplyHtml(ctx, msg);
-    } catch (error: any) {
+    } catch (error: unknown) {
       args.logger.error('Error handling plan selection:', error);
       await ctx.answerCbQuery(BotMessages.paymentCreateCbErrorText);
       await ctx.reply(
         `❌ Произошла ошибка при обработке платежа.\n\n` +
-          `Ошибка: ${error?.message || 'Неизвестная ошибка'}\n\n` +
+          `Ошибка: ${getErrorMessage(error) || 'Неизвестная ошибка'}\n\n` +
           `Попробуйте позже или обратитесь к администратору.`,
       );
     }

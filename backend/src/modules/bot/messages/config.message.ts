@@ -2,6 +2,11 @@ import type { Logger } from '@nestjs/common';
 import type { UsersService } from '../../users/users.service';
 import type { TelegramMessageCtx, TelegramReplyOptions } from '../telegram-runtime.types';
 
+type UserForConfigMessage = {
+  id: string;
+  status?: string | null;
+} | null;
+
 export async function sendConfigMessage(args: {
   ctx: TelegramMessageCtx & {
     replyWithPhoto?: (
@@ -9,10 +14,10 @@ export async function sendConfigMessage(args: {
       extra?: TelegramReplyOptions,
     ) => Promise<unknown>;
   };
-  user: any;
+  user: UserForConfigMessage;
   usersService: UsersService;
   logger: Logger;
-  replyHtml: (ctx: TelegramMessageCtx, html: string, extra?: Record<string, unknown>) => Promise<unknown>;
+  replyHtml: (ctx: TelegramMessageCtx, html: string, extra?: TelegramReplyOptions) => Promise<unknown>;
   esc: (s: unknown) => string;
 }) {
   const { ctx, user, usersService, logger, replyHtml, esc } = args;
@@ -61,7 +66,7 @@ export async function sendConfigMessage(args: {
         parse_mode: 'HTML',
       },
     );
-  } catch (qrError: any) {
+  } catch (qrError: unknown) {
     logger.error('Failed to generate QR code:', qrError);
     await replyHtml(ctx, '⚠️ Не удалось сгенерировать QR‑код. Ниже доступна ссылка конфигурации.');
   }

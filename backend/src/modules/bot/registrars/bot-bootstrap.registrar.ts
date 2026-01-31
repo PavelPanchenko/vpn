@@ -6,7 +6,7 @@ import { BotMessages } from '../messages/common.messages';
 import type { TelegramBot } from '../telegram-runtime.types';
 
 export function registerBotCatch(args: { bot: TelegramBot; logger: Logger }) {
-  args.bot.catch((err: any, ctx) => {
+  args.bot.catch((err: unknown, ctx) => {
     args.logger.error('Bot error:', err);
     ctx.reply(BotMessages.errorTryLaterText);
   });
@@ -47,7 +47,7 @@ export async function registerBotCommandsMenu(args: {
 
     await args.bot.telegram.setMyCommands(commands);
     args.logger.log('Bot commands registered successfully');
-  } catch (error: any) {
+  } catch (error: unknown) {
     args.logger.warn('Failed to register bot commands:', error);
     // Продолжаем запуск даже если не удалось зарегистрировать команды
   }
@@ -74,7 +74,7 @@ export async function maybeDeleteWebhookOnStart(args: {
 
   try {
     await args.bot.telegram.deleteWebhook({ drop_pending_updates: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     args.logger.warn('Failed to delete webhook (can be ignored):', error);
   }
 }

@@ -1,4 +1,4 @@
-import type { TelegramCallbackCtx, TelegramMessageCtx } from './telegram-runtime.types';
+import type { TelegramCallbackCtx, TelegramMessageCtx, TelegramReplyOptions } from './telegram-runtime.types';
 
 /** Безопасная обёртка над answerCbQuery (в некоторых клиентах может падать). */
 export async function answerCbQuerySafe(ctx: Partial<Pick<TelegramCallbackCtx, 'answerCbQuery'>>, text?: string) {
@@ -26,7 +26,7 @@ export async function cbThenReplyHtml(args: {
   ctx: TelegramMessageCtx & Partial<TelegramCallbackCtx>;
   cbText: string;
   html: string;
-  replyHtml: (ctx: TelegramMessageCtx, html: string, extra?: Record<string, unknown>) => Promise<unknown>;
+  replyHtml: (ctx: TelegramMessageCtx, html: string, extra?: TelegramReplyOptions) => Promise<unknown>;
 }) {
   await answerCbQuerySafe(args.ctx, args.cbText);
   return args.replyHtml(args.ctx, args.html);

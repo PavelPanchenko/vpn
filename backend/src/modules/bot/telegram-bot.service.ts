@@ -21,6 +21,8 @@ import type { TelegramCallbackCtx, TelegramMessageCtx } from './telegram-runtime
 import {
   bootstrapLongPollingBot,
 } from './registrars/bot-bootstrap.registrar';
+import type { PlanLike } from './bot-domain.types';
+import type { TelegramReplyOptions } from './telegram-runtime.types';
 
 @Injectable()
 export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
@@ -56,7 +58,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         await this.stopBot();
         // Даем время на остановку
         await new Promise(resolve => setTimeout(resolve, 1000));
-      } catch (error: any) {
+      } catch (error: unknown) {
         this.logger.warn('Error stopping existing bot:', error);
       }
     }
@@ -93,7 +95,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       try {
         await this.stopBot();
         await new Promise(resolve => setTimeout(resolve, 500));
-      } catch (error: any) {
+      } catch (error: unknown) {
         this.logger.warn('Error stopping existing bot:', error);
       }
     }
@@ -119,7 +121,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
           return;
         }
         this.pollingLockAcquired = true;
-      } catch (lockError: any) {
+      } catch (lockError: unknown) {
         // Если lock не смогли взять (например, права/ошибка соединения) — лучше не стартовать бот,
         // иначе можем поймать 409 и начать "драться" с другим инстансом.
         this.logger.error('Failed to acquire Telegram polling lock. Bot will not start.', lockError);
@@ -192,7 +194,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       // Запуск bота (bootstrap: catch, commands menu, optional deleteWebhook, launch, graceful stop)
       await bootstrapLongPollingBot({ deps: registrarDeps, token, onStop: () => this.stopBot() });
       this.isRunning = true;
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.logger.error('Failed to start bot:', error);
       // Если старт не удался — отпускаем lock, чтобы другой инстанс мог попытаться поднять бота.
       if (this.pollingLockAcquired) {
@@ -227,7 +229,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   }
 
   // --- Trial helpers (DRY) ---
-  private getTrialDaysFromPlans(plans: any[]): number {
+  private getTrialDaysFromPlans(plans: PlanLike[]): number {
     return getTrialDaysFromPlans(plans);
   }
 
@@ -243,11 +245,11 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     return editHtml(ctx, html, extra);
   }
 
-  private planBtnLabel(plan: any): string {
+  private planBtnLabel(plan: PlanLike): string {
     return planBtnLabel(plan);
   }
 
-  private async sendConfigMessage(ctx: TelegramMessageCtx, user: any) {
+  private async sendConfigMessage(ctx: TelegramMessageCtx, user: { id: string; status?: string | null } | null) {
     return sendConfigMessage({
       ctx,
       user,
@@ -268,11 +270,11 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  private async buildMainMenuKeyboard(user: any) {
+  private async buildMainMenuKeyboard(user: { id?: string } | null): Promise<TelegramReplyOptions> {
     return buildMainMenuKeyboard({ prisma: this.prisma, config: this.config, user });
   }
 
-  private async showMainMenu(ctx: TelegramMessageCtx, user: any) {
+  private async showMainMenu(ctx: TelegramMessageCtx, user: { id: string } & Record<string, unknown>) {
     await this.replyHtml(
       ctx,
       `🏠 <b>Главное меню</b>\n<i>Выберите действие ниже</i>`,
@@ -306,7 +308,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         { parse_mode: 'HTML', disable_web_page_preview: true },
       );
       this.logger.log(`Support reply sent successfully to ${telegramId}`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.logger.error(`Failed to send support reply to ${telegramId}:`, error);
       // Не пробрасываем ошибку дальше, чтобы не прерывать создание ответа в БД
     }
@@ -350,7 +352,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         this.pollingLockAcquired = false;
       }
       this.logger.log('Telegram bot stopped');
-    } catch (error: any) {
+    } catch (error: unknown) {
       this.logger.error('Error stopping bot:', error);
       this.isRunning = false;
       this.bot = null;

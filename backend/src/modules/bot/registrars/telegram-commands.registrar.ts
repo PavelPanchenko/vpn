@@ -18,7 +18,7 @@ export function registerTelegramCommands(args: TelegramRegistrarDeps) {
       });
 
       await args.sendConfigMessage(ctx, user);
-    } catch (error: any) {
+    } catch (error: unknown) {
       args.logger.error('Error handling /config command:', error);
       await args.replyHtml(
         ctx,
@@ -44,7 +44,7 @@ export function registerTelegramCommands(args: TelegramRegistrarDeps) {
 
       args.logger.log(`Support mode activated for user: ${telegramId}`);
       await args.enableSupportMode(ctx, telegramId);
-    } catch (error: any) {
+    } catch (error: unknown) {
       args.logger.error('Error handling /support command:', error);
       await ctx.reply(BotMessages.errorTryLaterText);
     }
@@ -72,7 +72,7 @@ export function registerTelegramCommands(args: TelegramRegistrarDeps) {
         `Если что-то не работает — напишите в <code>/support</code>.`;
 
       await args.replyHtml(ctx, helpMessage);
-    } catch (error: any) {
+    } catch (error: unknown) {
       args.logger.error('Error handling /help command:', error);
       await ctx.reply(BotMessages.errorTryLaterText);
     }
@@ -102,7 +102,7 @@ export function registerTelegramCommands(args: TelegramRegistrarDeps) {
       }
 
       await args.replyHtml(ctx, buildStatusHtmlMessage({ user, esc: args.esc, fmtDate: args.fmtDate }));
-    } catch (error: any) {
+    } catch (error: unknown) {
       args.logger.error('Error handling /status command:', error);
       await ctx.reply(
         '❌ Произошла ошибка при получении статуса.\n\n' +
@@ -151,7 +151,7 @@ export function registerTelegramCommands(args: TelegramRegistrarDeps) {
       if (!supportTelegram && !supportEmail) msg += '  • не настроено\n';
 
       await ctx.reply(msg, { parse_mode: 'HTML' });
-    } catch (error: any) {
+    } catch (error: unknown) {
       args.logger.error('Error handling /info command:', error);
       await ctx.reply(BotMessages.infoLoadFailedText);
     }

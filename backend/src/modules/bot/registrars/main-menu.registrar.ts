@@ -7,6 +7,7 @@ import { getMarkup } from '../telegram-markup.utils';
 import { editOrReplyHtml } from '../telegram-reply.utils';
 import { cbThenReplyHtml, cbThenReplyText } from '../telegram-callback.utils';
 import type { TelegramCallbackCtx, TelegramMessageCtx } from '../telegram-runtime.types';
+import type { PlanLike } from '../bot-domain.types';
 
 export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
   args.bot.action('get_config', async (ctx: TelegramCallbackCtx) => {
@@ -52,7 +53,7 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
       }
 
       const Markup = await getMarkup();
-      const buttons = paidPlans.map((plan: any) => [
+      const buttons = paidPlans.map((plan: PlanLike) => [
         Markup.button.callback(args.planBtnLabel(plan), `select_plan_${plan.id}`),
       ]);
 
@@ -63,7 +64,7 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
         `💳 <b>Оплата подписки</b>\n\nВыберите тариф ниже — подписка активируется автоматически.`,
         Markup.inlineKeyboard(buttons),
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
       args.logger.error('Error handling show_pay action:', error);
       await cbThenReplyText({ ctx, cbText: BotMessages.errorCbText, replyText: BotMessages.errorTryLaterText });
     }
@@ -90,7 +91,7 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
         // ignore
       }
       await args.showMainMenu(ctx, user);
-    } catch (error: any) {
+    } catch (error: unknown) {
       args.logger.error('Error handling back_to_main action:', error);
       await ctx.answerCbQuery(BotMessages.errorCbText);
     }
@@ -124,7 +125,7 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
       } catch {
         await ctx.reply(`🏠 Главное меню:${statusText}`, menuKeyboard);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       args.logger.error('Error handling show_status action:', error);
       await ctx.answerCbQuery(BotMessages.errorCbText);
     }
@@ -144,7 +145,7 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
 
       await ctx.answerCbQuery();
       await args.enableSupportMode(ctx, telegramId);
-    } catch (error: any) {
+    } catch (error: unknown) {
       args.logger.error('Error starting support mode:', error);
       await ctx.answerCbQuery(BotMessages.errorCbText);
     }
@@ -185,7 +186,7 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
           `Если хотите добавить детали — отправьте ещё одно сообщение.\n` +
           `Выйти: <code>/cancel</code> или <code>/start</code>`,
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
       args.logger.error('Error handling user message:', error);
       await ctx.reply(BotMessages.supportSendFailedText);
     }

@@ -1,20 +1,20 @@
 import type { ConfigService } from '@nestjs/config';
 import type { PrismaService } from '../../prisma/prisma.service';
+import type { TelegramReplyOptions } from '../telegram-runtime.types';
 
 export async function buildMainMenuKeyboard(args: {
   prisma: PrismaService;
   config: ConfigService;
-  user: any;
-}) {
+  user:
+    | {
+        id?: string;
+        serverId?: string | null;
+        userServers?: unknown[];
+      }
+    | null;
+}): Promise<TelegramReplyOptions> {
   const { getMarkup } = await import('../telegram-markup.utils');
   const Markup = await getMarkup();
-  const miniAppUrl = args.config.get<string>('TELEGRAM_MINI_APP_URL');
-
-  const activeBot = await args.prisma.botConfig.findFirst({
-    where: { active: true },
-    orderBy: { createdAt: 'desc' },
-    select: { useMiniApp: true },
-  });
 
   // Перезагружаем пользователя, чтобы меню не "ломалось" на неподтвержденном выборе локации
   const hydratedUser = args.user?.id
@@ -30,8 +30,8 @@ export async function buildMainMenuKeyboard(args: {
     hydratedUser?.serverId || (hydratedUser?.userServers && hydratedUser.userServers.length > 0),
   );
 
-  const row1: any[] = [];
-  const row2: any[] = [];
+  const row1: unknown[] = [];
+  const row2: unknown[] = [];
 
   if (hasActiveLocation) {
     row1.push(Markup.button.callback('📥 Получить конфиг', 'get_config'));

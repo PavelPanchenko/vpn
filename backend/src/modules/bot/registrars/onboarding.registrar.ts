@@ -3,7 +3,8 @@ import { getPaidPlansWithFallback } from '../plans/paid-plans.utils';
 import { BotMessages } from '../messages/common.messages';
 import { getMarkup } from '../telegram-markup.utils';
 import { cbThenReplyText } from '../telegram-callback.utils';
-import type { TelegramCallbackCtx, TelegramMessageCtx } from '../telegram-runtime.types';
+import type { TelegramCallbackCtx, TelegramCallbackMatch, TelegramMessageCtx } from '../telegram-runtime.types';
+import type { PlanLike, ServerLike } from '../bot-domain.types';
 
 export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
   // /start
@@ -41,7 +42,9 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       }
 
       const Markup = await getMarkup();
-      const buttons = servers.map((server: any) => [Markup.button.callback(server.name, `select_server_${server.id}`)]);
+      const buttons = servers.map((server: ServerLike) => [
+        Markup.button.callback(server.name, `select_server_${server.id}`),
+      ]);
 
       const trialDays = await args.getTrialDaysForUser(user.id);
 
@@ -52,14 +55,14 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
           `После первого подключения будет <b>пробный период на ${args.esc(trialDays)} дн.</b>`,
         Markup.inlineKeyboard(buttons),
       );
-    } catch (error: any) {
+    } catch (error: unknown) {
       args.logger.error('Error handling /start command:', error);
       await ctx.reply(BotMessages.errorTryLaterText);
     }
   });
 
   // Выбор сервера -> показать инфо и тарифы
-  args.bot.action(/^select_server_(.+)$/, async (ctx: TelegramCallbackCtx) => {
+  args.bot.action(/^select_server_(.+)$/, async (ctx: TelegramCallbackCtx<TelegramCallbackMatch>) => {
     const serverId = ctx.match[1];
     const telegramId = ctx.from.id.toString();
     const userName = ctx.from.first_name || ctx.from.username || 'User';
@@ -109,11 +112,11 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       if (displayedPlans.length > 0) {
         const middleIndex = Math.floor(displayedPlans.length / 2);
         const recommendedPlan = displayedPlans[middleIndex];
-        const minPrice = Math.min(...displayedPlans.map((p: any) => p.price));
-        const minPricePlan = displayedPlans.find((p: any) => p.price === minPrice);
+        const minPrice = Math.min(...displayedPlans.map((p: PlanLike) => p.price));
+        const minPricePlan = displayedPlans.find((p: PlanLike) => p.price === minPrice);
 
         message += `\n<b>Тарифы после пробного периода</b>\n`;
-        displayedPlans.forEach((plan: any) => {
+        displayedPlans.forEach((plan: PlanLike) => {
           const tag = plan.id === recommendedPlan?.id ? ' ⭐' : '';
           message += `• <b>${args.esc(plan.name)}</b>${tag} — ${args.esc(plan.price)} ${args.esc(plan.currency)} / ${args.esc(
             plan.periodDays,
@@ -134,14 +137,14 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       ];
 
       await args.editHtml(ctx, message, Markup.inlineKeyboard(buttons));
-    } catch (error: any) {
+    } catch (error: unknown) {
       args.logger.error('Error handling server selection:', error);
       await cbThenReplyText({ ctx, cbText: BotMessages.loadInfoCbText, replyText: BotMessages.errorTryLaterText });
     }
   });
 
   // Подтверждение выбора сервера
-  args.bot.action(/^confirm_server_(.+)$/, async (ctx: TelegramCallbackCtx) => {
+  args.bot.action(/^confirm_server_(.+)$/, async (ctx: TelegramCallbackCtx<TelegramCallbackMatch>) => {
     const serverId = ctx.match[1];
     const telegramId = ctx.from.id.toString();
 
@@ -183,7 +186,7 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       );
 
       await args.showMainMenu(ctx, updatedUser);
-    } catch (error: any) {
+    } catch (error: unknown) {
       args.logger.error('Error confirming server selection:', error);
       await cbThenReplyText({
         ctx,
@@ -217,7 +220,9 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       }
 
       const Markup = await getMarkup();
-      const buttons = allServers.map((server: any) => [Markup.button.callback(server.name, `select_server_${server.id}`)]);
+      const buttons = allServers.map((server: ServerLike) => [
+        Markup.button.callback(server.name, `select_server_${server.id}`),
+      ]);
 
       const trialDays = user ? await args.getTrialDaysForUser(user.id) : 3;
       const messageText =
@@ -228,7 +233,7 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
             )} дн.`;
 
       await ctx.editMessageText(messageText, Markup.inlineKeyboard(buttons));
-    } catch (error: any) {
+    } catch (error: unknown) {
       args.logger.error('Error handling back to servers:', error);
       await ctx.reply(BotMessages.errorTryLaterText);
     }
