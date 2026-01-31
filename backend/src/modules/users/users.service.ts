@@ -74,34 +74,40 @@ export class UsersService {
     panelEmail: string,
     options?: EnsurePanelClientOptions,
   ): Promise<void> {
-    if (!server.panelBaseUrl || !server.panelUsername || !server.panelPasswordEnc || server.panelInboundId == null) return;
+    if (!server.panelBaseUrl || !server.panelUsername || !server.panelPasswordEnc || server.panelInboundId == null) {
+      throw new BadRequestException('Server is not connected to panel (missing panel settings)');
+    }
     const secret = this.config.get<string>('PANEL_CRED_SECRET');
-    if (!secret) return;
+    if (!secret) throw new BadRequestException('PANEL_CRED_SECRET is not configured');
+
+    const panelPassword = SecretBox.decrypt(server.panelPasswordEnc, secret);
+    const auth = await this.xui.login(server.panelBaseUrl, server.panelUsername, panelPassword);
+    if (!auth.cookie && !auth.token) {
+      throw new BadRequestException('Panel login failed');
+    }
+
+    const expiryTime = options?.expiryTime ?? 0;
+
     try {
-      const panelPassword = SecretBox.decrypt(server.panelPasswordEnc, secret);
-      const auth = await this.xui.login(server.panelBaseUrl, server.panelUsername, panelPassword);
-      if (!auth.cookie && !auth.token) return;
-      const expiryTime = options?.expiryTime ?? 0;
-      try {
-        await this.xui.addClient(server.panelBaseUrl, auth, server.panelInboundId, {
-          id: userUuid,
-          email: panelEmail,
-          flow: server.security === 'REALITY' ? 'xtls-rprx-vision' : '',
-          expiryTime: expiryTime > 0 ? expiryTime : undefined,
-          enable: options?.enable,
+      await this.xui.addClient(server.panelBaseUrl, auth, server.panelInboundId, {
+        id: userUuid,
+        email: panelEmail,
+        flow: server.security === 'REALITY' ? 'xtls-rprx-vision' : '',
+        expiryTime: expiryTime > 0 ? expiryTime : undefined,
+        enable: options?.enable,
+      });
+    } catch (addErr: any) {
+      // idempotency: если клиент уже есть — обновим expiry/enable (в т.ч. если email совпал)
+      const msg = String(addErr?.message ?? addErr);
+      if (addErr instanceof BadRequestException && msg.includes('already exists')) {
+        await this.xui.updateClient(server.panelBaseUrl, auth, server.panelInboundId, panelEmail, {
+          ...(options?.enable !== undefined && { enable: options.enable }),
+          ...(options?.expiryTime !== undefined && { expiryTime: options.expiryTime }),
         });
-      } catch (addErr: any) {
-        if (addErr instanceof BadRequestException && addErr.message?.includes('already exists')) {
-          await this.xui.updateClient(server.panelBaseUrl, auth, server.panelInboundId, panelEmail, {
-            ...(options?.enable !== undefined && { enable: options.enable }),
-            ...(options?.expiryTime !== undefined && { expiryTime: options.expiryTime }),
-          });
-        } else {
-          throw addErr;
-        }
+      } else {
+        this.logger.error(`ensurePanelClient failed for ${panelEmail}: ${msg}`);
+        throw addErr;
       }
-    } catch (e: any) {
-      this.logger.warn(`ensurePanelClient: ${e?.message ?? e}`);
     }
   }
 
@@ -223,11 +229,22 @@ export class UsersService {
       },
       include: { server: true, userServers: { include: { server: true } } },
     });
-    await this.attachUserToServer(user.id, dto.serverId, {
-      isActive: true,
-      addToPanel: true,
-      expiryTime: trialEndsAt ? trialEndsAt.getTime() : undefined,
-    });
+
+    try {
+      await this.attachUserToServer(user.id, dto.serverId, {
+        isActive: true,
+        addToPanel: true,
+        expiryTime: trialEndsAt ? trialEndsAt.getTime() : undefined,
+      });
+    } catch (e) {
+      // Если панель не создалась — не оставляем "битого" пользователя без клиента.
+      try {
+        await this.prisma.vpnUser.delete({ where: { id: user.id } });
+      } catch {
+        // ignore
+      }
+      throw e;
+    }
     if (dto.trialDays && trialEndsAt) {
       const now = new Date();
       await this.prisma.subscription.create({
