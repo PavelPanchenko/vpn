@@ -31,7 +31,19 @@ export async function sendConfigMessage(args: {
     return;
   }
 
-  const configResult = await usersService.getConfig(user.id);
+  let configResult: { configs?: Array<{ url: string; serverName?: string }> } | null = null;
+  try {
+    configResult = await usersService.getConfig(user.id);
+  } catch (e: unknown) {
+    logger.error('Failed to get/sync config:', e);
+    await replyHtml(
+      ctx,
+      `⚠️ <b>Не удалось подготовить конфигурацию</b>\n\n` +
+        `Мы попытались синхронизировать доступ на сервере, но произошла ошибка.\n` +
+        `Попробуйте ещё раз через минуту или напишите в поддержку: <code>/support</code>`,
+    );
+    return;
+  }
   if (!configResult?.configs?.length) {
     await replyHtml(
       ctx,

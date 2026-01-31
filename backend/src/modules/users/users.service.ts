@@ -429,15 +429,33 @@ export class UsersService {
     if (!user) throw new NotFoundException('User not found');
     const configs: Array<{ url: string; serverName: string }> = [];
     const activeUs = user.userServers?.find((us) => us.isActive);
-    if (activeUs) {
-      const s = activeUs.server;
-      const url = this.buildVlessUrl(s, user.uuid, s.sni ?? null, s.path ?? null);
-      configs.push({ url, serverName: s.name });
-    } else if (user.server) {
-      const s = user.server;
-      const url = this.buildVlessUrl(s, user.uuid, s.sni ?? null, s.path ?? null);
-      configs.push({ url, serverName: s.name });
+    const s = activeUs?.server ?? user.server;
+    if (!s) return { configs };
+
+    // Самовосстановление клиента в панели:
+    // если админ удалил клиента вручную, при выдаче конфига мы пересоздадим/обновим его (idempotent).
+    // Подписку не меняем — только техническую реализацию доступа.
+    if (s.panelBaseUrl && s.panelUsername && s.panelPasswordEnc && s.panelInboundId != null) {
+      const panelEmail =
+        activeUs?.panelEmail ??
+        user.panelEmail ??
+        buildPanelEmail(user.uuid, s.id);
+
+      const now = Date.now();
+      const sub = await this.syncExpiresAtWithActiveSubscription(userId);
+      const expiryTime =
+        sub?.endsAt?.getTime() ??
+        (user.expiresAt ? user.expiresAt.getTime() : 0);
+      const enable = expiryTime > now;
+
+      await this.ensurePanelClient(s as any, user.uuid, panelEmail, {
+        expiryTime: expiryTime > 0 ? expiryTime : undefined,
+        enable,
+      });
     }
+
+    const url = this.buildVlessUrl(s as any, user.uuid, (s as any).sni ?? null, (s as any).path ?? null);
+    configs.push({ url, serverName: (s as any).name });
     return { configs };
   }
 
