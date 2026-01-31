@@ -80,7 +80,6 @@ export type Plan = {
   periodDays: number;
   isTrial: boolean;
   active: boolean;
-  legacy: boolean;
   availableFor: 'ALL' | 'NEW_USERS' | 'EXISTING_USERS';
   isTop: boolean;
   createdAt: string;

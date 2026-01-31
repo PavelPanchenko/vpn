@@ -10,7 +10,6 @@ export type AdminPlanLike = {
   currency: string;
   isTrial: boolean;
   active: boolean;
-  legacy: boolean;
   availableFor: 'ALL' | 'NEW_USERS' | 'EXISTING_USERS';
   isTop: boolean;
 };

@@ -29,8 +29,8 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-full bg-slate-50">
-      <div className="mx-auto flex max-w-md flex-col gap-4 px-4 py-16">
+    <div className="min-h-screen bg-slate-50">
+      <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-4 px-4 py-10">
         <div>
           <div className="text-2xl font-bold text-slate-900">Admin login</div>
           <div className="mt-1 text-sm text-slate-600">Вход только для внутренних администраторов.</div>
