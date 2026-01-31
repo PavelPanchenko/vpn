@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { TelegramWebApp } from '../lib/telegramWebAppTypes';
 
 export type TelegramTheme = {
   bg: string;
@@ -13,7 +14,7 @@ export type TelegramTheme = {
 
 export type SafeAreaInsets = { top: number; bottom: number; left: number; right: number };
 
-function getTelegramTheme(tg: any, themeVersion: number): TelegramTheme {
+function getTelegramTheme(tg: TelegramWebApp | undefined, themeVersion: number): TelegramTheme {
   void themeVersion; // используется для принудительного пересчёта при themeChanged
   const tp = tg?.themeParams || {};
   const get = (snake: string, camel: string) => (tp as any)[snake] ?? (tp as any)[camel];
@@ -37,7 +38,8 @@ function getTelegramTheme(tg: any, themeVersion: number): TelegramTheme {
  * - setHeaderColor/setBackgroundColor под текущую тему
  */
 export function useTelegramWebAppUi() {
-  const tg = typeof window !== 'undefined' ? (window as any).Telegram?.WebApp : undefined;
+  const tg: TelegramWebApp | undefined =
+    typeof window !== 'undefined' ? ((window as any).Telegram?.WebApp as TelegramWebApp | undefined) : undefined;
 
   const [themeVersion, setThemeVersion] = useState(0);
   const [viewportVersion, setViewportVersion] = useState(0);
@@ -47,10 +49,11 @@ export function useTelegramWebAppUi() {
 
   // Safe area: contentSafeAreaInset (Bot API 8.0+) — область без перекрытия UI Telegram; иначе safeAreaInset
   useEffect(() => {
-    const w = (window as any).Telegram?.WebApp;
+    const w: TelegramWebApp | undefined =
+      typeof window !== 'undefined' ? ((window as any).Telegram?.WebApp as TelegramWebApp | undefined) : undefined;
     if (!w) return;
-    const content = (w as any).contentSafeAreaInset;
-    const device = (w as any).safeAreaInset;
+    const content = w.contentSafeAreaInset;
+    const device = w.safeAreaInset;
     const ins = content ?? device;
     if (ins && typeof ins.top === 'number') {
       setSafeArea({
@@ -86,7 +89,8 @@ export function useTelegramWebAppUi() {
 
   // Тема в реальном времени (themeChanged)
   useEffect(() => {
-    const w = (window as any).Telegram?.WebApp;
+    const w: TelegramWebApp | undefined =
+      typeof window !== 'undefined' ? ((window as any).Telegram?.WebApp as TelegramWebApp | undefined) : undefined;
     if (!w) return;
     const onTheme = () => setThemeVersion((v) => v + 1);
     try {
@@ -105,7 +109,8 @@ export function useTelegramWebAppUi() {
 
   // Viewport (Telegram WebApp API): корректная высота внутри Telegram
   useEffect(() => {
-    const w = (window as any).Telegram?.WebApp;
+    const w: TelegramWebApp | undefined =
+      typeof window !== 'undefined' ? ((window as any).Telegram?.WebApp as TelegramWebApp | undefined) : undefined;
     if (!w) return;
     const onViewport = () => setViewportVersion((v) => v + 1);
     try {
@@ -123,7 +128,8 @@ export function useTelegramWebAppUi() {
   }, []);
 
   useEffect(() => {
-    const w = (window as any).Telegram?.WebApp;
+    const w: TelegramWebApp | undefined =
+      typeof window !== 'undefined' ? ((window as any).Telegram?.WebApp as TelegramWebApp | undefined) : undefined;
     if (!w || !theme.bg) return;
     try {
       w.setHeaderColor?.(theme.bg);
@@ -163,7 +169,7 @@ export function useTelegramWebAppUi() {
 }
 
 export function useTelegramBackButton(args: {
-  tg: any;
+  tg: TelegramWebApp | undefined;
   visible: boolean;
   onClick: () => void;
 }) {

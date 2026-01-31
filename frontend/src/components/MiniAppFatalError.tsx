@@ -1,7 +1,13 @@
 import type { TelegramTheme } from '../hooks/useTelegramWebAppUi';
 
-export function MiniAppFatalError(props: { theme: TelegramTheme; title: string; message: string }) {
-  const { theme, title, message } = props;
+export function MiniAppFatalError(props: {
+  theme: TelegramTheme;
+  title: string;
+  message: string;
+  onRetry: () => void;
+  onClose?: () => void;
+}) {
+  const { theme, title, message, onRetry, onClose } = props;
   return (
     <div
       className="min-h-screen flex items-center justify-center px-4"
@@ -11,14 +17,64 @@ export function MiniAppFatalError(props: { theme: TelegramTheme; title: string; 
         paddingTop: 'max(48px, calc(env(safe-area-inset-top, 0px) + 28px))',
       }}
     >
-      <div className="max-w-md text-center">
-        <h1 className="text-2xl font-semibold mb-4">{title}</h1>
-        <p className="mb-4 whitespace-pre-wrap" style={{ color: theme.destructive }}>
-          {message}
-        </p>
-        <p className="text-sm" style={{ color: theme.hint }}>
-          Убедитесь, что открываете мини‑приложение через кнопку в Telegram‑боте.
-        </p>
+      <div className="w-full max-w-md">
+        <div
+          className="rounded-2xl border p-5"
+          style={{
+            borderColor: 'rgba(255,255,255,0.12)',
+            background: theme.secondaryBg,
+            boxShadow: '0 0 0 1px rgba(255,255,255,0.06), 0 6px 18px rgba(0,0,0,0.22)',
+          }}
+        >
+          <div className="flex items-start gap-4">
+            <div
+              className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl"
+              style={{
+                background: theme.destructive + '22',
+                border: '1px solid ' + theme.destructive + '55',
+                color: theme.destructive,
+              }}
+            >
+              !
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-lg font-semibold">{title}</div>
+              <div className="text-sm mt-1" style={{ color: theme.hint }}>
+                Не удалось загрузить мини‑приложение.
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-xl border px-3 py-2 text-sm whitespace-pre-wrap" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
+            <div className="text-xs mb-1" style={{ color: theme.hint }}>
+              Детали
+            </div>
+            <div style={{ color: theme.destructive }}>{message}</div>
+          </div>
+
+          <div className="mt-4 text-sm" style={{ color: theme.hint }}>
+            Проверьте, что вы открыли приложение через кнопку в Telegram‑боте. Если открыто в браузере — авторизация не пройдёт.
+          </div>
+
+          <div className="mt-5 flex gap-3">
+            <button
+              onClick={onRetry}
+              className="flex-1 inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium"
+              style={{ background: theme.button, color: theme.buttonText }}
+            >
+              Повторить
+            </button>
+            {onClose ? (
+              <button
+                onClick={onClose}
+                className="inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium border"
+                style={{ borderColor: 'rgba(255,255,255,0.14)', color: theme.text }}
+              >
+                Закрыть
+              </button>
+            ) : null}
+          </div>
+        </div>
       </div>
     </div>
   );
