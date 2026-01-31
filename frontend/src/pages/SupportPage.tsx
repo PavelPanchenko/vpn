@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import { api } from '../lib/api';
+import { getApiErrorMessage } from '../lib/apiError';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -81,7 +82,7 @@ export function SupportPage() {
       await qc.invalidateQueries({ queryKey: ['support'] });
       await qc.invalidateQueries({ queryKey: ['support-stats'] });
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to send reply'),
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to send reply')),
   });
 
   const closeTicketM = useMutation({
@@ -92,7 +93,7 @@ export function SupportPage() {
       await qc.invalidateQueries({ queryKey: ['support'] });
       await qc.invalidateQueries({ queryKey: ['support-stats'] });
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to close ticket'),
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to close ticket')),
   });
 
   const messages = useMemo(() => messagesQ.data ?? [], [messagesQ.data]);

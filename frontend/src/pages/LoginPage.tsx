@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { authStore } from '../lib/authStore';
+import { getApiErrorMessage } from '../lib/apiError';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 
@@ -21,7 +22,7 @@ export function LoginPage() {
       authStore.setToken(res.data.accessToken);
       navigate('/');
     } catch (err: any) {
-      setError(err?.response?.data?.message ?? 'Login failed');
+      setError(getApiErrorMessage(err, 'Login failed'));
     } finally {
       setLoading(false);
     }

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import { api } from '../lib/api';
+import { getApiErrorMessage } from '../lib/apiError';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Modal } from '../components/Modal';
@@ -57,7 +58,7 @@ export function PlansPage() {
       setCreateOpen(false);
       await qc.invalidateQueries({ queryKey: ['plans'] });
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to create plan'),
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to create plan')),
   });
 
   const updateM = useMutation({
@@ -68,7 +69,7 @@ export function PlansPage() {
       setEditTarget(null);
       await qc.invalidateQueries({ queryKey: ['plans'] });
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to update plan'),
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to update plan')),
   });
 
   const deleteM = useMutation({
@@ -78,7 +79,7 @@ export function PlansPage() {
       setDeleteTarget(null);
       await qc.invalidateQueries({ queryKey: ['plans'] });
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to delete plan'),
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to delete plan')),
   });
 
   const plans = useMemo(() => plansQ.data ?? [], [plansQ.data]);

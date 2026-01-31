@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import { api } from '../lib/api';
+import { getApiErrorMessage } from '../lib/apiError';
 import { type Subscription, type VpnUser, type Plan } from '../lib/types';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -77,7 +78,7 @@ export function SubscriptionsPage() {
       await qc.invalidateQueries({ queryKey: ['subscriptions'] });
       await qc.invalidateQueries({ queryKey: ['users'] });
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to create subscription'),
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to create subscription')),
   });
 
   const removeM = useMutation({
@@ -87,7 +88,7 @@ export function SubscriptionsPage() {
       await qc.invalidateQueries({ queryKey: ['subscriptions'] });
       await qc.invalidateQueries({ queryKey: ['users'] });
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to delete subscription'),
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to delete subscription')),
   });
 
   const users = useMemo(() => usersQ.data ?? [], [usersQ.data]);

@@ -3,12 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 import { UsersService } from '../users/users.service';
-
-function addDays(date: Date, days: number) {
-  const d = new Date(date);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d;
-}
+import { addDaysUtc } from '../../common/utils/date.utils';
 
 @Injectable()
 export class SubscriptionsService {
@@ -59,7 +54,7 @@ export class SubscriptionsService {
       throw new NotFoundException('Either periodDays or planId must be provided');
     }
 
-    const endsAt = addDays(startsAt, periodDays);
+    const endsAt = addDaysUtc(startsAt, periodDays);
 
     const now = new Date();
     const nextStatus: 'ACTIVE' | 'BLOCKED' | 'EXPIRED' =
@@ -106,7 +101,7 @@ export class SubscriptionsService {
     const endsAt = dto.endsAt
       ? new Date(dto.endsAt)
       : dto.periodDays
-        ? addDays(startsAt, dto.periodDays)
+        ? addDaysUtc(startsAt, dto.periodDays)
         : existing.endsAt;
     const periodDays = dto.periodDays ?? existing.periodDays;
     const active = dto.active ?? existing.active;

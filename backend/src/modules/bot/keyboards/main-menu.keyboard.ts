@@ -1,0 +1,49 @@
+import type { ConfigService } from '@nestjs/config';
+import type { PrismaService } from '../../prisma/prisma.service';
+
+export async function buildMainMenuKeyboard(args: {
+  prisma: PrismaService;
+  config: ConfigService;
+  user: any;
+}) {
+  const { getMarkup } = await import('../telegram-markup.utils');
+  const Markup = await getMarkup();
+  const miniAppUrl = args.config.get<string>('TELEGRAM_MINI_APP_URL');
+
+  const activeBot = await args.prisma.botConfig.findFirst({
+    where: { active: true },
+    orderBy: { createdAt: 'desc' },
+    select: { useMiniApp: true },
+  });
+
+  // Перезагружаем пользователя, чтобы меню не "ломалось" на неподтвержденном выборе локации
+  const hydratedUser = args.user?.id
+    ? await args.prisma.vpnUser.findUnique({
+        where: { id: args.user.id },
+        include: {
+          userServers: { where: { isActive: true } },
+        },
+      })
+    : args.user;
+
+  const hasActiveLocation = Boolean(
+    hydratedUser?.serverId || (hydratedUser?.userServers && hydratedUser.userServers.length > 0),
+  );
+
+  const row1: any[] = [];
+  const row2: any[] = [];
+
+  if (hasActiveLocation) {
+    row1.push(Markup.button.callback('📥 Получить конфиг', 'get_config'));
+    row1.push(Markup.button.callback('📊 Статус подписки', 'show_status'));
+
+    row2.push(Markup.button.callback('📍 Выбрать другую локацию', 'back_to_servers'));
+    row2.push(Markup.button.callback('💳 Оплатить подписку', 'show_pay'));
+  } else {
+    row1.push(Markup.button.callback('📍 Выбрать локацию', 'back_to_servers'));
+    row1.push(Markup.button.callback('💳 Оплатить подписку', 'show_pay'));
+  }
+
+  return Markup.inlineKeyboard(row2.length > 0 ? [row1, row2] : [row1]);
+}
+

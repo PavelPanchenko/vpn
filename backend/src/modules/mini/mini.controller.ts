@@ -8,7 +8,8 @@ import { PlansService } from '../plans/plans.service';
 import { PaymentsService } from '../payments/payments.service';
 import { ServersService } from '../servers/servers.service';
 import { BotService } from '../bot/bot.service';
-import { buildSubscriptionMetrics } from '../../common/subscription/subscription-metrics';
+import { buildSubscriptionMetrics, type VpnUserStatus } from '../../common/subscription/subscription-metrics';
+import { toDateLike, type DateLike } from '../../common/subscription/user-like';
 import * as crypto from 'crypto';
 
 /** Очередь операций "найти или создать" по telegramId — устраняет гонку при двойном вызове (например React Strict Mode). */
@@ -24,6 +25,14 @@ export class MiniController {
     private readonly serversService: ServersService,
     private readonly botService: BotService,
   ) {}
+
+  private async requireUserByTelegramId(telegramId: string) {
+    const user = await this.usersService.findByTelegramId(telegramId);
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    return user;
+  }
 
   /**
    * Валидация initData от Telegram WebApp.
@@ -114,44 +123,39 @@ export class MiniController {
   }
 
   private async doGetOrCreateUser(telegramId: string, name: string) {
-    let user = await this.prisma.vpnUser.findFirst({
-      where: { telegramId },
-      include: {
-        userServers: { include: { server: true } },
-        subscriptions: {
-          where: { active: true },
-          orderBy: { endsAt: 'desc' },
-          // Берём несколько на случай исторической рассинхронизации (помогает корректно выбрать подписку для прогресса)
-          take: 5,
-        },
+    const user = await this.usersService.getOrCreateByTelegramId(telegramId, name, {
+      userServers: { include: { server: true } },
+      subscriptions: {
+        where: { active: true },
+        orderBy: { endsAt: 'desc' },
+        // Берём несколько на случай исторической рассинхронизации (помогает корректно выбрать подписку для прогресса)
+        take: 5,
       },
     });
-
-    if (!user) {
-      const created = await this.usersService.createFromTelegram(telegramId, name);
-      user = await this.prisma.vpnUser.findUnique({
-        where: { id: created.id },
-        include: {
-          userServers: { include: { server: true } },
-          subscriptions: {
-            where: { active: true },
-            orderBy: { endsAt: 'desc' },
-            take: 5,
-          },
-        },
-      });
-    }
 
     return user!;
   }
 
-  private buildStatusPayload(user: any, trafficUsed: number | null = null) {
-    const activeServers = (user.userServers || []).filter((us: any) => us.isActive);
+  private buildStatusPayload(
+    user: {
+      id: string;
+      status: VpnUserStatus | null | undefined;
+      expiresAt: DateLike;
+      userServers?: Array<{ isActive: boolean; server: { id: string; name: string } }>;
+      subscriptions?: Array<{ id: string; periodDays: number; startsAt: DateLike; endsAt: DateLike }>;
+    },
+    trafficUsed: number | null = null,
+  ) {
+    const activeServers = (user.userServers || []).filter((us) => us.isActive);
 
-    const subs: any[] = Array.isArray(user.subscriptions) ? user.subscriptions : [];
+    const subs = Array.isArray(user.subscriptions) ? user.subscriptions : [];
+    const expiresAt = toDateLike(user.expiresAt);
     const subscriptionForUi =
-      user.expiresAt && subs.length > 0
-        ? (subs.find((s: any) => s?.endsAt && new Date(s.endsAt).getTime() === new Date(user.expiresAt).getTime()) ??
+      expiresAt && subs.length > 0
+        ? (subs.find((s) => {
+            const endsAt = toDateLike(s?.endsAt);
+            return endsAt ? endsAt.getTime() === expiresAt.getTime() : false;
+          }) ??
           subs[0] ??
           null)
         : (subs[0] ?? null);
@@ -272,14 +276,7 @@ export class MiniController {
   @Post('config')
   async config(@Body() dto: MiniInitDataDto) {
     const { telegramId } = await this.validateInitData(dto.initData);
-
-    const user = await this.prisma.vpnUser.findFirst({
-      where: { telegramId },
-    });
-
-    if (!user) {
-      throw new UnauthorizedException('User not found');
-    }
+    const user = await this.requireUserByTelegramId(telegramId);
 
     const configResult = await this.usersService.getConfig(user.id);
 
@@ -300,14 +297,7 @@ export class MiniController {
   @Post('pay')
   async pay(@Body() dto: MiniPayDto) {
     const { telegramId } = await this.validateInitData(dto.initData);
-
-    const user = await this.prisma.vpnUser.findFirst({
-      where: { telegramId },
-    });
-
-    if (!user) {
-      throw new UnauthorizedException('User not found');
-    }
+    const user = await this.requireUserByTelegramId(telegramId);
 
     const plan = await this.prisma.plan.findUnique({
       where: { id: dto.planId },

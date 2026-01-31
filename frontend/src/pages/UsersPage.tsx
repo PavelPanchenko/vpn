@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import { api } from '../lib/api';
+import { getApiErrorMessage } from '../lib/apiError';
 import { type VpnServer, type VpnUser, type VpnUserStatus } from '../lib/types';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -53,7 +54,7 @@ export function UsersPage() {
       setCreateOpen(false);
       await qc.invalidateQueries({ queryKey: ['users'] });
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to create user'),
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to create user')),
   });
 
   const updateM = useMutation({
@@ -63,7 +64,7 @@ export function UsersPage() {
       toast.success('User updated');
       await qc.invalidateQueries({ queryKey: ['users'] });
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to update user'),
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to update user')),
   });
 
   const editM = useMutation({
@@ -74,7 +75,7 @@ export function UsersPage() {
       setEditTarget(null);
       await qc.invalidateQueries({ queryKey: ['users'] });
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to update user'),
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to update user')),
   });
 
   const deleteM = useMutation({
@@ -84,7 +85,7 @@ export function UsersPage() {
       setDeleteTarget(null);
       await qc.invalidateQueries({ queryKey: ['users'] });
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to delete user'),
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to delete user')),
   });
 
   const servers = useMemo(() => serversQ.data ?? [], [serversQ.data]);

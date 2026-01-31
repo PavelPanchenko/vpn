@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import { api } from '../lib/api';
+import { getApiErrorMessage } from '../lib/apiError';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Modal } from '../components/Modal';
@@ -66,8 +67,7 @@ export function BotPage() {
       await qc.invalidateQueries({ queryKey: ['bot'] });
     },
     onError: (err: any) => {
-      const errorMessage = err?.response?.data?.message ?? 'Failed to create bot configuration';
-      toast.error(errorMessage);
+      toast.error(getApiErrorMessage(err, 'Failed to create bot configuration'));
       console.error('Bot creation error:', err);
     },
   });
@@ -81,7 +81,7 @@ export function BotPage() {
       editForm.reset();
       await qc.invalidateQueries({ queryKey: ['bot'] });
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to update bot configuration'),
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to update bot configuration')),
   });
 
   const deleteM = useMutation({
@@ -92,8 +92,7 @@ export function BotPage() {
       await qc.invalidateQueries({ queryKey: ['bot'] });
     },
     onError: (err: any) => {
-      const errorMessage = err?.response?.data?.message ?? err?.message ?? 'Failed to delete bot configuration';
-      toast.error(errorMessage);
+      toast.error(getApiErrorMessage(err, 'Failed to delete bot configuration'));
       console.error('Bot deletion error:', err);
     },
   });

@@ -1,10 +1,11 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma } from '@prisma/client';
+import { Prisma, type VpnUser } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { XuiService } from '../xui/xui.service';
 import { SecretBox } from '../../common/crypto/secret-box';
+import { addDaysUtc } from '../../common/utils/date.utils';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
@@ -12,12 +13,6 @@ import { UpdateUserDto } from './dto/update-user.dto';
 function buildPanelEmail(uuid: string, serverId: string): string {
   const prefix = serverId.slice(0, 8);
   return `${uuid}@vpn-${prefix}`;
-}
-
-function addDaysUtc(date: Date, days: number): Date {
-  const d = new Date(date);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d;
 }
 
 type EnsurePanelClientOptions = { expiryTime?: number; enable?: boolean };
@@ -31,6 +26,46 @@ export class UsersService {
     private readonly xui: XuiService,
     private readonly config: ConfigService,
   ) {}
+
+  /**
+   * DRY: единая точка поиска пользователя по telegramId.
+   * Важно: используем findFirst, т.к. telegramId не обязательно ключ в Prisma schema (но должен быть уникальным в БД).
+   */
+  async findByTelegramId(telegramId: string): Promise<VpnUser | null>;
+  async findByTelegramId<TInclude extends Prisma.VpnUserInclude>(
+    telegramId: string,
+    include: TInclude,
+  ): Promise<Prisma.VpnUserGetPayload<{ include: TInclude }> | null>;
+  async findByTelegramId(telegramId: string, include?: Prisma.VpnUserInclude) {
+    return this.prisma.vpnUser.findFirst({
+      where: { telegramId },
+      ...(include ? { include } : {}),
+    });
+  }
+
+  /**
+   * DRY: единая точка "найти или создать" по telegramId с опциональными include.
+   * Полезно для бота и mini app, чтобы не дублировать Prisma-графы.
+   */
+  async getOrCreateByTelegramId(telegramId: string, name: string): Promise<VpnUser>;
+  async getOrCreateByTelegramId<TInclude extends Prisma.VpnUserInclude>(
+    telegramId: string,
+    name: string,
+    include: TInclude,
+  ): Promise<Prisma.VpnUserGetPayload<{ include: TInclude }>>;
+  async getOrCreateByTelegramId(telegramId: string, name: string, include?: Prisma.VpnUserInclude) {
+    if (include) {
+      const existing = await this.findByTelegramId(telegramId, include);
+      if (existing) return existing;
+
+      const created = await this.createFromTelegram(telegramId, name);
+      return this.prisma.vpnUser.findUniqueOrThrow({ where: { id: created.id }, include });
+    }
+
+    const existing = await this.findByTelegramId(telegramId);
+    if (existing) return existing;
+    return this.createFromTelegram(telegramId, name);
+  }
 
   /** Единая точка: добавить/обновить клиента на панели. */
   private async ensurePanelClient(

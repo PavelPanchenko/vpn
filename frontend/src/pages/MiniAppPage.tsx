@@ -1,23 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
+import { formatPrice, formatTraffic } from '../lib/formatters';
+import { useTelegramBackButton, useTelegramWebAppUi } from '../hooks/useTelegramWebAppUi';
 import { QRCodeSVG } from 'qrcode.react';
 
 declare global {
   interface Window {
     Telegram?: any;
   }
-}
-
-function formatTraffic(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-}
-
-function formatPrice(price: number, currency: string): string {
-  if (currency === 'RUB') return `${price} ₽`;
-  return `${price} ${currency}`;
 }
 
 type MiniStatus = {
@@ -58,8 +48,6 @@ export function MiniAppPage() {
   const [activatingServerId, setActivatingServerId] = useState<string | null>(null);
   const [refreshingServers, setRefreshingServers] = useState(false);
   const [configCopied, setConfigCopied] = useState(false);
-  const [themeVersion, setThemeVersion] = useState(0);
-  const [safeArea, setSafeArea] = useState<{ top: number; bottom: number; left: number; right: number } | null>(null);
   const [screenEntered, setScreenEntered] = useState(true);
 
   useEffect(() => {
@@ -87,128 +75,7 @@ export function MiniAppPage() {
     return '';
   };
 
-  const tg = window.Telegram?.WebApp;
-  const [viewportVersion, setViewportVersion] = useState(0);
-  const theme = useMemo(() => {
-    const tp = tg?.themeParams || {};
-    const get = (snake: string, camel: string) => (tp as any)[snake] ?? (tp as any)[camel];
-    return {
-      bg: get('bg_color', 'bgColor') ?? '#0b1220',
-      secondaryBg: get('secondary_bg_color', 'secondaryBgColor') ?? '#0f172a',
-      text: get('text_color', 'textColor') ?? '#ffffff',
-      hint: get('hint_color', 'hintColor') ?? '#94a3b8',
-      link: get('link_color', 'linkColor') ?? '#60a5fa',
-      button: get('button_color', 'buttonColor') ?? '#6366f1',
-      buttonText: get('button_text_color', 'buttonTextColor') ?? '#ffffff',
-      destructive: get('destructive_text_color', 'destructiveTextColor') ?? '#ef4444',
-    };
-  }, [tg?.themeParams, themeVersion]);
-
-  // Safe area: contentSafeAreaInset (Bot API 8.0+) — область без перекрытия UI Telegram; иначе safeAreaInset
-  useEffect(() => {
-    const w = window.Telegram?.WebApp;
-    if (!w) return;
-    const content = (w as any).contentSafeAreaInset;
-    const device = (w as any).safeAreaInset;
-    const ins = content ?? device;
-    if (ins && typeof ins.top === 'number') {
-      setSafeArea({
-        top: ins.top ?? 0,
-        bottom: ins.bottom ?? 0,
-        left: ins.left ?? 0,
-        right: ins.right ?? 0,
-      });
-    }
-    const onSafe = () => {
-      const c = (window.Telegram?.WebApp as any)?.contentSafeAreaInset;
-      const d = (window.Telegram?.WebApp as any)?.safeAreaInset;
-      const i = c ?? d;
-      if (i && typeof i.top === 'number')
-        setSafeArea({ top: i.top ?? 0, bottom: i.bottom ?? 0, left: i.left ?? 0, right: i.right ?? 0 });
-    };
-    try {
-      w.onEvent?.('safeAreaChanged', onSafe);
-      w.onEvent?.('contentSafeAreaChanged', onSafe);
-    } catch {
-      // ignore
-    }
-    return () => {
-      try {
-        w.offEvent?.('safeAreaChanged', onSafe);
-        w.offEvent?.('contentSafeAreaChanged', onSafe);
-      } catch {
-        // ignore
-      }
-    };
-  }, []);
-
-  // Тема в реальном времени (themeChanged) и цвет заголовка/фона для fullscreen
-  useEffect(() => {
-    const w = window.Telegram?.WebApp;
-    if (!w) return;
-    const onTheme = () => setThemeVersion((v) => v + 1);
-    try {
-      w.onEvent?.('themeChanged', onTheme);
-    } catch {
-      // ignore
-    }
-    return () => {
-      try {
-        w.offEvent?.('themeChanged', onTheme);
-      } catch {
-        // ignore
-      }
-    };
-  }, []);
-
-  // Viewport (Telegram WebApp API): корректная высота внутри Telegram
-  useEffect(() => {
-    const w = window.Telegram?.WebApp;
-    if (!w) return;
-    const onViewport = () => setViewportVersion((v) => v + 1);
-    try {
-      w.onEvent?.('viewportChanged', onViewport);
-    } catch {
-      // ignore
-    }
-    return () => {
-      try {
-        w.offEvent?.('viewportChanged', onViewport);
-      } catch {
-        // ignore
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    const w = window.Telegram?.WebApp;
-    if (!w || !theme.bg) return;
-    try {
-      w.setHeaderColor?.(theme.bg);
-      w.setBackgroundColor?.(theme.bg);
-    } catch {
-      // ignore
-    }
-  }, [theme.bg]);
-
-  // Отступы по документации: content safe area / device safe area; fallback — env() + минимум
-  const containerSafeStyle = useMemo(() => {
-    if (safeArea) {
-      const extraTop = 16;
-      return {
-        paddingTop: safeArea.top + extraTop,
-        paddingBottom: safeArea.bottom + 24,
-        paddingLeft: safeArea.left + 16,
-        paddingRight: safeArea.right + 16,
-      };
-    }
-    return {
-      paddingTop: 'max(48px, calc(env(safe-area-inset-top, 0px) + 28px))',
-      paddingBottom: 24,
-      paddingLeft: 16,
-      paddingRight: 16,
-    };
-  }, [safeArea]);
+  const { tg, theme, containerSafeStyle, viewportHeight } = useTelegramWebAppUi();
 
   useEffect(() => {
     // Инициализируем WebApp UI (у некоторых клиентов initData появляется после ready)
@@ -385,38 +252,11 @@ export function MiniAppPage() {
     }
   };
 
-  // Native BackButton
-  useEffect(() => {
-    const back = tg?.BackButton;
-    if (!back) return;
-
-    const shouldShow = screen !== 'home';
-    try {
-      if (shouldShow) back.show?.();
-      else back.hide?.();
-    } catch {
-      // ignore
-    }
-
-    const handler = () => {
-      setScreen('home');
-      setConfigUrl(null);
-    };
-
-    try {
-      back.onClick?.(handler);
-    } catch {
-      // ignore
-    }
-
-    return () => {
-      try {
-        back.offClick?.(handler);
-      } catch {
-        // ignore
-      }
-    };
-  }, [screen]);
+  const onBack = useCallback(() => {
+    setScreen('home');
+    setConfigUrl(null);
+  }, []);
+  useTelegramBackButton({ tg, visible: screen !== 'home', onClick: onBack });
 
   if (loading) {
     return (
@@ -460,12 +300,7 @@ export function MiniAppPage() {
       style={{
         background: theme.bg,
         color: theme.text,
-        minHeight:
-          typeof tg?.viewportStableHeight === 'number'
-            ? `${tg.viewportStableHeight}px`
-            : typeof tg?.viewportHeight === 'number'
-              ? `${tg.viewportHeight}px`
-              : undefined,
+        minHeight: viewportHeight,
         ...containerSafeStyle,
       }}
     >

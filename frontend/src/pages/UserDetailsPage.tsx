@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import { QRCodeSVG } from 'qrcode.react';
 import { api } from '../lib/api';
+import { getApiErrorMessage } from '../lib/apiError';
 import { type Payment, type Subscription, type VpnUser, type VpnServer, type UserServer } from '../lib/types';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
@@ -50,7 +51,7 @@ export function UserDetailsPage() {
       await qc.invalidateQueries({ queryKey: ['user', id] });
       await qc.invalidateQueries({ queryKey: ['user-config', id] });
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to add server'),
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to add server')),
   });
 
   const removeServerM = useMutation({
@@ -60,7 +61,7 @@ export function UserDetailsPage() {
       await qc.invalidateQueries({ queryKey: ['user', id] });
       await qc.invalidateQueries({ queryKey: ['user-config', id] });
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to remove server'),
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to remove server')),
   });
 
   const activateServerM = useMutation({
@@ -71,7 +72,7 @@ export function UserDetailsPage() {
       await qc.invalidateQueries({ queryKey: ['user-config', id] });
       await qc.invalidateQueries({ queryKey: ['user-traffic', id] });
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to activate server'),
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to activate server')),
   });
 
   // Traffic отключён

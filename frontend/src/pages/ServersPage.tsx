@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import { api } from '../lib/api';
+import { getApiErrorMessage } from '../lib/apiError';
 import { type VpnServer } from '../lib/types';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -79,7 +80,7 @@ export function ServersPage() {
       setPanelInbounds(null);
       await qc.invalidateQueries({ queryKey: ['servers'] });
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to connect server'),
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to connect server')),
   });
 
   const updateM = useMutation({
@@ -91,7 +92,7 @@ export function ServersPage() {
       setEditOpen(false);
       await qc.invalidateQueries({ queryKey: ['servers'] });
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to update server'),
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to update server')),
   });
 
   const removeM = useMutation({
@@ -100,14 +101,14 @@ export function ServersPage() {
       toast.success('Server deleted');
       await qc.invalidateQueries({ queryKey: ['servers'] });
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to delete server'),
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to delete server')),
   });
 
   const panelTestM = useMutation({
     mutationFn: async (payload: { panelBaseUrl: string; panelUsername: string; panelPassword: string }) =>
       (await api.post<{ ok: boolean; inboundsCount: number }>('/servers/panel/test', payload)).data,
     onSuccess: (res) => toast.success(`Panel OK. Inbounds: ${res.inboundsCount}`),
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Panel test failed'),
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Panel test failed')),
   });
 
   const panelInboundsM = useMutation({
@@ -117,7 +118,7 @@ export function ServersPage() {
       setPanelInbounds(res);
       toast.success(`Loaded ${res.length} inbounds`);
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Failed to load inbounds'),
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to load inbounds')),
   });
 
   const syncM = useMutation({
@@ -127,7 +128,7 @@ export function ServersPage() {
       await qc.invalidateQueries({ queryKey: ['servers'] });
       toast.success('Synced from panel');
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'Sync failed'),
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Sync failed')),
   });
 
   const rows = useMemo(() => serversQ.data ?? [], [serversQ.data]);

@@ -5,12 +5,6 @@ import { UpdatePaymentDto } from './dto/update-payment.dto';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { UsersService } from '../users/users.service';
 
-function addDays(date: Date, days: number) {
-  const d = new Date(date);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d;
-}
-
 @Injectable()
 export class PaymentsService {
   constructor(
@@ -119,20 +113,6 @@ export class PaymentsService {
 
     return this.prisma.payment.findUnique({
       where: { id: createdPayment.id },
-      include: {
-        vpnUser: { include: { server: true, userServers: { include: { server: true } } } },
-        plan: true,
-      },
-    });
-
-    return this.prisma.payment.create({
-      data: {
-        vpnUserId: dto.vpnUserId,
-        planId: dto.planId ?? null,
-        amount: dto.amount,
-        currency: dto.currency,
-        status: dto.status,
-      },
       include: {
         vpnUser: { include: { server: true, userServers: { include: { server: true } } } },
         plan: true,
