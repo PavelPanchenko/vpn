@@ -9,6 +9,8 @@ import { MiniAppHeader } from '../components/MiniAppHeader';
 import { MiniAppFooter } from '../components/MiniAppFooter';
 import { useMiniAppController } from '../hooks/useMiniAppController';
 import { MiniAppPaymentMethodSheet } from '../components/MiniAppPaymentMethodSheet';
+import { MiniAppBrowserLoginGate } from '../components/MiniAppBrowserLoginGate';
+import { MiniAppHelp } from '../components/MiniAppHelp';
 
 const FALLBACK_APP_TITLE = 'VPN';
 
@@ -33,6 +35,35 @@ export function MiniAppPage() {
         message={controller.fatalError}
         onRetry={() => window.location.reload()}
         onClose={canClose ? () => tg?.close?.() : undefined}
+      />
+    );
+  }
+
+  if (controller.standaloneGate) {
+    const b = controller.browserLogin;
+    if (!b) {
+      // fallback (если не удалось получить код)
+      return (
+        <MiniAppBrowserLoginGate
+          theme={theme}
+          title={controller.appName || FALLBACK_APP_TITLE}
+          expiresAt={new Date(Date.now() + 5 * 60_000).toISOString()}
+          status="EXPIRED"
+          deepLink={null}
+          onRestart={controller.restartBrowserLogin}
+          onSubmitInitData={controller.submitStandaloneInitData}
+        />
+      );
+    }
+    return (
+      <MiniAppBrowserLoginGate
+        theme={theme}
+        title={controller.appName || FALLBACK_APP_TITLE}
+        expiresAt={b.expiresAt}
+        status={b.status}
+        deepLink={b.deepLink}
+        onRestart={controller.restartBrowserLogin}
+        onSubmitInitData={controller.submitStandaloneInitData}
       />
     );
   }
@@ -103,10 +134,15 @@ export function MiniAppPage() {
             onSelectPlan={controller.openPaymentMethodsForGroup}
           />
         )}
+
+        {/* HELP */}
+        {controller.screen === 'help' && (
+          <MiniAppHelp theme={theme} btnTapClass={BTN_TAP} meta={controller.publicMeta} onBack={controller.goHome} />
+        )}
         </div>
       </div>
 
-      <MiniAppFooter theme={theme} />
+      <MiniAppFooter theme={theme} onHelp={controller.goHelp} />
 
       <MiniAppPaymentMethodSheet
         theme={theme}

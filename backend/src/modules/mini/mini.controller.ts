@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { MiniInitDataDto } from './dto/mini-auth.dto';
 import { MiniPayDto } from './dto/mini-pay.dto';
 import { MiniActivateServerDto } from './dto/mini-activate.dto';
+import { MiniBrowserStatusDto } from './dto/mini-browser-status.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import { PlansService } from '../plans/plans.service';
@@ -46,6 +47,23 @@ export class MiniController {
   private async validateInitData(initData: string): Promise<{ telegramId: string; name: string }> {
     if (!initData) {
       throw new UnauthorizedException('Missing initData');
+    }
+
+    // Standalone browser mode token: browser:<telegramId>:<expiresAtMs>:<sig>
+    if (initData.startsWith('browser:')) {
+      const verified = this.verifyBrowserInitData(initData);
+      if (!verified) {
+        throw new UnauthorizedException('Invalid browser initData');
+      }
+      if (verified.expiresAtMs <= Date.now()) {
+        throw new UnauthorizedException('Browser initData expired');
+      }
+      const telegramId = verified.telegramId;
+      const user = await this.usersService.findByTelegramId(telegramId);
+      if (!user) {
+        throw new UnauthorizedException('User not found');
+      }
+      return { telegramId, name: user.name || 'User' };
     }
 
     const params = new URLSearchParams(initData);
@@ -108,6 +126,85 @@ export class MiniController {
       (userObj.last_name ? `${userObj.first_name} ${userObj.last_name}` : 'User');
 
     return { telegramId, name };
+  }
+
+  private signBrowserInitData(args: { telegramId: string; expiresAtMs: number }): string {
+    const secret = this.configService.get<string>('JWT_SECRET') || '';
+    if (!secret) throw new Error('JWT_SECRET is not configured');
+    const base = `browser:${args.telegramId}:${args.expiresAtMs}`;
+    const sig = crypto.createHmac('sha256', secret).update(base).digest('hex');
+    return `${base}:${sig}`;
+  }
+
+  private verifyBrowserInitData(token: string): { telegramId: string; expiresAtMs: number } | null {
+    const secret = this.configService.get<string>('JWT_SECRET') || '';
+    if (!secret) return null;
+    const parts = token.split(':');
+    if (parts.length !== 4) return null;
+    const [kind, telegramId, expiresAtRaw, sig] = parts;
+    if (kind !== 'browser') return null;
+    const expiresAtMs = Number(expiresAtRaw);
+    if (!telegramId || !Number.isFinite(expiresAtMs)) return null;
+    const base = `browser:${telegramId}:${expiresAtMs}`;
+    const expected = crypto.createHmac('sha256', secret).update(base).digest('hex');
+    const a = Buffer.from(expected, 'hex');
+    const b = Buffer.from(sig, 'hex');
+    if (a.length !== b.length) return null;
+    if (!crypto.timingSafeEqual(a, b)) return null;
+    return { telegramId, expiresAtMs };
+  }
+
+  private async createBrowserLoginSession() {
+    const ttlMinutes = Number(this.configService.get<string>('MINI_BROWSER_LOGIN_TTL_MINUTES', '5'));
+    const expiresAt = new Date(Date.now() + Math.max(1, ttlMinutes) * 60_000);
+
+    // simple retry on collisions
+    for (let i = 0; i < 20; i++) {
+      const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+      try {
+        const created = await (this.prisma as any).browserLoginSession.create({
+          data: { code, status: 'PENDING', expiresAt },
+        });
+        return { loginId: created.id as string, code, expiresAt: created.expiresAt as Date };
+      } catch {
+        // collision, retry
+      }
+    }
+    throw new Error('Failed to allocate login code');
+  }
+
+  @Post('browser/start')
+  async browserStart() {
+    const s = await this.createBrowserLoginSession();
+    const bot = await this.botService.getBotMe();
+    const botUsername = bot.username ?? null;
+    const deepLink = botUsername ? `https://t.me/${botUsername}?start=web_${s.code}` : null;
+    return { loginId: s.loginId, expiresAt: s.expiresAt.toISOString(), deepLink };
+  }
+
+  @Post('browser/status')
+  async browserStatus(@Body() dto: MiniBrowserStatusDto) {
+    const session = await (this.prisma as any).browserLoginSession.findUnique({ where: { id: dto.loginId } });
+    if (!session) {
+      throw new BadRequestException('Login session not found');
+    }
+
+    if (session.status === 'PENDING' && new Date(session.expiresAt).getTime() <= Date.now()) {
+      await (this.prisma as any).browserLoginSession.update({
+        where: { id: session.id },
+        data: { status: 'EXPIRED' },
+      });
+      return { status: 'EXPIRED' as const };
+    }
+
+    if (session.status === 'APPROVED' && session.telegramId) {
+      const tokenTtlHours = Number(this.configService.get<string>('MINI_BROWSER_TOKEN_TTL_HOURS', '12'));
+      const expiresAtMs = Date.now() + Math.max(1, tokenTtlHours) * 60 * 60_000;
+      const initData = this.signBrowserInitData({ telegramId: String(session.telegramId), expiresAtMs });
+      return { status: 'APPROVED' as const, initData };
+    }
+
+    return { status: String(session.status) as 'PENDING' | 'EXPIRED' | 'APPROVED' };
   }
 
   private async getOrCreateUser(telegramId: string, name: string) {

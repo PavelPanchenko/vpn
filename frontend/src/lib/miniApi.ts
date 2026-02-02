@@ -40,3 +40,24 @@ export async function payMiniPlanWithProvider(
   return res.data;
 }
 
+export type MiniBrowserLoginStartResponse = {
+  loginId: string;
+  expiresAt: string;
+  deepLink: string | null;
+};
+
+export type MiniBrowserLoginStatusResponse =
+  | { status: 'PENDING' }
+  | { status: 'EXPIRED' }
+  | { status: 'APPROVED'; initData: string };
+
+export async function startMiniBrowserLogin(): Promise<MiniBrowserLoginStartResponse> {
+  const res = await api.post<MiniBrowserLoginStartResponse>('/mini/browser/start', {});
+  return res.data;
+}
+
+export async function getMiniBrowserLoginStatus(loginId: string): Promise<MiniBrowserLoginStatusResponse> {
+  const res = await api.post<MiniBrowserLoginStatusResponse>('/mini/browser/status', { loginId });
+  return res.data;
+}
+

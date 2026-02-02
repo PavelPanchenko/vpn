@@ -13,6 +13,8 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
     // Выходим из режима поддержки при /start
     args.supportModeUsers.delete(telegramId);
     const userName = ctx.from.first_name || ctx.from.username || 'User';
+    const startText = String((ctx.message as any)?.text ?? '');
+    const startPayload = startText.startsWith('/start') ? startText.replace(/^\/start\s*/i, '').trim() : '';
 
     try {
       const user = await args.usersService.getOrCreateByTelegramId(telegramId, userName, {
@@ -22,6 +24,27 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       if (!user) {
         await ctx.reply(BotMessages.userCreateFailedTryLaterText);
         return;
+      }
+
+      // Web login approve via deep-link payload: /start web_<6digits>
+      if (startPayload) {
+        const m = startPayload.match(/^web_(\d{6})$/);
+        const code = m?.[1] ?? null;
+        if (code) {
+          const session = await (args.prisma as any).browserLoginSession.findFirst({
+            where: { code, status: 'PENDING', expiresAt: { gt: new Date() } },
+          });
+          if (session) {
+            await (args.prisma as any).browserLoginSession.update({
+              where: { id: session.id },
+              data: { status: 'APPROVED', telegramId, vpnUserId: user.id, approvedAt: new Date() },
+            });
+            await args.replyHtml(ctx, `✅ Вход в браузере подтверждён.\n\nВернитесь на страницу — вход выполнится автоматически.`);
+            return;
+          }
+          await args.replyHtml(ctx, `⚠️ QR‑код истёк. Обновите страницу Mini App в браузере и отсканируйте новый QR.`);
+          return;
+        }
       }
 
       // Если у пользователя уже есть сервер - показываем главное меню

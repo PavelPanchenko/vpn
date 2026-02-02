@@ -48,6 +48,12 @@ enum SupportTicketStatus {
   CLOSED
 }
 
+enum BrowserLoginStatus {
+  PENDING
+  APPROVED
+  EXPIRED
+}
+
 model AdminUser {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -117,6 +123,7 @@ model VpnUser {
   payments        Payment[]
   userServers     UserServer[]
   supportMessages SupportMessage[]
+  browserLoginSessions BrowserLoginSession[]
 
   @@index([serverId])
   @@map("vpn_users")
@@ -249,5 +256,25 @@ model BotConfig {
   useMiniApp Boolean @default(false)
 
   @@map("bot_config")
+}
+
+model BrowserLoginSession {
+  id         String           @id @default(cuid())
+  code       String           @unique
+  status     BrowserLoginStatus @default(PENDING)
+
+  telegramId String?
+  vpnUserId  String?
+  approvedAt DateTime?
+
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+
+  vpnUser    VpnUser? @relation(fields: [vpnUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([status, expiresAt])
+  @@index([telegramId])
+  @@index([vpnUserId])
+  @@map("browser_login_sessions")
 }
 

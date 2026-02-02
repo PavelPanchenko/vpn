@@ -7,7 +7,9 @@ import {
   fetchMiniPlans,
   fetchMiniServers,
   fetchMiniStatus,
+  getMiniBrowserLoginStatus,
   payMiniPlanWithProvider,
+  startMiniBrowserLogin,
 } from '../lib/miniApi';
 import type { MiniPlan, MiniServer, MiniStatus } from '../lib/miniTypes';
 import type { MiniToastState } from '../components/MiniAppToast';
@@ -33,7 +35,7 @@ function getInitDataFromUrl(): string {
   return '';
 }
 
-export type MiniScreen = 'home' | 'config' | 'plans';
+export type MiniScreen = 'home' | 'config' | 'plans' | 'help';
 
 function logDevError(error: unknown) {
   // eslint-disable-next-line no-console
@@ -44,8 +46,23 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
   const { tg } = args;
 
   const [initData, setInitData] = useState<string>('');
+  const [standaloneGate, setStandaloneGate] = useState(false);
+  const [browserLogin, setBrowserLogin] = useState<{
+    loginId: string;
+    expiresAt: string;
+    deepLink: string | null;
+    status: 'PENDING' | 'EXPIRED';
+  } | null>(null);
   const [status, setStatus] = useState<MiniStatus | null>(null);
   const [appName, setAppName] = useState<string | null>(null);
+  const [publicMeta, setPublicMeta] = useState<{
+    botName?: string | null;
+    botUsername?: string | null;
+    companyName?: string | null;
+    supportEmail?: string | null;
+    supportTelegram?: string | null;
+    siteUrl?: string | null;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [fatalError, setFatalError] = useState<string | null>(null);
   const [toast, setToast] = useState<MiniToastState>(null);
@@ -96,21 +113,24 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
     // 2) Фоллбек: пробуем из URL (tgWebAppData)
     const fromUrl = getInitDataFromUrl();
     if (fromUrl) return fromUrl;
+    // 3) Standalone режим: из sessionStorage (если пользователь уже вставлял)
+    try {
+      const saved = window.sessionStorage?.getItem('miniInitData') ?? '';
+      if (saved) return saved;
+    } catch {
+      // ignore
+    }
     return '';
   }, [tg]);
 
-  const loadStatusAndMaybeServers = useCallback(async () => {
-    const resolved = await resolveInitData();
-    if (!resolved) {
-      setFatalError(
-        'Откройте это мини‑приложение из Telegram.\n\n' +
-          'Если вы открыли ссылку в браузере, авторизация не сработает — используйте кнопку WebApp в боте.',
-      );
-      setLoading(false);
-      return;
+  const bootstrapWithInitData = useCallback(async (resolved: string) => {
+    setInitData(resolved);
+    try {
+      window.sessionStorage?.setItem('miniInitData', resolved);
+    } catch {
+      // ignore
     }
 
-    setInitData(resolved);
     const s = await fetchMiniStatus(resolved);
     setStatus(s);
 
@@ -124,6 +144,25 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
     } finally {
       setRefreshingServers(false);
     }
+  }, []);
+
+  const loadStatusAndMaybeServers = useCallback(async () => {
+    const resolved = await resolveInitData();
+    if (!resolved) {
+      // Standalone режим: не падаем, а показываем gate для ручного ввода initData
+      setStandaloneGate(true);
+      try {
+        const s = await startMiniBrowserLogin();
+        setBrowserLogin({ loginId: s.loginId, expiresAt: s.expiresAt, deepLink: s.deepLink, status: 'PENDING' });
+      } catch {
+        // best-effort: остаётся ручной ввод
+      }
+      setLoading(false);
+      return;
+    }
+
+    setStandaloneGate(false);
+    await bootstrapWithInitData(resolved);
   }, [resolveInitData]);
 
   useEffect(() => {
@@ -137,8 +176,18 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
 
     // Название приложения с API (для заглушки и шапки), без авторизации
     api
-      .get<{ botName?: string }>('/public/meta')
-      .then((r) => setAppName(r.data?.botName ?? null))
+      .get<{
+        botName?: string | null;
+        botUsername?: string | null;
+        companyName?: string | null;
+        supportEmail?: string | null;
+        supportTelegram?: string | null;
+        siteUrl?: string | null;
+      }>('/public/meta')
+      .then((r) => {
+        setAppName(r.data?.botName ?? null);
+        setPublicMeta(r.data ?? null);
+      })
       .catch(() => {});
 
     const run = async () => {
@@ -154,6 +203,64 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
 
     void run();
   }, [tg, loadStatusAndMaybeServers]);
+
+  const submitStandaloneInitData = useCallback(
+    async (raw: string) => {
+      const v = String(raw ?? '').trim();
+      if (!v) return;
+      setFatalError(null);
+      setStandaloneGate(false);
+      setLoading(true);
+      try {
+        await bootstrapWithInitData(v);
+      } catch (e: unknown) {
+        logDevError(e);
+        setFatalError(getApiErrorMessage(e, 'Не удалось загрузить статус.'));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [bootstrapWithInitData],
+  );
+
+  const restartBrowserLogin = useCallback(async () => {
+    try {
+      const s = await startMiniBrowserLogin();
+      setBrowserLogin({ loginId: s.loginId, expiresAt: s.expiresAt, deepLink: s.deepLink, status: 'PENDING' });
+    } catch (e: unknown) {
+      showErrorToast(e, 'Не удалось получить код');
+    }
+  }, [showErrorToast]);
+
+  // Poll browser login status
+  useEffect(() => {
+    if (!standaloneGate) return;
+    if (!browserLogin?.loginId) return;
+    if (browserLogin.status !== 'PENDING') return;
+
+    let cancelled = false;
+    const t = setInterval(async () => {
+      try {
+        const res = await getMiniBrowserLoginStatus(browserLogin.loginId);
+        if (cancelled) return;
+        if (res.status === 'EXPIRED') {
+          setBrowserLogin((prev) => (prev ? { ...prev, status: 'EXPIRED' } : prev));
+          return;
+        }
+        if (res.status === 'APPROVED' && 'initData' in res) {
+          clearInterval(t);
+          await submitStandaloneInitData(res.initData);
+        }
+      } catch {
+        // ignore: временные сетевые ошибки
+      }
+    }, 1500);
+
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [standaloneGate, browserLogin?.loginId, browserLogin?.status, submitStandaloneInitData]);
 
   const handleLoadConfig = useCallback(async () => {
     if (!initData) return;
@@ -327,11 +434,16 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
     setConfigUrl(null);
   }, []);
 
+  const goHelp = useCallback(() => setScreen('help' as any), []);
+
   return {
     // ui state
     appName,
+    publicMeta,
     loading,
     fatalError,
+    standaloneGate,
+    browserLogin,
     toast,
     screen,
     screenEntered,
@@ -353,6 +465,7 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
 
     // actions
     goHome,
+    goHelp,
     setScreen,
     handleLoadConfig,
     handleLoadPlans,
@@ -363,6 +476,8 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
     openPaymentMethodsForGroup,
     closePaymentSheet,
     choosePaymentMethod,
+    submitStandaloneInitData,
+    restartBrowserLogin,
   };
 }
 
