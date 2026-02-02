@@ -6,6 +6,8 @@ function normalizeTgHandle(s: string): { label: string; url: string } {
   return { label: raw.startsWith('@') ? raw : `@${handle}`, url: `https://t.me/${handle}` };
 }
 
+const V2RAYTUN_URL = 'https://v2raytun.com/';
+
 export function MiniAppHelp(props: {
   theme: TelegramTheme;
   btnTapClass: string;
@@ -44,6 +46,12 @@ export function MiniAppHelp(props: {
         </ol>
         <div className="text-xs mt-2" style={{ color: theme.hint }}>
           Поддерживаемые клиенты (пример): iOS — Shadowrocket, Android — v2rayNG, Windows — v2rayN, macOS — ClashX.
+        </div>
+        <div className="text-xs mt-2" style={{ color: theme.hint }}>
+          V2RayTun (инструкция):{' '}
+          <a href={V2RAYTUN_URL} target="_blank" rel="noreferrer" style={{ color: theme.link }}>
+            {V2RAYTUN_URL}
+          </a>
         </div>
       </div>
 

@@ -53,6 +53,7 @@ export function registerTelegramCommands(args: TelegramRegistrarDeps) {
   // /help
   args.bot.command('help', async (ctx: TelegramMessageCtx) => {
     try {
+      const v2rayTunUrl = 'https://v2raytun.com/';
       const helpMessage =
         `❓ <b>Помощь</b>\n\n` +
         `<b>1) Подключение</b>\n` +
@@ -60,10 +61,12 @@ export function registerTelegramCommands(args: TelegramRegistrarDeps) {
         `• Импортируйте в приложение и включите VPN\n\n` +
         `<b>2) Рекомендуемые приложения</b>\n` +
         `• iOS: Shadowrocket / v2rayNG\n` +
-        `• Android: v2rayNG / V2rayTun\n` +
+        `• Android: v2rayNG / V2RayTun\n` +
         `• Windows: v2rayN\n` +
         `• macOS: ClashX\n\n` +
-        `<b>3) Команды</b>\n` +
+        `<b>3) Инструкция для V2RayTun</b>\n` +
+        `• ${v2rayTunUrl}\n\n` +
+        `<b>4) Команды</b>\n` +
         `• <code>/start</code> — меню\n` +
         `• <code>/config</code> — конфиг\n` +
         `• <code>/pay</code> — оплата\n` +

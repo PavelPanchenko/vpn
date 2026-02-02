@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { getApiErrorMessage } from '../lib/apiError';
 import {
@@ -33,6 +33,34 @@ function getInitDataFromUrl(): string {
     // ignore
   }
   return '';
+}
+
+function getStartAppParamFromUrl(): string {
+  try {
+    const url = new URL(window.location.href);
+    // Telegram may provide start parameter via query or hash
+    const fromQuery = url.searchParams.get('tgWebAppStartParam') || url.searchParams.get('startapp');
+    if (fromQuery) return fromQuery;
+
+    const hash = url.hash?.startsWith('#') ? url.hash.slice(1) : url.hash;
+    if (hash) {
+      const params = new URLSearchParams(hash);
+      const fromHash = params.get('tgWebAppStartParam') || params.get('startapp');
+      if (fromHash) return fromHash;
+    }
+  } catch {
+    // ignore
+  }
+  return '';
+}
+
+function getStartAppParamFromInitData(initData: string): string {
+  try {
+    const params = new URLSearchParams(String(initData ?? ''));
+    return params.get('start_param') || '';
+  } catch {
+    return '';
+  }
 }
 
 export type MiniScreen = 'home' | 'config' | 'plans' | 'help';
@@ -75,6 +103,7 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
   const [refreshingServers, setRefreshingServers] = useState(false);
   const [configCopied, setConfigCopied] = useState(false);
   const [screenEntered, setScreenEntered] = useState(true);
+  const startParamHandledRef = useRef(false);
 
   const [paymentSheetOpen, setPaymentSheetOpen] = useState(false);
   const [selectedPlanGroupKey, setSelectedPlanGroupKey] = useState<string | null>(null);
@@ -203,6 +232,42 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
 
     void run();
   }, [tg, loadStatusAndMaybeServers]);
+
+  // Handle deep-link return from payment providers (t.me/<bot>/app?startapp=...)
+  useEffect(() => {
+    if (!initData) return;
+    if (startParamHandledRef.current) return;
+
+    const startParam = getStartAppParamFromInitData(initData) || getStartAppParamFromUrl();
+    if (!startParam) {
+      startParamHandledRef.current = true;
+      return;
+    }
+    startParamHandledRef.current = true;
+
+    const refresh = async () => {
+      try {
+        const next = await fetchMiniStatus(initData);
+        setStatus(next);
+      } catch (e: unknown) {
+        // best-effort: show toast but don't block UI
+        showErrorToast(e, 'Не удалось обновить статус.');
+      }
+    };
+
+    if (startParam === 'pay_success') {
+      setScreen('home');
+      showSuccessToast('Оплата успешна. Обновляем статус…');
+      void refresh();
+      return;
+    }
+    if (startParam === 'pay_fail') {
+      setScreen('home');
+      setToast({ type: 'error', message: 'Оплата не завершена.' });
+      void refresh();
+      return;
+    }
+  }, [initData, showErrorToast, showSuccessToast]);
 
   const submitStandaloneInitData = useCallback(
     async (raw: string) => {
