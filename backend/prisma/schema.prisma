@@ -34,8 +34,24 @@ enum VpnUserStatus {
 }
 
 enum PaymentStatus {
+  PENDING
   PAID
   FAILED
+  CANCELED
+  CHARGEBACK
+}
+
+enum PaymentIntentStatus {
+  PENDING
+  PAID
+  CANCELED
+  EXPIRED
+  CHARGEBACK
+}
+
+enum PaymentProvider {
+  TELEGRAM_STARS
+  PLATEGA
 }
 
 enum SupportMessageType {
@@ -175,16 +191,55 @@ model Payment {
   status            PaymentStatus @default(PAID)
   createdAt         DateTime      @default(now())
 
+  paymentIntentId   String?
   planId            String?
   planPriceAtPurchase Int?
 
   vpnUser           VpnUser       @relation(fields: [vpnUserId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   plan              Plan?         @relation(fields: [planId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  paymentIntent     PaymentIntent? @relation(fields: [paymentIntentId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   subscription      Subscription?
 
   @@index([vpnUserId])
   @@index([planId])
+  @@index([paymentIntentId])
   @@map("payments")
+}
+
+model PaymentIntent {
+  id          String              @id @default(cuid())
+  vpnUserId   String
+  planId      String
+  variantId   String
+  provider    PaymentProvider
+  amount      Int
+  currency    String
+  status      PaymentIntentStatus @default(PENDING)
+
+  // Provider-specific external reference (transactionId / etc)
+  externalId  String?
+
+  // UX fields
+  checkoutUrl String?
+  invoiceLink String?
+
+  // Signed metadata for mapping callbacks to our domain (optional)
+  payload     String?
+
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  expiresAt   DateTime?
+
+  vpnUser     VpnUser             @relation(fields: [vpnUserId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  plan        Plan                @relation(fields: [planId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  payments    Payment[]
+
+  @@index([vpnUserId])
+  @@index([planId])
+  @@index([status, expiresAt])
+  @@unique([provider, externalId])
+  @@map("payment_intents")
 }
 
 model Plan {

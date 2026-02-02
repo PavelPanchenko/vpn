@@ -16,7 +16,7 @@ export class CreatePaymentDto {
   @IsString()
   currency!: string;
 
-  @IsIn(['PAID', 'FAILED'])
-  status!: 'PAID' | 'FAILED';
+  @IsIn(['PENDING', 'PAID', 'FAILED', 'CANCELED', 'CHARGEBACK'])
+  status!: 'PENDING' | 'PAID' | 'FAILED' | 'CANCELED' | 'CHARGEBACK';
 }
 

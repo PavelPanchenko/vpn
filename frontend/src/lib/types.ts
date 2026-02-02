@@ -59,7 +59,29 @@ export type Subscription = {
   active: boolean;
 };
 
-export type PaymentStatus = 'PAID' | 'FAILED';
+export type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'CANCELED' | 'CHARGEBACK';
+
+export type PaymentIntentStatus = 'PENDING' | 'PAID' | 'CANCELED' | 'EXPIRED' | 'CHARGEBACK';
+export type PaymentProvider = 'TELEGRAM_STARS' | 'PLATEGA';
+
+export type PaymentIntent = {
+  id: string;
+  vpnUserId: string;
+  planId: string;
+  variantId: string;
+  provider: PaymentProvider;
+  amount: number;
+  currency: string;
+  status: PaymentIntentStatus;
+  externalId: string | null;
+  checkoutUrl: string | null;
+  invoiceLink: string | null;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string | null;
+  plan?: Plan | null;
+  vpnUser?: VpnUser | null;
+};
 
 export type PlanVariant = {
   id: string;

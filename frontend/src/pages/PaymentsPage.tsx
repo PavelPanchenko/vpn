@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import { api } from '../lib/api';
 import { getApiErrorMessage } from '../lib/apiError';
-import { type Payment, type PaymentStatus, type VpnUser, type Plan } from '../lib/types';
+import { type Payment, type PaymentStatus, type VpnUser, type Plan, type PaymentIntent } from '../lib/types';
 import type { CurrencyCode } from '../lib/currencies';
 import { CURRENCY_CODES } from '../lib/currencies';
 import { Card } from '../components/Card';
@@ -64,6 +64,11 @@ export function PaymentsPage() {
   const paymentsQ = useQuery({
     queryKey: ['payments'],
     queryFn: async () => (await api.get<Payment[]>('/payments')).data,
+  });
+
+  const intentsQ = useQuery({
+    queryKey: ['payment-intents'],
+    queryFn: async () => (await api.get<PaymentIntent[]>('/payment-intents')).data,
   });
 
   // Фильтруем только активные платные тарифы
@@ -134,6 +139,7 @@ export function PaymentsPage() {
 
   const users = useMemo(() => usersQ.data ?? [], [usersQ.data]);
   const payments = useMemo(() => paymentsQ.data ?? [], [paymentsQ.data]);
+  const intents = useMemo(() => intentsQ.data ?? [], [intentsQ.data]);
 
   function formatPlanVariantsShort(plan: Plan) {
     const vars = plan.variants ?? [];
@@ -295,6 +301,130 @@ export function PaymentsPage() {
         )}
       </Card>
 
+      <Card
+        title="Payment intents"
+        right={
+          <Button variant="secondary" onClick={() => intentsQ.refetch()}>
+            Refresh
+          </Button>
+        }
+      >
+        {intentsQ.isLoading ? (
+          <div className="text-sm text-slate-600">Loading…</div>
+        ) : (
+          <ResponsiveSwitch
+            mobile={
+              <div className="grid gap-3">
+                {intents.map((it) => (
+                  <div key={it.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-semibold text-slate-900 truncate">
+                          {it.vpnUser?.name ?? it.vpnUser?.uuid ?? it.vpnUserId}
+                        </div>
+                        <div className="text-xs text-slate-500">{new Date(it.createdAt).toLocaleString()}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs text-slate-500">{it.status}</div>
+                        <div className="font-semibold">
+                          {it.amount} {it.currency}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-2 grid gap-1 text-sm text-slate-700">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-slate-500">Provider</span>
+                        <span className="text-right">{it.provider}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-slate-500">Plan</span>
+                        <span className="text-right">{it.plan?.name ?? it.planId}</span>
+                      </div>
+                      {it.expiresAt ? (
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-slate-500">Expires</span>
+                          <span className="text-right">{new Date(it.expiresAt).toLocaleString()}</span>
+                        </div>
+                      ) : null}
+                      {it.externalId ? (
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-slate-500">External ID</span>
+                          <span className="font-mono text-xs break-all text-right">{it.externalId}</span>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {it.checkoutUrl ? (
+                      <div className="mt-3">
+                        <Button
+                          variant="secondary"
+                          className="w-full"
+                          onClick={() => window.open(it.checkoutUrl!, '_blank', 'noopener,noreferrer')}
+                        >
+                          Open checkout
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+                {intents.length === 0 ? <div className="text-sm text-slate-500">No payment intents</div> : null}
+              </div>
+            }
+            desktop={
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-left text-slate-500">
+                    <tr>
+                      <th className="py-2">User</th>
+                      <th className="py-2">Plan</th>
+                      <th className="py-2">Created</th>
+                      <th className="py-2">Amount</th>
+                      <th className="py-2">Currency</th>
+                      <th className="py-2">Provider</th>
+                      <th className="py-2">Status</th>
+                      <th className="py-2">External ID</th>
+                      <th className="py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-slate-800">
+                    {intents.map((it) => (
+                      <tr key={it.id} className="border-t border-slate-100">
+                        <td className="py-2 text-sm">
+                          <div className="font-medium text-slate-900">{it.vpnUser?.name ?? it.vpnUser?.uuid ?? it.vpnUserId}</div>
+                          <div className="font-mono text-xs text-slate-500">{it.vpnUser?.uuid ?? ''}</div>
+                        </td>
+                        <td className="py-2">{it.plan?.name ?? it.planId}</td>
+                        <td className="py-2">{new Date(it.createdAt).toLocaleString()}</td>
+                        <td className="py-2">{it.amount}</td>
+                        <td className="py-2">{it.currency}</td>
+                        <td className="py-2">{it.provider}</td>
+                        <td className="py-2">{it.status}</td>
+                        <td className="py-2 font-mono text-xs">{it.externalId ?? ''}</td>
+                        <td className="py-2 text-right">
+                          {it.checkoutUrl ? (
+                            <Button variant="secondary" onClick={() => window.open(it.checkoutUrl!, '_blank', 'noopener,noreferrer')}>
+                              Open
+                            </Button>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))}
+                    {intents.length === 0 ? (
+                      <tr>
+                        <td className="py-3 text-slate-500" colSpan={9}>
+                          No payment intents
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            }
+          />
+        )}
+      </Card>
+
       <Modal
         open={createOpen}
         title="Create payment"
@@ -414,8 +544,11 @@ export function PaymentsPage() {
               className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               {...createForm.register('status', { required: true })}
             >
+              <option value="PENDING">PENDING</option>
               <option value="PAID">PAID</option>
               <option value="FAILED">FAILED</option>
+              <option value="CANCELED">CANCELED</option>
+              <option value="CHARGEBACK">CHARGEBACK</option>
             </select>
             {selectedPlan && createForm.watch('status') === 'PAID' && (
               <div className="mt-1 text-xs text-green-600">

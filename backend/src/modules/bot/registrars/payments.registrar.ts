@@ -8,7 +8,6 @@ import { getErrorMessage } from '../telegram-error.utils';
 import { formatPlanGroupButtonLabel, groupPlansByNameAndPeriod } from '../plans/plan-grouping.utils';
 import { sendTelegramStarsInvoice } from '../../payments/telegram-stars/telegram-bot-api';
 import { buildTelegramStarsInvoicePayload } from '../../payments/telegram-stars/telegram-stars.payload';
-import { createExternalUrlPaymentIntent } from '../../payments/payment-providers/external-url.provider';
 
 export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
   // /pay - показываем тарифы
@@ -94,7 +93,7 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
         ]);
       if (externalVariant)
         methodButtons.push([
-          Markup.button.callback('💳 Карта / RUB', `pay_with_EXTERNAL_URL_${externalVariant.id}`),
+          Markup.button.callback('💳 Карта / СБП', `pay_with_PLATEGA_${externalVariant.id}`),
         ]);
 
       if (methodButtons.length === 0) {
@@ -116,9 +115,9 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
 
   // Выбор способа оплаты
   args.bot.action(
-    /^pay_with_(TELEGRAM_STARS|EXTERNAL_URL)_(.+)$/,
+    /^pay_with_(TELEGRAM_STARS|PLATEGA)_(.+)$/,
     async (ctx: TelegramCallbackCtx<TelegramCallbackMatch>) => {
-      const provider = ctx.match[1] as 'TELEGRAM_STARS' | 'EXTERNAL_URL';
+      const provider = ctx.match[1] as 'TELEGRAM_STARS' | 'PLATEGA';
       const variantId = ctx.match[2];
       const telegramId = ctx.from.id.toString();
 
@@ -148,8 +147,25 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
             return;
           }
 
+          const intent = await args.paymentIntentsService.createForVariant({
+            vpnUserId: user.id,
+            variantId: variant.id,
+            provider: 'TELEGRAM_STARS',
+            botToken: args.botToken,
+          });
+          if ('type' in intent && intent.type === 'UNSUPPORTED') {
+            await editOrReplyHtml(ctx, `⚠️ Оплата Stars пока недоступна.\n\n${args.esc(intent.reason)}`);
+            return;
+          }
+          if (!('invoiceLink' in intent)) {
+            await editOrReplyHtml(ctx, `⚠️ Оплата Stars пока недоступна.`);
+            return;
+          }
+
+          // Backward compat: still support sending invoice directly in bot
           const secret = args.config.get<string>('PAYMENTS_PAYLOAD_SECRET') || args.botToken;
           const payload = buildTelegramStarsInvoicePayload({
+            intentId: intent.intentId,
             userId: user.id,
             planId: plan.id,
             variantId: variant.id,
@@ -175,19 +191,23 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
           return;
         }
 
-        // EXTERNAL_URL
+        // PLATEGA
         if (variant.currency === 'XTR') {
           await editOrReplyHtml(ctx, `⚠️ Этот тариф предназначен для Stars. Выберите оплату Stars.`);
           return;
         }
 
-        const intent = await createExternalUrlPaymentIntent({
-          config: args.config,
-          data: { vpnUserId: user.id, planId: plan.id },
+        const intent = await args.paymentIntentsService.createForVariant({
+          vpnUserId: user.id,
+          variantId: variant.id,
+          provider: 'PLATEGA',
         });
-
-        if (intent.type !== 'EXTERNAL_URL' || !('paymentUrl' in intent)) {
-          await editOrReplyHtml(ctx, `⚠️ Внешняя оплата пока недоступна.\n\n${args.esc((intent as any).reason ?? '')}`);
+        if ('type' in intent && intent.type === 'UNSUPPORTED') {
+          await editOrReplyHtml(ctx, `⚠️ Внешняя оплата пока недоступна.\n\n${args.esc(intent.reason)}`);
+          return;
+        }
+        if (!('paymentUrl' in intent)) {
+          await editOrReplyHtml(ctx, `⚠️ Внешняя оплата пока недоступна.`);
           return;
         }
 

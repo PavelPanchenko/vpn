@@ -1,6 +1,7 @@
 import type { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import type { PaymentsService } from '../../payments/payments.service';
+import type { PaymentIntentsService } from '../../payments/payment-intents/payment-intents.service';
 import type { PlansService } from '../../plans/plans.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { SupportService } from '../../support/support.service';
@@ -20,6 +21,7 @@ export type TelegramRegistrarDeps = {
   usersService: UsersService;
   plansService: PlansService;
   paymentsService: PaymentsService;
+  paymentIntentsService: PaymentIntentsService;
   supportService: SupportService;
 
   supportModeUsers: Map<string, boolean>;
