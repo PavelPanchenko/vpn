@@ -11,6 +11,8 @@ export async function createTelegramStarsPaymentIntent(args: {
   botService: BotService;
   data: CreatePaymentIntentArgs;
 }): Promise<CreatePaymentIntentResult> {
+  // Legacy provider wrapper (kept for compatibility): now creates PaymentIntent record
+  // so that successful_payment can be processed via PaymentIntentsService flow.
   const plan = await args.prisma.plan.findUnique({
     where: { id: args.data.planId },
     include: { variants: { where: { active: true } } },
@@ -33,8 +35,21 @@ export async function createTelegramStarsPaymentIntent(args: {
     return { provider: 'TELEGRAM_STARS', type: 'UNSUPPORTED', reason: 'Bot token not configured' };
   }
 
+  const createdIntent = await (args.prisma as any).paymentIntent.create({
+    data: {
+      vpnUserId: args.data.vpnUserId,
+      planId: plan.id,
+      variantId: starsVariant.id,
+      provider: 'TELEGRAM_STARS',
+      amount: Number(starsVariant.price),
+      currency: 'XTR',
+      status: 'PENDING',
+    },
+  });
+
   const secret = args.config.get<string>('PAYMENTS_PAYLOAD_SECRET') || token;
   const payload = buildTelegramStarsInvoicePayload({
+    intentId: String(createdIntent.id),
     userId: args.data.vpnUserId,
     planId: plan.id,
     variantId: starsVariant.id,
@@ -49,6 +64,15 @@ export async function createTelegramStarsPaymentIntent(args: {
     payload,
     currency: 'XTR',
     prices: [{ label: plan.name, amount: starsVariant.price }],
+  });
+
+  await (args.prisma as any).paymentIntent.update({
+    where: { id: createdIntent.id },
+    data: {
+      invoiceLink,
+      payload,
+      expiresAt: new Date(Date.now() + 15 * 60_000),
+    },
   });
 
   return { provider: 'TELEGRAM_STARS', type: 'INVOICE_LINK', invoiceLink };
