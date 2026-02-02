@@ -137,6 +137,7 @@ model VpnUser {
   // relations
   subscriptions   Subscription[]
   payments        Payment[]
+  paymentIntents  PaymentIntent[]
   userServers     UserServer[]
   supportMessages SupportMessage[]
   browserLoginSessions BrowserLoginSession[]
@@ -259,6 +260,7 @@ model Plan {
 
   variants     PlanVariant[]
   payments     Payment[]
+  paymentIntents PaymentIntent[]
 
   @@map("plans")
 }
