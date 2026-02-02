@@ -81,7 +81,7 @@ export class PlansService {
       code: v.code,
       currency: v.currency,
       price: v.price,
-      provider: v.provider ?? (v.currency === 'XTR' ? 'TELEGRAM_STARS' : 'EXTERNAL_URL'),
+      provider: v.provider ?? (v.currency === 'XTR' ? 'TELEGRAM_STARS' : 'PLATEGA'),
       active: v.active ?? true,
     }));
 

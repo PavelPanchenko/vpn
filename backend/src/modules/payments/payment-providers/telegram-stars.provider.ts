@@ -57,14 +57,24 @@ export async function createTelegramStarsPaymentIntent(args: {
     secret,
   });
 
-  const invoiceLink = await createTelegramStarsInvoiceLink({
-    token,
-    title: `VPN — ${plan.name}`,
-    description: `Подписка на ${plan.periodDays} дней`,
-    payload,
-    currency: 'XTR',
-    prices: [{ label: plan.name, amount: starsVariant.price }],
-  });
+  let invoiceLink: string;
+  try {
+    invoiceLink = await createTelegramStarsInvoiceLink({
+      token,
+      title: `VPN — ${plan.name}`,
+      description: `Подписка на ${plan.periodDays} дней`,
+      payload,
+      currency: 'XTR',
+      prices: [{ label: plan.name, amount: starsVariant.price }],
+    });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await (args.prisma as any).paymentIntent.update({
+      where: { id: createdIntent.id },
+      data: { status: 'CANCELED', payload },
+    });
+    return { provider: 'TELEGRAM_STARS', type: 'UNSUPPORTED', reason: msg };
+  }
 
   await (args.prisma as any).paymentIntent.update({
     where: { id: createdIntent.id },

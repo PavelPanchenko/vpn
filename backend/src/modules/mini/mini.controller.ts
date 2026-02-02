@@ -433,7 +433,7 @@ export class MiniController {
     const res = await this.paymentIntents.createForVariant({
       vpnUserId: user.id,
       variantId: dto.variantId,
-      provider: dto.provider === 'TELEGRAM_STARS' ? 'TELEGRAM_STARS' : 'PLATEGA',
+      provider: dto.provider,
       botToken: botToken ?? undefined,
     });
 

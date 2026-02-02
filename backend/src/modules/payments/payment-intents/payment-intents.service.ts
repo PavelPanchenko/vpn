@@ -130,17 +130,27 @@ export class PaymentIntentsService {
         secret: payloadSecret,
       });
 
-      const tx = await plategaCreateTransaction({
-        config: this.config,
-        body: {
-          paymentMethod: Number.isFinite(method) ? method : 2,
-          paymentDetails: { amount: Number(variant.price), currency: String(variant.currency) },
-          description: `VPN — ${plan.name}`,
-          return: ok || undefined,
-          failedUrl: fail || undefined,
-          payload,
-        },
-      });
+      let tx: Awaited<ReturnType<typeof plategaCreateTransaction>>;
+      try {
+        tx = await plategaCreateTransaction({
+          config: this.config,
+          body: {
+            paymentMethod: Number.isFinite(method) ? method : 2,
+            paymentDetails: { amount: Number(variant.price), currency: String(variant.currency) },
+            description: `VPN — ${plan.name}`,
+            return: ok || undefined,
+            failedUrl: fail || undefined,
+            payload,
+          },
+        });
+      } catch (e: unknown) {
+        await (this.prisma as any).paymentIntent.update({
+          where: { id: created.id },
+          data: { status: 'CANCELED', payload },
+        });
+        const msg = e instanceof Error ? e.message : String(e);
+        return { provider: 'PLATEGA', intentId: created.id, type: 'UNSUPPORTED', reason: msg };
+      }
 
       const ttlMs = parseHhMmSsToMs(tx.expiresIn) ?? 15 * 60_000;
       const expiresAt = new Date(Date.now() + ttlMs);
@@ -173,14 +183,24 @@ export class PaymentIntentsService {
       secret,
     });
 
-    const invoiceLink = await createTelegramStarsInvoiceLink({
-      token: botToken,
-      title: `VPN — ${plan.name}`,
-      description: `Подписка на ${plan.periodDays} дней`,
-      payload,
-      currency: 'XTR',
-      prices: [{ label: plan.name, amount: Number(variant.price) }],
-    });
+    let invoiceLink: string;
+    try {
+      invoiceLink = await createTelegramStarsInvoiceLink({
+        token: botToken,
+        title: `VPN — ${plan.name}`,
+        description: `Подписка на ${plan.periodDays} дней`,
+        payload,
+        currency: 'XTR',
+        prices: [{ label: plan.name, amount: Number(variant.price) }],
+      });
+    } catch (e: unknown) {
+      await (this.prisma as any).paymentIntent.update({
+        where: { id: created.id },
+        data: { status: 'CANCELED', payload },
+      });
+      const msg = e instanceof Error ? e.message : String(e);
+      return { provider: 'TELEGRAM_STARS', intentId: created.id, type: 'UNSUPPORTED', reason: msg };
+    }
 
     await (this.prisma as any).paymentIntent.update({
       where: { id: created.id },

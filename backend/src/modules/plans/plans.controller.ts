@@ -39,7 +39,7 @@ export class PlansController {
   @Post(':id/variants')
   async createVariant(@Param() params: IdParamDto, @Body() dto: CreatePlanVariantDto) {
     const plan = await this.plans.get(params.id);
-    const provider = dto.provider ?? (dto.currency === 'XTR' ? 'TELEGRAM_STARS' : 'EXTERNAL_URL');
+    const provider = dto.provider ?? (dto.currency === 'XTR' ? 'TELEGRAM_STARS' : 'PLATEGA');
     await this.prisma.planVariant.create({
       data: {
         planId: plan.id,
