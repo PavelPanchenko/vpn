@@ -15,8 +15,10 @@ export function Button({ className, variant = 'primary', size = 'md', ...props }
     danger: 'bg-red-600 text-white hover:bg-red-500 focus:ring-red-600 shadow-sm',
   };
   const sizes: Record<NonNullable<Props['size']>, string> = {
-    sm: 'h-7 px-2 text-xs',
-    md: 'h-9 px-3',
+    // mobile touch target ~= 36px+
+    sm: 'h-9 px-3 text-xs',
+    // default: comfortable on mobile, ok on desktop
+    md: 'h-10 px-3',
     lg: 'h-11 px-4 text-base',
   };
 

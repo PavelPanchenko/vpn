@@ -134,26 +134,26 @@ export function SupportPage() {
       <PageHeader title="Поддержка" />
       
       <Card>
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Статус</label>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="grid w-full gap-3 sm:w-auto sm:grid-cols-2">
+            <label className="block">
+              <div className="mb-1 text-sm font-medium text-slate-700">Статус</div>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as 'ALL' | 'OPEN' | 'CLOSED')}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               >
                 <option value="ALL">Все</option>
                 <option value="OPEN">Открытые</option>
                 <option value="CLOSED">Закрытые</option>
               </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Пользователь</label>
+            </label>
+            <label className="block">
+              <div className="mb-1 text-sm font-medium text-slate-700">Пользователь</div>
               <select
                 value={userFilter}
                 onChange={(e) => setUserFilter(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               >
                 <option value="ALL">Все</option>
                 {users.map((u) => (
@@ -162,18 +162,19 @@ export function SupportPage() {
                   </option>
                 ))}
               </select>
-            </div>
+            </label>
           </div>
-          <div className="text-right">
-            <div className="text-sm text-gray-600">Открытых тикетов</div>
-            <div className="text-2xl font-bold text-blue-600">{statsQ.data?.openTickets ?? 0}</div>
+
+          <div className="text-left sm:text-right">
+            <div className="text-sm text-slate-600">Открытых тикетов</div>
+            <div className="text-2xl font-bold text-slate-900">{statsQ.data?.openTickets ?? 0}</div>
           </div>
         </div>
 
         {messagesQ.isLoading ? (
-          <div className="text-center py-8 text-gray-500">Загрузка...</div>
+          <div className="text-center py-8 text-slate-500">Загрузка...</div>
         ) : messages.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">Нет сообщений</div>
+          <div className="text-center py-8 text-slate-500">Нет сообщений</div>
         ) : (
           <div className="space-y-6">
             {Object.entries(groupedMessages).map(([vpnUserId, userMessages]) => {
@@ -181,15 +182,15 @@ export function SupportPage() {
               const hasOpenMessages = userMessages.some((m) => m.status === 'OPEN');
               
               return (
-                <div key={vpnUserId} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
+                <div key={vpnUserId} className="border border-slate-200 rounded-lg p-4">
+                  <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <h3 className="font-semibold text-lg">{user.name}</h3>
                       {user.telegramId && (
-                        <p className="text-sm text-gray-500">Telegram ID: {user.telegramId}</p>
+                        <p className="text-sm text-slate-500">Telegram ID: {user.telegramId}</p>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       {hasOpenMessages && (
                         <Badge variant="success">Открыт</Badge>
                       )}
@@ -226,9 +227,9 @@ export function SupportPage() {
                         <>
                           {/* Группа старых сообщений (свернута) */}
                           {otherMessages.length > 0 && (
-                            <div className="rounded-lg border border-gray-300 bg-gray-50">
+                            <div className="rounded-lg border border-slate-200 bg-slate-50">
                               <div
-                                className="p-3 cursor-pointer hover:bg-gray-100 transition-colors"
+                                className="p-3 cursor-pointer hover:bg-slate-100 transition-colors"
                                 onClick={() => {
                                   const newExpanded = new Set(expandedMessages);
                                   if (isOtherMessagesExpanded) {
@@ -240,13 +241,13 @@ export function SupportPage() {
                                 }}
                               >
                                 <div className="flex items-center gap-2">
-                                  <span className="text-sm font-medium text-gray-700">
+                                  <span className="text-sm font-medium text-slate-700">
                                     {isOtherMessagesExpanded ? '▼' : '▶'} Старые сообщения ({otherMessages.length})
                                   </span>
                                 </div>
                               </div>
                               {isOtherMessagesExpanded && (
-                                <div className="border-t border-gray-200 p-3 space-y-2">
+                                <div className="border-t border-slate-200 p-3 space-y-2">
                                   {otherMessages.map((msg) => (
                                     <div
                                       key={msg.id}
@@ -260,11 +261,11 @@ export function SupportPage() {
                                         <span className="text-xs font-medium">
                                           {msg.type === 'USER_MESSAGE' ? '👤 Пользователь' : '👨‍💼 Администратор'}
                                         </span>
-                                        <span className="text-xs text-gray-500">
+                                        <span className="text-xs text-slate-500">
                                           {new Date(msg.createdAt).toLocaleString('ru-RU')}
                                         </span>
                                       </div>
-                                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{msg.message}</p>
+                                      <p className="text-sm text-slate-700 whitespace-pre-wrap">{msg.message}</p>
                                     </div>
                                   ))}
                                 </div>
@@ -287,13 +288,14 @@ export function SupportPage() {
                                     <span className="font-medium">
                                       {lastMessage.type === 'USER_MESSAGE' ? '👤 Пользователь' : '👨‍💼 Администратор'}
                                     </span>
-                                    <span className="text-xs text-gray-500">
+                                    <span className="text-xs text-slate-500">
                                       {new Date(lastMessage.createdAt).toLocaleString('ru-RU')}
                                     </span>
                                   </div>
                                   {lastMessage.type === 'USER_MESSAGE' && lastMessage.status === 'OPEN' && (
                                     <Button
                                       variant="primary"
+                                      className="shrink-0"
                                       onClick={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
@@ -304,7 +306,7 @@ export function SupportPage() {
                                     </Button>
                                   )}
                                 </div>
-                                <p className="text-gray-700 whitespace-pre-wrap">{lastMessage.message}</p>
+                                <p className="text-slate-700 whitespace-pre-wrap">{lastMessage.message}</p>
                               </div>
                             </div>
                           )}
@@ -330,11 +332,11 @@ export function SupportPage() {
       >
         <form onSubmit={replyForm.handleSubmit(onSubmitReply)} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Сообщение</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Сообщение</label>
             <textarea
               {...replyForm.register('message', { required: true })}
               rows={6}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               placeholder="Введите ответ..."
             />
             {replyForm.formState.errors.message && (

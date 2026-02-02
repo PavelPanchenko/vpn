@@ -10,6 +10,7 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
+import { ResponsiveSwitch } from '../components/ResponsiveSwitch';
 
 type CreateSubscriptionForm = {
   vpnUserId: string;
@@ -105,6 +106,17 @@ export function SubscriptionsPage() {
     [subs, userFilter, activeFilter],
   );
 
+  function formatPlanVariantsShort(plan: Plan) {
+    const vars = (plan as any).variants ?? [];
+    if (!Array.isArray(vars) || vars.length === 0) return '—';
+    return vars
+      .slice()
+      .filter((v: any) => v && typeof v.price === 'number' && typeof v.currency === 'string')
+      .sort((a: any, b: any) => a.price - b.price)
+      .map((v: any) => `${v.price} ${v.currency}`)
+      .join(' | ');
+  }
+
   return (
     <div className="grid gap-6">
       <PageHeader
@@ -134,7 +146,7 @@ export function SubscriptionsPage() {
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <select
-                className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
                 value={userFilter}
                 onChange={(e) => {
                   setUserFilter(e.target.value);
@@ -149,7 +161,7 @@ export function SubscriptionsPage() {
                 ))}
               </select>
               <select
-                className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
                 value={activeFilter}
                 onChange={(e) => setActiveFilter(e.target.value as 'ALL' | 'ACTIVE' | 'INACTIVE')}
               >
@@ -159,55 +171,104 @@ export function SubscriptionsPage() {
               </select>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-              <thead className="text-left text-slate-500">
-                <tr>
-                  <th className="py-2">User</th>
-                  <th className="py-2">Starts</th>
-                  <th className="py-2">Ends</th>
-                  <th className="py-2">Days</th>
-                  <th className="py-2">Active</th>
-                  <th className="py-2"></th>
-                </tr>
-              </thead>
-                <tbody className="text-slate-800">
+            <ResponsiveSwitch
+              mobile={
+                <div className="grid gap-3">
                   {filteredSubs.map((s: any) => (
-                    <tr key={s.id} className="border-t border-slate-100">
-                      <td className="py-2 text-sm">
-                        <div className="font-medium text-slate-900">
-                          {s.vpnUser?.name ?? s.vpnUser?.telegramId ?? s.vpnUserId}
+                    <div key={s.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-semibold text-slate-900 truncate">
+                            {s.vpnUser?.name ?? s.vpnUser?.telegramId ?? s.vpnUserId}
+                          </div>
+                          <div className="font-mono text-xs text-slate-500">{s.vpnUser?.telegramId ?? '—'}</div>
                         </div>
-                        <div className="font-mono text-xs text-slate-500">{s.vpnUser?.telegramId ?? '-'}</div>
-                      </td>
-                      <td className="py-2">{new Date(s.startsAt).toLocaleString()}</td>
-                      <td className="py-2">{new Date(s.endsAt).toLocaleString()}</td>
-                      <td className="py-2">{s.periodDays}</td>
-                      <td className="py-2">{s.active ? 'yes' : 'no'}</td>
-                      <td className="py-2 text-right">
+                        <div className="text-right text-xs text-slate-600">
+                          <div>{s.active ? 'ACTIVE' : 'INACTIVE'}</div>
+                          <div className="font-semibold text-slate-900">{s.periodDays}d</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-2 grid gap-1 text-sm text-slate-700">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-slate-500">Starts</span>
+                          <span className="text-right">{new Date(s.startsAt).toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-slate-500">Ends</span>
+                          <span className="text-right">{new Date(s.endsAt).toLocaleString()}</span>
+                        </div>
+                      </div>
+
+                      <div className="mt-3">
                         <Button
                           variant="danger"
+                          className="w-full"
                           onClick={() => {
-                            if (confirm('Delete this subscription?')) {
-                              removeM.mutate(s.id);
-                            }
+                            if (confirm('Delete this subscription?')) removeM.mutate(s.id);
                           }}
                         >
                           Delete
                         </Button>
-                      </td>
-                    </tr>
+                      </div>
+                    </div>
                   ))}
-                  {filteredSubs.length === 0 ? (
-                    <tr>
-                      <td className="py-3 text-slate-500" colSpan={6}>
-                        No subscriptions
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
+
+                  {filteredSubs.length === 0 ? <div className="text-sm text-slate-500">No subscriptions</div> : null}
+                </div>
+              }
+              desktop={
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="text-left text-slate-500">
+                      <tr>
+                        <th className="py-2">User</th>
+                        <th className="py-2">Starts</th>
+                        <th className="py-2">Ends</th>
+                        <th className="py-2">Days</th>
+                        <th className="py-2">Active</th>
+                        <th className="py-2"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-slate-800">
+                      {filteredSubs.map((s: any) => (
+                        <tr key={s.id} className="border-t border-slate-100">
+                          <td className="py-2 text-sm">
+                            <div className="font-medium text-slate-900">
+                              {s.vpnUser?.name ?? s.vpnUser?.telegramId ?? s.vpnUserId}
+                            </div>
+                            <div className="font-mono text-xs text-slate-500">{s.vpnUser?.telegramId ?? '-'}</div>
+                          </td>
+                          <td className="py-2">{new Date(s.startsAt).toLocaleString()}</td>
+                          <td className="py-2">{new Date(s.endsAt).toLocaleString()}</td>
+                          <td className="py-2">{s.periodDays}</td>
+                          <td className="py-2">{s.active ? 'yes' : 'no'}</td>
+                          <td className="py-2 text-right">
+                            <Button
+                              variant="danger"
+                              onClick={() => {
+                                if (confirm('Delete this subscription?')) {
+                                  removeM.mutate(s.id);
+                                }
+                              }}
+                            >
+                              Delete
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredSubs.length === 0 ? (
+                        <tr>
+                          <td className="py-3 text-slate-500" colSpan={6}>
+                            No subscriptions
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              }
+            />
           </div>
         )}
       </Card>
@@ -267,7 +328,7 @@ export function SubscriptionsPage() {
               <option value="">Без плана (кастомные дни)</option>
               {plans.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name} — {p.periodDays} дн., {p.price} {p.currency}
+                  {p.name} — {p.periodDays} дн., {formatPlanVariantsShort(p)}
                 </option>
               ))}
             </select>

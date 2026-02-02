@@ -121,30 +121,27 @@ export function BotPage() {
           <div className="text-sm text-slate-600">Loading…</div>
         ) : config ? (
           <div className="space-y-4">
-            <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-slate-700">Status:</span>
-                <Badge variant={config.active ? 'success' : 'warning'}>
-                  {config.active ? 'Active' : 'Inactive'}
-                </Badge>
-              </div>
+            <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-slate-700">Status:</span>
+                  <Badge variant={config.active ? 'success' : 'warning'}>
+                    {config.active ? 'Active' : 'Inactive'}
+                  </Badge>
+                </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-slate-700">Mode:</span>
                   <Badge variant={config.useMiniApp ? 'info' : 'default'}>
                     {config.useMiniApp ? 'Mini App' : 'Classic'}
                   </Badge>
                 </div>
-                <div className="text-xs text-slate-500">
-                  Created: {new Date(config.createdAt).toLocaleString()}
-                </div>
-                <div className="text-xs text-slate-500">
-                  Updated: {new Date(config.updatedAt).toLocaleString()}
-                </div>
+                <div className="text-xs text-slate-500">Created: {new Date(config.createdAt).toLocaleString()}</div>
+                <div className="text-xs text-slate-500">Updated: {new Date(config.updatedAt).toLocaleString()}</div>
               </div>
-              <div className="flex gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
                 <Button
                   variant="secondary"
+                  className="w-full sm:w-auto"
                   onClick={() => {
                     editForm.reset({ active: config.active, useMiniApp: config.useMiniApp });
                     setEditTarget(config);
@@ -154,6 +151,7 @@ export function BotPage() {
                 </Button>
                 <Button
                   variant="danger"
+                  className="w-full sm:w-auto"
                   onClick={() => {
                     if (confirm('Delete this bot configuration? The bot will stop working.')) {
                       setDeleteTarget(config);

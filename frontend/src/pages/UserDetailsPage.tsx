@@ -152,22 +152,24 @@ export function UserDetailsPage() {
               const userServer = u?.userServers?.find((us) => us.server.name === cfg.serverName || us.server.host === cfg.serverName);
               return (
                 <div key={idx} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <div className="mb-2 flex items-center justify-between">
+                  <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-2">
                       <div className="text-sm font-medium text-slate-900">{cfg.serverName}</div>
                       {userServer?.isActive && (
                         <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">Active</span>
                       )}
                     </div>
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2">
                       <Button
                         variant="secondary"
+                        className="w-full sm:w-auto"
                         onClick={() => setQrCodeUrl(cfg.url)}
                       >
                         Show QR
                       </Button>
                       <Button
                         variant="secondary"
+                        className="w-full sm:w-auto"
                         onClick={async () => {
                           try {
                             await navigator.clipboard.writeText(cfg.url);
@@ -199,7 +201,7 @@ export function UserDetailsPage() {
               .map((us) => (
                 <div
                   key={us.id}
-                  className={`flex items-center justify-between rounded-lg border p-3 ${
+                  className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border p-3 ${
                     us.isActive ? 'border-green-300 bg-green-50' : 'border-slate-200 bg-white'
                   }`}
                 >
@@ -209,11 +211,12 @@ export function UserDetailsPage() {
                       <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">Active</span>
                     )}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2">
                     {!us.isActive && (
                       <Button
                         variant="secondary"
                         size="sm"
+                        className="w-full sm:w-auto"
                         disabled={activateServerM.isPending}
                         onClick={() => {
                           if (confirm(`Activate location ${us.server.name}? The current active location will be deactivated.`)) {
@@ -227,6 +230,7 @@ export function UserDetailsPage() {
                     <Button
                       variant="danger"
                       size="sm"
+                      className="w-full sm:w-auto"
                       disabled={removeServerM.isPending}
                       onClick={() => {
                         if (confirm(`Remove location ${us.server.name}?`)) {

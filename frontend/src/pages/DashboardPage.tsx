@@ -4,6 +4,7 @@ import { Card } from '../components/Card';
 import { PageHeader } from '../components/PageHeader';
 import { Badge, statusBadgeVariant } from '../components/Badge';
 import { Link } from 'react-router-dom';
+import { Button } from '../components/Button';
 
 type DashboardStats = {
   servers: {
@@ -72,12 +73,9 @@ export function DashboardPage() {
         title="Dashboard"
         description="Общая статистика и мониторинг системы VPN"
         actions={
-          <button
-            onClick={() => statsQ.refetch()}
-            className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
-          >
+          <Button variant="secondary" onClick={() => statsQ.refetch()}>
             Обновить
-          </button>
+          </Button>
         }
       />
 
@@ -91,7 +89,7 @@ export function DashboardPage() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Card title="Серверы">
               <div className="space-y-1">
-                <div className="text-3xl font-bold text-slate-900">{stats.servers.total}</div>
+                <div className="text-2xl font-bold text-slate-900 sm:text-3xl">{stats.servers.total}</div>
                 <div className="text-sm text-slate-500">
                   {stats.servers.active} активных
                 </div>
@@ -100,7 +98,7 @@ export function DashboardPage() {
 
             <Card title="Пользователи">
               <div className="space-y-1">
-                <div className="text-3xl font-bold text-slate-900">{stats.users.total}</div>
+                <div className="text-2xl font-bold text-slate-900 sm:text-3xl">{stats.users.total}</div>
                 <div className="text-sm text-slate-500">
                   {stats.users.active} активных, {stats.users.blocked} заблокированных, {stats.users.expired} истекших
                 </div>
@@ -109,14 +107,14 @@ export function DashboardPage() {
 
             <Card title="Подписки">
               <div className="space-y-1">
-                <div className="text-3xl font-bold text-slate-900">{stats.subscriptions.active}</div>
+                <div className="text-2xl font-bold text-slate-900 sm:text-3xl">{stats.subscriptions.active}</div>
                 <div className="text-sm text-slate-500">Активных подписок</div>
               </div>
             </Card>
 
             <Card title="Платежи">
               <div className="space-y-1">
-                <div className="text-3xl font-bold text-slate-900">{stats.payments.total}</div>
+                <div className="text-2xl font-bold text-slate-900 sm:text-3xl">{stats.payments.total}</div>
                 <div className="text-sm text-slate-500">
                   {stats.payments.today} сегодня, {stats.payments.month} за месяц
                 </div>
@@ -127,17 +125,17 @@ export function DashboardPage() {
           {/* Доходы */}
           <div className="grid gap-4 md:grid-cols-3">
             <Card title="Доход (всего)">
-              <div className="text-2xl font-bold text-green-600">
+              <div className="text-xl font-bold text-green-600 sm:text-2xl">
                 {formatCurrency(stats.revenue.total)}
               </div>
             </Card>
             <Card title="Доход (сегодня)">
-              <div className="text-2xl font-bold text-slate-900">
+              <div className="text-xl font-bold text-slate-900 sm:text-2xl">
                 {formatCurrency(stats.revenue.today)}
               </div>
             </Card>
             <Card title="Доход (месяц)">
-              <div className="text-2xl font-bold text-slate-900">
+              <div className="text-xl font-bold text-slate-900 sm:text-2xl">
                 {formatCurrency(stats.revenue.month)}
               </div>
             </Card>

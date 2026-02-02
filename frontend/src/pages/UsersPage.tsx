@@ -13,6 +13,7 @@ import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
 import { Table, Td, Th } from '../components/Table';
 import { Badge, statusBadgeVariant } from '../components/Badge';
+import { ResponsiveSwitch } from '../components/ResponsiveSwitch';
 
 type CreateUserPayload = {
   serverId: string;
@@ -184,79 +185,162 @@ export function UsersPage() {
       {usersQ.isLoading ? (
         <div className="text-sm text-slate-600">Loading…</div>
       ) : (
-        <Table
-          columns={
-            <tr>
-              <Th>Name</Th>
-              <Th>UUID</Th>
-              <Th>TG ID</Th>
-              <Th>Server</Th>
-              <Th>Status</Th>
-              <Th>Expires</Th>
-              <Th className="text-right">Actions</Th>
-            </tr>
+        <ResponsiveSwitch
+          mobile={
+            <div className="grid gap-3">
+              {filteredUsers.map((u) => (
+                <Card key={u.id}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-slate-900 truncate">{u.name}</div>
+                      <div className="mt-1 font-mono text-xs text-slate-500 break-all">
+                        <Link className="underline text-slate-900" to={`/users/${u.id}`}>
+                          {u.uuid}
+                        </Link>
+                      </div>
+                    </div>
+                    <Badge variant={statusBadgeVariant(u.status) as any}>{u.status}</Badge>
+                  </div>
+
+                  <div className="mt-3 grid gap-2 text-sm text-slate-700">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-slate-500">TG ID</span>
+                      <span className="font-mono text-xs">{u.telegramId ?? '—'}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-slate-500">Server</span>
+                      <span className="text-right">{u.server?.name ?? u.serverId ?? '—'}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-slate-500">Expires</span>
+                      <span className="text-right">{u.expiresAt ? new Date(u.expiresAt).toLocaleString() : '—'}</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <div className="text-xs text-slate-500 mb-1">Status</div>
+                    <select
+                      className="h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                      value={u.status}
+                      onChange={(e) =>
+                        updateM.mutate({
+                          id: u.id,
+                          status: e.target.value as VpnUserStatus,
+                        })
+                      }
+                    >
+                      <option value="NEW">NEW</option>
+                      <option value="ACTIVE">ACTIVE</option>
+                      <option value="BLOCKED">BLOCKED</option>
+                      <option value="EXPIRED">EXPIRED</option>
+                    </select>
+                  </div>
+
+                  <div className="mt-4 flex gap-2">
+                    <Button
+                      variant="secondary"
+                      className="flex-1"
+                      onClick={() => {
+                        setEditTarget(u);
+                        editForm.reset({
+                          serverId: u.serverId ?? undefined,
+                          name: u.name,
+                          telegramId: u.telegramId ?? '',
+                          trialDays: undefined,
+                        });
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    <Button variant="danger" className="flex-1" onClick={() => setDeleteTarget(u)}>
+                      Delete
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+
+              {filteredUsers.length === 0 ? (
+                <Card>
+                  <div className="text-sm text-slate-500">No users yet</div>
+                </Card>
+              ) : null}
+            </div>
           }
-        >
-          {filteredUsers.map((u) => (
-            <tr key={u.id} className="border-t border-slate-100">
-              <Td className="font-medium">{u.name}</Td>
-              <Td className="font-mono text-xs">
-                <Link className="text-slate-900 underline" to={`/users/${u.id}`}>
-                  {u.uuid}
-                </Link>
-              </Td>
-              <Td className="font-mono text-xs">{u.telegramId ?? '-'}</Td>
-              <Td>{u.server?.name ?? u.serverId}</Td>
-              <Td>
-                <select
-                  className="mt-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-                  value={u.status}
-                  onChange={(e) =>
-                    updateM.mutate({
-                      id: u.id,
-                      status: e.target.value as VpnUserStatus,
-                    })
-                  }
-                >
-                  <option value="NEW">NEW</option>
-                  <option value="ACTIVE">ACTIVE</option>
-                  <option value="BLOCKED">BLOCKED</option>
-                  <option value="EXPIRED">EXPIRED</option>
-                </select>
-              </Td>
-              <Td>{u.expiresAt ? new Date(u.expiresAt).toLocaleString() : '-'}</Td>
-              <Td className="text-right">
-                <div className="flex justify-end gap-2">
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setEditTarget(u);
-                      // default trialDays empty = keep current
-                      editForm.reset({
-                        serverId: u.serverId ?? undefined,
-                        name: u.name,
-                        telegramId: u.telegramId ?? '',
-                        trialDays: undefined,
-                      });
-                    }}
-                  >
-                    Edit
-                  </Button>
-                  <Button variant="danger" onClick={() => setDeleteTarget(u)}>
-                    Delete
-                  </Button>
-                </div>
-              </Td>
-            </tr>
-          ))}
-          {filteredUsers.length === 0 ? (
-            <tr className="border-t border-slate-100">
-              <Td className="text-slate-500" colSpan={7}>
-                No users yet
-              </Td>
-            </tr>
-          ) : null}
-        </Table>
+          desktop={
+            <Table
+              columns={
+                <tr>
+                  <Th>Name</Th>
+                  <Th>UUID</Th>
+                  <Th>TG ID</Th>
+                  <Th>Server</Th>
+                  <Th>Status</Th>
+                  <Th>Expires</Th>
+                  <Th className="text-right">Actions</Th>
+                </tr>
+              }
+            >
+              {filteredUsers.map((u) => (
+                <tr key={u.id} className="border-t border-slate-100">
+                  <Td className="font-medium">{u.name}</Td>
+                  <Td className="font-mono text-xs">
+                    <Link className="text-slate-900 underline" to={`/users/${u.id}`}>
+                      {u.uuid}
+                    </Link>
+                  </Td>
+                  <Td className="font-mono text-xs">{u.telegramId ?? '-'}</Td>
+                  <Td>{u.server?.name ?? u.serverId}</Td>
+                  <Td>
+                    <select
+                      className="mt-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                      value={u.status}
+                      onChange={(e) =>
+                        updateM.mutate({
+                          id: u.id,
+                          status: e.target.value as VpnUserStatus,
+                        })
+                      }
+                    >
+                      <option value="NEW">NEW</option>
+                      <option value="ACTIVE">ACTIVE</option>
+                      <option value="BLOCKED">BLOCKED</option>
+                      <option value="EXPIRED">EXPIRED</option>
+                    </select>
+                  </Td>
+                  <Td>{u.expiresAt ? new Date(u.expiresAt).toLocaleString() : '-'}</Td>
+                  <Td className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          setEditTarget(u);
+                          editForm.reset({
+                            serverId: u.serverId ?? undefined,
+                            name: u.name,
+                            telegramId: u.telegramId ?? '',
+                            trialDays: undefined,
+                          });
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      <Button variant="danger" onClick={() => setDeleteTarget(u)}>
+                        Delete
+                      </Button>
+                    </div>
+                  </Td>
+                </tr>
+              ))}
+              {filteredUsers.length === 0 ? (
+                <tr className="border-t border-slate-100">
+                  <Td className="text-slate-500" colSpan={7}>
+                    No users yet
+                  </Td>
+                </tr>
+              ) : null}
+            </Table>
+          }
+        />
       )}
 
       <Modal

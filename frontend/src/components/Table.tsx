@@ -20,10 +20,14 @@ export function Table({
 }
 
 export function Th({ children, className }: { children: ReactNode; className?: string }) {
-  return <th className={['px-4 py-3', className].filter(Boolean).join(' ')}>{children}</th>;
+  return <th className={['px-3 py-2 sm:px-4 sm:py-3', className].filter(Boolean).join(' ')}>{children}</th>;
 }
 
 export function Td({ children, className, colSpan }: { children: ReactNode; className?: string; colSpan?: number }) {
-  return <td className={['px-4 py-3', className].filter(Boolean).join(' ')} colSpan={colSpan}>{children}</td>;
+  return (
+    <td className={['px-3 py-2 sm:px-4 sm:py-3', className].filter(Boolean).join(' ')} colSpan={colSpan}>
+      {children}
+    </td>
+  );
 }
 

@@ -12,6 +12,7 @@ import { Table, Td, Th } from '../components/Table';
 import { Badge } from '../components/Badge';
 import { CURRENCY_CODES } from '../lib/currencies';
 import { formatPrice } from '../lib/formatters';
+import { ResponsiveSwitch } from '../components/ResponsiveSwitch';
 
 type Plan = {
   id: string;
@@ -312,80 +313,146 @@ export function PlansPage() {
       {plansQ.isLoading ? (
         <div className="text-sm text-slate-600">Загрузка…</div>
       ) : (
-        <Table
-          columns={
-            <tr>
-              <Th>Код</Th>
-              <Th>Тариф</Th>
-              <Th>Период</Th>
-              <Th>Варианты</Th>
-              <Th>Статус</Th>
-              <Th className="text-right">Действия</Th>
-            </tr>
+        <ResponsiveSwitch
+          mobile={
+            <div className="grid gap-3">
+              {plans.map((p) => {
+                const variants = p.variants ?? [];
+                const anyInactive = variants.some((v) => !v.active);
+                const activeLabel = p.active ? (anyInactive ? 'АКТИВЕН (есть неактивные варианты)' : 'АКТИВЕН') : 'НЕАКТИВЕН';
+                const activeVariant = p.active ? (anyInactive ? 'warning' : 'success') : 'warning';
+                return (
+                  <div key={p.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-mono text-xs text-slate-500">{p.code}</div>
+                        <div className="font-semibold text-slate-900 truncate">{p.name}</div>
+                        {p.description ? <div className="mt-1 text-xs text-slate-500">{p.description}</div> : null}
+                        <div className="mt-2 text-sm text-slate-700">{p.periodDays} дн.</div>
+                      </div>
+                      <div className="shrink-0 text-right space-y-2">
+                        <Badge variant={activeVariant as any}>{activeLabel}</Badge>
+                        <div className="flex justify-end gap-1">
+                          {p.isTrial ? <Badge variant="info">Пробный</Badge> : null}
+                          {p.isTop ? <Badge variant="info">Топ</Badge> : null}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3">
+                      <div className="text-xs text-slate-500 mb-2">Варианты</div>
+                      {renderVariantsInline(p.variants)}
+                    </div>
+
+                    <div className="mt-4 flex gap-2">
+                      <Button
+                        variant="secondary"
+                        className="flex-1"
+                        onClick={() => {
+                          setEditTarget(p as any);
+                          editForm.reset({
+                            code: p.code,
+                            name: p.name,
+                            description: p.description ?? '',
+                            periodDays: p.periodDays,
+                            isTrial: p.isTrial,
+                            active: p.active,
+                            availableFor: p.availableFor,
+                            isTop: p.isTop,
+                            variants: [],
+                          });
+                        }}
+                      >
+                        Редактировать
+                      </Button>
+                      <Button variant="danger" className="flex-1" onClick={() => setDeleteTarget(p as any)}>
+                        Удалить
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {plans.length === 0 ? (
+                <div className="text-sm text-slate-500">Тарифов пока нет</div>
+              ) : null}
+            </div>
           }
-        >
-          {plans.map((p) => {
-            const variants = p.variants ?? [];
-            const anyInactive = variants.some((v) => !v.active);
-            const activeLabel = p.active ? (anyInactive ? 'АКТИВЕН (есть неактивные варианты)' : 'АКТИВЕН') : 'НЕАКТИВЕН';
-            const activeVariant = p.active ? (anyInactive ? 'warning' : 'success') : 'warning';
+          desktop={
+            <Table
+              columns={
+                <tr>
+                  <Th>Код</Th>
+                  <Th>Тариф</Th>
+                  <Th>Период</Th>
+                  <Th>Варианты</Th>
+                  <Th>Статус</Th>
+                  <Th className="text-right">Действия</Th>
+                </tr>
+              }
+            >
+              {plans.map((p) => {
+                const variants = p.variants ?? [];
+                const anyInactive = variants.some((v) => !v.active);
+                const activeLabel = p.active ? (anyInactive ? 'АКТИВЕН (есть неактивные варианты)' : 'АКТИВЕН') : 'НЕАКТИВЕН';
+                const activeVariant = p.active ? (anyInactive ? 'warning' : 'success') : 'warning';
 
-            return (
-              <tr key={p.id} className="border-t border-slate-100">
-                <Td className="font-mono text-xs">{p.code}</Td>
-                <Td className="font-medium">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span>{p.name}</span>
-                    {p.isTrial ? <Badge variant="info">Пробный</Badge> : null}
-                    {p.isTop ? <Badge variant="info">Топ</Badge> : null}
-                  </div>
-                  {p.description ? <div className="text-xs text-slate-500">{p.description}</div> : null}
-                </Td>
-                <Td>{p.periodDays} дн.</Td>
-                <Td>
-                  {renderVariantsInline(p.variants)}
-                </Td>
-                <Td>
-                  <Badge variant={activeVariant as any}>{activeLabel}</Badge>
-                </Td>
-                <Td className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="secondary"
-                      onClick={() => {
-                        setEditTarget(p as any);
-                        editForm.reset({
-                          code: p.code,
-                          name: p.name,
-                          description: p.description ?? '',
-                          periodDays: p.periodDays,
-                          isTrial: p.isTrial,
-                          active: p.active,
-                          availableFor: p.availableFor,
-                          isTop: p.isTop,
-                          variants: [],
-                        });
-                      }}
-                    >
-                      Редактировать
-                    </Button>
-                    <Button variant="danger" onClick={() => setDeleteTarget(p as any)}>
-                      Удалить
-                    </Button>
-                  </div>
-                </Td>
-              </tr>
-            );
-          })}
+                return (
+                  <tr key={p.id} className="border-t border-slate-100">
+                    <Td className="font-mono text-xs">{p.code}</Td>
+                    <Td className="font-medium">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span>{p.name}</span>
+                        {p.isTrial ? <Badge variant="info">Пробный</Badge> : null}
+                        {p.isTop ? <Badge variant="info">Топ</Badge> : null}
+                      </div>
+                      {p.description ? <div className="text-xs text-slate-500">{p.description}</div> : null}
+                    </Td>
+                    <Td>{p.periodDays} дн.</Td>
+                    <Td>{renderVariantsInline(p.variants)}</Td>
+                    <Td>
+                      <Badge variant={activeVariant as any}>{activeLabel}</Badge>
+                    </Td>
+                    <Td className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            setEditTarget(p as any);
+                            editForm.reset({
+                              code: p.code,
+                              name: p.name,
+                              description: p.description ?? '',
+                              periodDays: p.periodDays,
+                              isTrial: p.isTrial,
+                              active: p.active,
+                              availableFor: p.availableFor,
+                              isTop: p.isTop,
+                              variants: [],
+                            });
+                          }}
+                        >
+                          Редактировать
+                        </Button>
+                        <Button variant="danger" onClick={() => setDeleteTarget(p as any)}>
+                          Удалить
+                        </Button>
+                      </div>
+                    </Td>
+                  </tr>
+                );
+              })}
 
-          {plans.length === 0 ? (
-            <tr className="border-t border-slate-100">
-              <Td className="text-slate-500" colSpan={6}>
-                Тарифов пока нет
-              </Td>
-            </tr>
-          ) : null}
-        </Table>
+              {plans.length === 0 ? (
+                <tr className="border-t border-slate-100">
+                  <Td className="text-slate-500" colSpan={6}>
+                    Тарифов пока нет
+                  </Td>
+                </tr>
+              ) : null}
+            </Table>
+          }
+        />
       )}
 
       <Modal

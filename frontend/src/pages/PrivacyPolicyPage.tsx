@@ -43,9 +43,9 @@ export function PrivacyPolicyPage() {
   const updatedAt = meta?.updatedAt ? new Date(meta.updatedAt).toLocaleDateString('ru-RU') : '';
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-10">
-      <div className="mx-auto w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="mb-2 text-2xl font-bold text-slate-900">Политика конфиденциальности</div>
+    <div className="min-h-screen bg-slate-50 px-3 py-8 sm:px-4 sm:py-10">
+      <div className="mx-auto w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <div className="mb-2 text-xl font-bold text-slate-900 sm:text-2xl">Политика конфиденциальности</div>
         <div className="text-sm text-slate-600">
           Сервис: <span className="font-medium">{botName}</span>
           {updatedAt ? <span> · Обновлено: {updatedAt}</span> : null}

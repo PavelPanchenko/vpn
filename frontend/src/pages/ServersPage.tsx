@@ -11,6 +11,7 @@ import { PageHeader } from '../components/PageHeader';
 import { Table, Td, Th } from '../components/Table';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
+import { ResponsiveSwitch } from '../components/ResponsiveSwitch';
 
 type ServerForm = Omit<VpnServer, 'id' | 'protocol' | 'createdAt'>;
 
@@ -202,67 +203,123 @@ export function ServersPage() {
       {serversQ.isLoading ? (
         <div className="text-sm text-slate-600">Loading…</div>
       ) : (
-        <Table
-          columns={
-            <tr>
-              <Th>Name</Th>
-              <Th>Endpoint</Th>
-              <Th>Mode</Th>
-              <Th>Users</Th>
-              <Th className="text-right">Actions</Th>
-            </tr>
-          }
-        >
-          {rows.map((s) => (
-            <tr key={s.id} className="border-t border-slate-100">
-              <Td className="font-medium">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span>{s.name}</span>
-                  <Badge variant={s.active ? 'success' : 'warning'}>{s.active ? 'ACTIVE' : 'INACTIVE'}</Badge>
-                  {s.isRecommended && <Badge variant="info">Рекомендуем</Badge>}
-                </div>
-              </Td>
-              <Td className="font-mono text-xs">
-                {s.host}:{s.port}
-              </Td>
-              <Td>
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant="info">{s.transport}</Badge>
-                  <Badge variant={s.security === 'REALITY' ? 'info' : s.tls ? 'success' : 'default'}>
-                    {s.security ?? (s.tls ? 'TLS' : 'NONE')}
-                  </Badge>
-                </div>
-              </Td>
-              <Td>
-                <div className="text-xs text-slate-600">
-                  <div>Total: {s.usersCount ?? '-'}</div>
-                  <div>Active: {s.activeUsersCount ?? '-'}</div>
-                  <div>Free: {s.freeSlots ?? '-'}</div>
-                  <div className="mt-1 text-slate-500">
-                    Panel: {s.panelBaseUrl ? 'connected' : '—'} {s.panelInboundId ? `(#${s.panelInboundId})` : ''}
+        <ResponsiveSwitch
+          mobile={
+            <div className="grid gap-3">
+              {rows.map((s) => (
+                <div key={s.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="font-semibold text-slate-900">{s.name}</div>
+                        <Badge variant={s.active ? 'success' : 'warning'}>{s.active ? 'ACTIVE' : 'INACTIVE'}</Badge>
+                        {s.isRecommended ? <Badge variant="info">Рекомендуем</Badge> : null}
+                      </div>
+                      <div className="mt-1 font-mono text-xs text-slate-600 break-all">
+                        {s.host}:{s.port}
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Badge variant="info">{s.transport}</Badge>
+                        <Badge variant={s.security === 'REALITY' ? 'info' : s.tls ? 'success' : 'default'}>
+                          {s.security ?? (s.tls ? 'TLS' : 'NONE')}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid gap-1 text-sm text-slate-700">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-slate-500">Users</span>
+                      <span className="text-right">
+                        total {s.usersCount ?? '—'} · active {s.activeUsersCount ?? '—'} · free {s.freeSlots ?? '—'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-slate-500">Panel</span>
+                      <span className="text-right text-slate-600">
+                        {s.panelBaseUrl ? 'connected' : '—'} {s.panelInboundId ? `(#${s.panelInboundId})` : ''}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <Button variant="secondary" className="w-full" onClick={() => startEdit(s)}>
+                      Edit
+                    </Button>
+                    <Button variant="danger" className="w-full" onClick={() => removeM.mutate(s.id)}>
+                      Delete
+                    </Button>
                   </div>
                 </div>
-              </Td>
-              <Td className="text-right">
-                <div className="flex justify-end gap-2">
-                  <Button variant="secondary" onClick={() => startEdit(s)}>
-                    Edit
-                  </Button>
-                  <Button variant="danger" onClick={() => removeM.mutate(s.id)}>
-                    Delete
-                  </Button>
-                </div>
-              </Td>
-            </tr>
-          ))}
-          {rows.length === 0 ? (
-            <tr className="border-t border-slate-100">
-              <Td className="text-slate-500" colSpan={5}>
-                No servers yet
-              </Td>
-            </tr>
-          ) : null}
-        </Table>
+              ))}
+
+              {rows.length === 0 ? <div className="text-sm text-slate-500">No servers yet</div> : null}
+            </div>
+          }
+          desktop={
+            <Table
+              columns={
+                <tr>
+                  <Th>Name</Th>
+                  <Th>Endpoint</Th>
+                  <Th>Mode</Th>
+                  <Th>Users</Th>
+                  <Th className="text-right">Actions</Th>
+                </tr>
+              }
+            >
+              {rows.map((s) => (
+                <tr key={s.id} className="border-t border-slate-100">
+                  <Td className="font-medium">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span>{s.name}</span>
+                      <Badge variant={s.active ? 'success' : 'warning'}>{s.active ? 'ACTIVE' : 'INACTIVE'}</Badge>
+                      {s.isRecommended && <Badge variant="info">Рекомендуем</Badge>}
+                    </div>
+                  </Td>
+                  <Td className="font-mono text-xs">
+                    {s.host}:{s.port}
+                  </Td>
+                  <Td>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="info">{s.transport}</Badge>
+                      <Badge variant={s.security === 'REALITY' ? 'info' : s.tls ? 'success' : 'default'}>
+                        {s.security ?? (s.tls ? 'TLS' : 'NONE')}
+                      </Badge>
+                    </div>
+                  </Td>
+                  <Td>
+                    <div className="text-xs text-slate-600">
+                      <div>Total: {s.usersCount ?? '-'}</div>
+                      <div>Active: {s.activeUsersCount ?? '-'}</div>
+                      <div>Free: {s.freeSlots ?? '-'}</div>
+                      <div className="mt-1 text-slate-500">
+                        Panel: {s.panelBaseUrl ? 'connected' : '—'} {s.panelInboundId ? `(#${s.panelInboundId})` : ''}
+                      </div>
+                    </div>
+                  </Td>
+                  <Td className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button variant="secondary" onClick={() => startEdit(s)}>
+                        Edit
+                      </Button>
+                      <Button variant="danger" onClick={() => removeM.mutate(s.id)}>
+                        Delete
+                      </Button>
+                    </div>
+                  </Td>
+                </tr>
+              ))}
+              {rows.length === 0 ? (
+                <tr className="border-t border-slate-100">
+                  <Td className="text-slate-500" colSpan={5}>
+                    No servers yet
+                  </Td>
+                </tr>
+              ) : null}
+            </Table>
+          }
+        />
       )}
 
       <Modal

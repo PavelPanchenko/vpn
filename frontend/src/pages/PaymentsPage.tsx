@@ -12,6 +12,7 @@ import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
+import { ResponsiveSwitch } from '../components/ResponsiveSwitch';
 
 type CreatePaymentPayload = {
   vpnUserId: string;
@@ -165,71 +166,132 @@ export function PaymentsPage() {
         {paymentsQ.isLoading ? (
           <div className="text-sm text-slate-600">Loading…</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-slate-500">
-                <tr>
-                  <th className="py-2">User</th>
-                  <th className="py-2">Plan</th>
-                  <th className="py-2">Created</th>
-                  <th className="py-2">Amount</th>
-                  <th className="py-2">Currency</th>
-                  <th className="py-2">Status</th>
-                  <th className="py-2"></th>
-                </tr>
-              </thead>
-              <tbody className="text-slate-800">
+          <ResponsiveSwitch
+            mobile={
+              <div className="grid gap-3">
                 {payments.map((p) => (
-                  <tr key={p.id} className="border-t border-slate-100">
-                    <td className="py-2 text-sm">
-                      <div className="font-medium text-slate-900">{p.vpnUser?.name ?? p.vpnUser?.uuid ?? p.vpnUserId}</div>
-                      <div className="font-mono text-xs text-slate-500">{p.vpnUser?.uuid ?? ''}</div>
-                    </td>
-                    <td className="py-2">
+                  <div key={p.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-semibold text-slate-900 truncate">
+                          {p.vpnUser?.name ?? p.vpnUser?.uuid ?? p.vpnUserId}
+                        </div>
+                        <div className="text-xs text-slate-500">{new Date(p.createdAt).toLocaleString()}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs text-slate-500">{p.status}</div>
+                        <div className="font-semibold">
+                          {p.amount} {p.currency}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-2 text-sm text-slate-700">
                       {p.plan ? (
-                        <div>
-                          <div className="font-medium text-slate-900">{p.plan.name}</div>
-                          <div className="text-xs text-slate-500">{p.plan.periodDays} days</div>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-slate-500">Plan</span>
+                          <span className="text-right">
+                            {p.plan.name} · {p.plan.periodDays}d
+                          </span>
                         </div>
                       ) : (
-                        <span className="text-slate-400">Manual</span>
-                      )}
-                    </td>
-                    <td className="py-2">{new Date(p.createdAt).toLocaleString()}</td>
-                    <td className="py-2">
-                      <div className="font-medium">{p.amount} {p.currency}</div>
-                      {p.planPriceAtPurchase !== null && p.planPriceAtPurchase !== p.amount && (
-                        <div className="text-xs text-slate-500">
-                          Plan price was: {p.planPriceAtPurchase} {p.currency}
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-slate-500">Plan</span>
+                          <span className="text-slate-400">Manual</span>
                         </div>
                       )}
-                    </td>
-                    <td className="py-2">{p.currency}</td>
-                    <td className="py-2">{p.status}</td>
-                    <td className="py-2 text-right">
+                      {p.planPriceAtPurchase !== null && p.planPriceAtPurchase !== p.amount ? (
+                        <div className="mt-1 text-xs text-slate-500">
+                          Plan price was: {p.planPriceAtPurchase} {p.currency}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-3">
                       <Button
                         variant="danger"
+                        className="w-full"
                         onClick={() => {
-                          if (confirm('Delete this payment?')) {
-                            removeM.mutate(p.id);
-                          }
+                          if (confirm('Delete this payment?')) removeM.mutate(p.id);
                         }}
                       >
                         Delete
                       </Button>
-                    </td>
-                  </tr>
+                    </div>
+                  </div>
                 ))}
-                {payments.length === 0 ? (
-                  <tr>
-                    <td className="py-3 text-slate-500" colSpan={7}>
-                      No payments
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
+
+                {payments.length === 0 ? <div className="text-sm text-slate-500">No payments</div> : null}
+              </div>
+            }
+            desktop={
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-left text-slate-500">
+                    <tr>
+                      <th className="py-2">User</th>
+                      <th className="py-2">Plan</th>
+                      <th className="py-2">Created</th>
+                      <th className="py-2">Amount</th>
+                      <th className="py-2">Currency</th>
+                      <th className="py-2">Status</th>
+                      <th className="py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-slate-800">
+                    {payments.map((p) => (
+                      <tr key={p.id} className="border-t border-slate-100">
+                        <td className="py-2 text-sm">
+                          <div className="font-medium text-slate-900">{p.vpnUser?.name ?? p.vpnUser?.uuid ?? p.vpnUserId}</div>
+                          <div className="font-mono text-xs text-slate-500">{p.vpnUser?.uuid ?? ''}</div>
+                        </td>
+                        <td className="py-2">
+                          {p.plan ? (
+                            <div>
+                              <div className="font-medium text-slate-900">{p.plan.name}</div>
+                              <div className="text-xs text-slate-500">{p.plan.periodDays} days</div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">Manual</span>
+                          )}
+                        </td>
+                        <td className="py-2">{new Date(p.createdAt).toLocaleString()}</td>
+                        <td className="py-2">
+                          <div className="font-medium">{p.amount} {p.currency}</div>
+                          {p.planPriceAtPurchase !== null && p.planPriceAtPurchase !== p.amount && (
+                            <div className="text-xs text-slate-500">
+                              Plan price was: {p.planPriceAtPurchase} {p.currency}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2">{p.currency}</td>
+                        <td className="py-2">{p.status}</td>
+                        <td className="py-2 text-right">
+                          <Button
+                            variant="danger"
+                            onClick={() => {
+                              if (confirm('Delete this payment?')) {
+                                removeM.mutate(p.id);
+                              }
+                            }}
+                          >
+                            Delete
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                    {payments.length === 0 ? (
+                      <tr>
+                        <td className="py-3 text-slate-500" colSpan={7}>
+                          No payments
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            }
+          />
         )}
       </Card>
 
