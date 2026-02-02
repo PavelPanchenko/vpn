@@ -322,6 +322,18 @@ export class UsersService {
         });
       });
     } else {
+      // Если админ меняет expiresAt, но не присылает status — приводим статус к expiresAt.
+      if (dto.status == null && effectiveExpiresAt !== undefined) {
+        const computedStatus: 'NEW' | 'ACTIVE' | 'BLOCKED' | 'EXPIRED' =
+          user.status === 'BLOCKED'
+            ? 'BLOCKED'
+            : effectiveExpiresAt === null
+              ? 'ACTIVE'
+              : effectiveExpiresAt.getTime() < now.getTime()
+                ? 'EXPIRED'
+                : 'ACTIVE';
+        updates.status = computedStatus;
+      }
       await this.prisma.vpnUser.update({ where: { id }, data: updates });
     }
 
@@ -341,8 +353,28 @@ export class UsersService {
                 : effectiveExpiresAt
                   ? effectiveExpiresAt.getTime()
                   : 0;
-            if (expiryTime !== undefined) {
-            await this.xui.updateClient(server.panelBaseUrl, auth, server.panelInboundId, email, { expiryTime });
+            const statusForPanel =
+              dto.status ??
+              (effectiveExpiresAt !== undefined
+                ? (user.status === 'BLOCKED'
+                    ? 'BLOCKED'
+                    : effectiveExpiresAt === null
+                      ? 'ACTIVE'
+                      : effectiveExpiresAt.getTime() < now.getTime()
+                        ? 'EXPIRED'
+                        : 'ACTIVE')
+                : user.status);
+
+            const enable =
+              dto.status !== undefined || effectiveExpiresAt !== undefined
+                ? statusForPanel === 'ACTIVE'
+                : undefined;
+
+            if (expiryTime !== undefined || enable !== undefined) {
+              await this.xui.updateClient(server.panelBaseUrl, auth, server.panelInboundId, email, {
+                ...(expiryTime !== undefined && { expiryTime }),
+                ...(enable !== undefined && { enable }),
+              });
             }
           }
         } catch (e: any) {

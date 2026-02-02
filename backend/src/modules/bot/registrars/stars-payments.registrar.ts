@@ -85,11 +85,10 @@ export function registerTelegramStarsPayments(args: TelegramRegistrarDeps) {
         return;
       }
 
-      await args.paymentsService.createPaidFromTelegramStars({
+      await args.paymentIntentsService.handleTelegramStarsSuccessfulPayment({
+        botToken: args.botToken,
         telegramPaymentChargeId: telegramChargeId,
-        vpnUserId: user.id,
-        planId: data.planId,
-        variantId: data.variantId,
+        payload,
         amount,
         currency,
       });

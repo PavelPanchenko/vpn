@@ -4,6 +4,7 @@ import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { UsersService } from '../users/users.service';
+import { AccessRevokerService } from './access/access-revoker.service';
 
 @Injectable()
 export class PaymentsService {
@@ -11,6 +12,7 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly subscriptions: SubscriptionsService,
     private readonly users: UsersService,
+    private readonly accessRevoker: AccessRevokerService,
   ) {}
 
   list() {
@@ -73,7 +75,7 @@ export class PaymentsService {
         amount: dto.amount,
         currency: dto.currency,
         planPriceAtPurchase: planPriceAtPurchase,
-        status: dto.status,
+        status: dto.status as any,
       },
     });
 
@@ -225,7 +227,7 @@ export class PaymentsService {
         vpnUserId: dto.vpnUserId,
         amount: dto.amount,
         currency: dto.currency,
-        status: dto.status,
+        status: dto.status as any,
       },
       include: { vpnUser: { include: { server: true } } },
     });
@@ -234,63 +236,14 @@ export class PaymentsService {
   async remove(id: string) {
     const payment = await this.get(id);
 
-    // Если платеж был успешным (PAID), ищем связанную подписку по прямой связи paymentId
-    if (payment.status === 'PAID') {
-      const relatedSubscription = await this.prisma.subscription.findUnique({
-        where: { paymentId: id },
+    // Подписка создаётся только для успешных оплат; при CHARGEBACK она могла уже быть создана ранее
+    if (String(payment.status) === 'PAID' || String(payment.status) === 'CHARGEBACK') {
+      await this.accessRevoker.revokeForPayment({
+        vpnUserId: payment.vpnUserId,
+        paymentId: id,
+        subscriptionAction: 'delete',
+        noActiveMode: 'use_last_any',
       });
-
-      if (relatedSubscription) {
-        // Удаляем подписку
-        await this.prisma.subscription.delete({ where: { id: relatedSubscription.id } });
-
-        // Пересчитываем expiresAt пользователя на основе оставшихся активных подписок
-        const remainingActiveSubscription = await this.prisma.subscription.findFirst({
-          where: { vpnUserId: payment.vpnUserId, active: true },
-          orderBy: { endsAt: 'desc' },
-        });
-
-        const user = await this.prisma.vpnUser.findUnique({ where: { id: payment.vpnUserId } });
-        if (user) {
-          const now = new Date();
-          let nextExpiresAt: Date | null = null;
-          let nextStatus: 'NEW' | 'ACTIVE' | 'BLOCKED' | 'EXPIRED' = 'EXPIRED';
-
-          if (remainingActiveSubscription) {
-            nextExpiresAt = remainingActiveSubscription.endsAt;
-            nextStatus =
-              user.status === 'BLOCKED'
-                ? 'BLOCKED'
-                : nextExpiresAt && nextExpiresAt.getTime() < now.getTime()
-                  ? 'EXPIRED'
-                  : 'ACTIVE';
-          } else {
-            const allSubscriptions = await this.prisma.subscription.findMany({
-              where: { vpnUserId: payment.vpnUserId },
-              orderBy: { endsAt: 'desc' },
-              take: 1,
-            });
-            if (allSubscriptions.length > 0) {
-              nextExpiresAt = allSubscriptions[0].endsAt;
-              nextStatus =
-                user.status === 'BLOCKED'
-                  ? 'BLOCKED'
-                  : nextExpiresAt && nextExpiresAt.getTime() < now.getTime()
-                    ? 'EXPIRED'
-                    : 'ACTIVE';
-            } else {
-              nextExpiresAt = null;
-              nextStatus = user.status === 'BLOCKED' ? 'BLOCKED' : 'EXPIRED';
-            }
-          }
-
-          // Обновляем пользователя через UsersService для синхронизации с панелью
-          await this.users.update(payment.vpnUserId, {
-            expiresAt: nextExpiresAt ? nextExpiresAt.toISOString() : undefined,
-            status: nextStatus,
-          });
-        }
-      }
     }
 
     await this.prisma.payment.delete({ where: { id } });

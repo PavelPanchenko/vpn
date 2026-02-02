@@ -13,8 +13,7 @@ import { BotService } from '../bot/bot.service';
 import { buildSubscriptionMetrics, type VpnUserStatus } from '../../common/subscription/subscription-metrics';
 import { toDateLike, type DateLike } from '../../common/subscription/user-like';
 import * as crypto from 'crypto';
-import { createTelegramStarsPaymentIntent } from '../payments/payment-providers/telegram-stars.provider';
-import { createExternalUrlPaymentIntent } from '../payments/payment-providers/external-url.provider';
+import { PaymentIntentsService } from '../payments/payment-intents/payment-intents.service';
 
 /** Очередь операций "найти или создать" по telegramId — устраняет гонку при двойном вызове (например React Strict Mode). */
 const getOrCreateLocks = new Map<string, Promise<unknown>>();
@@ -26,6 +25,7 @@ export class MiniController {
     private readonly usersService: UsersService,
     private readonly plansService: PlansService,
     private readonly paymentsService: PaymentsService,
+    private readonly paymentIntents: PaymentIntentsService,
     private readonly serversService: ServersService,
     private readonly botService: BotService,
     private readonly configService: ConfigService,
@@ -429,44 +429,24 @@ export class MiniController {
     const { telegramId } = await this.validateInitData(dto.initData);
     const user = await this.requireUserByTelegramId(telegramId);
 
-    const variant = await (this.prisma as any).planVariant.findUnique({
-      where: { id: dto.variantId },
-      include: { plan: true },
+    const botToken = dto.provider === 'TELEGRAM_STARS' ? await this.botService.getToken() : null;
+    const res = await this.paymentIntents.createForVariant({
+      vpnUserId: user.id,
+      variantId: dto.variantId,
+      provider: dto.provider === 'TELEGRAM_STARS' ? 'TELEGRAM_STARS' : 'PLATEGA',
+      botToken: botToken ?? undefined,
     });
-    const plan = variant?.plan;
-    if (!variant || !plan || !plan.active || plan.isTrial || !variant.active) {
-      throw new BadRequestException('Plan variant is not available');
-    }
 
-    const provider = dto.provider ?? (variant.currency === 'XTR' ? 'TELEGRAM_STARS' : 'EXTERNAL_URL');
-    if (provider === 'TELEGRAM_STARS' && variant.currency !== 'XTR') {
-      throw new BadRequestException('This plan variant cannot be paid with Telegram Stars');
+    if ('type' in res && res.type === 'UNSUPPORTED') {
+      throw new BadRequestException(res.reason);
     }
-    if (provider === 'EXTERNAL_URL' && variant.currency === 'XTR') {
-      throw new BadRequestException('This plan variant is intended for Telegram Stars');
+    if ('invoiceLink' in res) {
+      return { provider: 'TELEGRAM_STARS', invoiceLink: res.invoiceLink };
     }
-
-    const intent =
-      provider === 'TELEGRAM_STARS'
-        ? await createTelegramStarsPaymentIntent({
-            prisma: this.prisma,
-            config: this.configService,
-            botService: this.botService,
-            data: { vpnUserId: user.id, planId: plan.id },
-          })
-        : await createExternalUrlPaymentIntent({
-            config: this.configService,
-            data: { vpnUserId: user.id, planId: plan.id },
-          });
-
-    if (intent.type === 'UNSUPPORTED') {
-      throw new BadRequestException(intent.reason);
+    if ('paymentUrl' in res) {
+      return { provider: 'PLATEGA', paymentUrl: res.paymentUrl };
     }
-
-    if (intent.type === 'INVOICE_LINK') {
-      return { provider: intent.provider, invoiceLink: intent.invoiceLink };
-    }
-    return { provider: intent.provider, paymentUrl: intent.paymentUrl };
+    throw new BadRequestException('Payment provider is not available');
   }
 }
 

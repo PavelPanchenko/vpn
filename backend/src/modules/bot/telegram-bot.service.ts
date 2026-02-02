@@ -17,6 +17,7 @@ import { registerOnboardingHandlers } from './registrars/onboarding.registrar';
 import { registerPaymentsHandlers } from './registrars/payments.registrar';
 import { registerTelegramStarsPayments } from './registrars/stars-payments.registrar';
 import { registerBrowserLoginHandlers } from './registrars/browser-login.registrar';
+import { PaymentIntentsService } from '../payments/payment-intents/payment-intents.service';
 import type { TelegramRegistrarDeps } from './registrars/telegram-registrar.deps';
 import type { TelegramBot } from './telegram-runtime.types';
 import type { TelegramCallbackCtx, TelegramMessageCtx } from './telegram-runtime.types';
@@ -48,6 +49,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     private readonly usersService: UsersService,
     private readonly plansService: PlansService,
     private readonly paymentsService: PaymentsService,
+    private readonly paymentIntentsService: PaymentIntentsService,
     private readonly supportService: SupportService,
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
@@ -170,6 +172,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         usersService: this.usersService,
         plansService: this.plansService,
         paymentsService: this.paymentsService,
+        paymentIntentsService: this.paymentIntentsService,
         supportService: this.supportService,
         supportModeUsers: this.supportModeUsers,
         replyHtml: (ctx, html, extra) => this.replyHtml(ctx, html, extra),
