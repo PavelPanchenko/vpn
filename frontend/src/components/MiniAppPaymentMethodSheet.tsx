@@ -1,7 +1,7 @@
 import type { TelegramTheme } from '../hooks/useTelegramWebAppUi';
 
 export type PaymentMethodOption = {
-  id: 'TELEGRAM_STARS' | 'EXTERNAL_URL';
+  id: 'TELEGRAM_STARS' | 'PLATEGA';
   title: string;
   subtitle: string;
   badge?: string;

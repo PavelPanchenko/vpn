@@ -157,8 +157,8 @@ export function MiniAppPage() {
             badge: 'XTR',
           },
           {
-            id: 'EXTERNAL_URL',
-            title: 'Карта / RUB (внешняя)',
+            id: 'PLATEGA',
+            title: 'Карта / СБП',
             subtitle: 'Переход на страницу оплаты',
             badge: 'RUB',
           },

@@ -45,7 +45,7 @@ export type MiniPayResponse =
       invoiceLink: string;
     }
   | {
-      provider: 'EXTERNAL_URL';
+      provider: 'PLATEGA';
       paymentUrl: string;
     }
   | {

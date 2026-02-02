@@ -61,7 +61,7 @@ function defaultVariantCode(planCode: string, currency: string) {
 }
 
 function defaultProviderForCurrency(currency: string) {
-  return currency.toUpperCase() === 'XTR' ? 'TELEGRAM_STARS' : 'EXTERNAL_URL';
+  return currency.toUpperCase() === 'XTR' ? 'TELEGRAM_STARS' : 'PLATEGA';
 }
 
 function formatVariantsPrice(variants: Plan['variants'] | undefined) {
@@ -76,7 +76,7 @@ function formatVariantsPrice(variants: Plan['variants'] | undefined) {
 
 function shortProvider(provider: string) {
   if (provider === 'TELEGRAM_STARS') return 'STARS';
-  if (provider === 'EXTERNAL_URL') return 'CARD';
+  if (provider === 'PLATEGA') return 'CARD';
   return provider;
 }
 
@@ -808,7 +808,7 @@ export function PlansPage() {
                               });
                             }}
                           >
-                            <option value="EXTERNAL_URL">EXTERNAL_URL</option>
+                            <option value="PLATEGA">PLATEGA</option>
                             <option value="TELEGRAM_STARS">TELEGRAM_STARS</option>
                           </select>
                         </label>

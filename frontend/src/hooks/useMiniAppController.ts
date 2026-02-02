@@ -336,7 +336,7 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
   }, [initData]);
 
   const handlePay = useCallback(
-    async (variantId: string, provider: 'TELEGRAM_STARS' | 'EXTERNAL_URL', payingKey: string) => {
+    async (variantId: string, provider: 'TELEGRAM_STARS' | 'PLATEGA', payingKey: string) => {
       if (!initData) {
         setToast({ type: 'error', message: 'Сессия истекла. Закройте и откройте приложение снова.' });
         return;
@@ -396,7 +396,7 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
   const closePaymentSheet = useCallback(() => setPaymentSheetOpen(false), []);
 
   const choosePaymentMethod = useCallback(
-    async (provider: 'TELEGRAM_STARS' | 'EXTERNAL_URL') => {
+    async (provider: 'TELEGRAM_STARS' | 'PLATEGA') => {
       if (!selectedPlanGroup) return;
 
       const variant =
