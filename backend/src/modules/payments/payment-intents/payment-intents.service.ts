@@ -176,9 +176,6 @@ export class PaymentIntentsService {
     const secret = this.config.get<string>('PAYMENTS_PAYLOAD_SECRET') || botToken;
     const payload = buildTelegramStarsInvoicePayload({
       intentId: created.id,
-      userId: user.id,
-      planId: plan.id,
-      variantId: variant.id,
       issuedAt: Date.now(),
       secret,
     });
@@ -361,9 +358,6 @@ export class PaymentIntentsService {
     if (intent.status === 'PAID') return { ok: true };
 
     if (intent.provider !== 'TELEGRAM_STARS') throw new BadRequestException('Intent provider mismatch');
-    if (intent.vpnUserId !== data.userId || intent.planId !== data.planId || intent.variantId !== data.variantId) {
-      throw new BadRequestException('Intent payload mismatch');
-    }
     if (Number(intent.amount) !== Number(args.amount) || String(intent.currency) !== String(args.currency)) {
       throw new BadRequestException('Amount/currency mismatch');
     }

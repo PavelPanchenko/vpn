@@ -50,9 +50,6 @@ export async function createTelegramStarsPaymentIntent(args: {
   const secret = args.config.get<string>('PAYMENTS_PAYLOAD_SECRET') || token;
   const payload = buildTelegramStarsInvoicePayload({
     intentId: String(createdIntent.id),
-    userId: args.data.vpnUserId,
-    planId: plan.id,
-    variantId: starsVariant.id,
     issuedAt: Date.now(),
     secret,
   });

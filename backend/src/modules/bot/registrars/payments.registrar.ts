@@ -166,9 +166,6 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
           const secret = args.config.get<string>('PAYMENTS_PAYLOAD_SECRET') || args.botToken;
           const payload = buildTelegramStarsInvoicePayload({
             intentId: intent.intentId,
-            userId: user.id,
-            planId: plan.id,
-            variantId: variant.id,
             issuedAt: Date.now(),
             secret,
           });

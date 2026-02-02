@@ -18,20 +18,25 @@ export function registerTelegramStarsPayments(args: TelegramRegistrarDeps) {
 
       // Защита: инвойс привязан к конкретному пользователю (telegramId)
       const payerTelegramId = String(q?.from?.id ?? ctx?.from?.id ?? '');
-      const owner = await args.prisma.vpnUser.findUnique({ where: { id: data.userId } });
+      const intent = await (args.prisma as any).paymentIntent.findUnique({ where: { id: data.intentId } });
+      if (!intent || intent.provider !== 'TELEGRAM_STARS') {
+        await ctx.answerPreCheckoutQuery(false, 'Некорректный платеж. Попробуйте заново.');
+        return;
+      }
+      const owner = await args.prisma.vpnUser.findUnique({ where: { id: intent.vpnUserId } });
       if (!owner || !owner.telegramId || String(owner.telegramId) !== payerTelegramId) {
         await ctx.answerPreCheckoutQuery(false, 'Этот счёт предназначен для другого пользователя. Откройте оплату заново.');
         return;
       }
 
-      const plan = await args.prisma.plan.findUnique({ where: { id: data.planId } });
+      const plan = await args.prisma.plan.findUnique({ where: { id: intent.planId } });
       if (!plan || !plan.active || plan.isTrial) {
         await ctx.answerPreCheckoutQuery(false, 'Тариф недоступен.');
         return;
       }
 
-      const variant = await (args.prisma as any).planVariant.findUnique({ where: { id: data.variantId } });
-      if (!variant || !variant.active || variant.planId !== data.planId) {
+      const variant = await (args.prisma as any).planVariant.findUnique({ where: { id: intent.variantId } });
+      if (!variant || !variant.active || variant.planId !== intent.planId) {
         await ctx.answerPreCheckoutQuery(false, 'Вариант тарифа недоступен.');
         return;
       }
@@ -78,10 +83,11 @@ export function registerTelegramStarsPayments(args: TelegramRegistrarDeps) {
         return;
       }
 
-      // Защита: payload содержит userId, сверяем с реальным пользователем
-      if (user.id !== data.userId) {
-        args.logger.warn(`Stars payment user mismatch: payload userId=${data.userId}, actual userId=${user.id}`);
-        await ctx.reply('⚠️ Платёж получен, но не удалось сопоставить пользователя. Напишите в поддержку: /support');
+      // Защита: intentId должен принадлежать этому пользователю
+      const intent = await (args.prisma as any).paymentIntent.findUnique({ where: { id: data.intentId } });
+      if (!intent || intent.provider !== 'TELEGRAM_STARS' || intent.vpnUserId !== user.id) {
+        args.logger.warn(`Stars payment intent mismatch: intentId=${data.intentId}, userId=${user.id}`);
+        await ctx.reply('⚠️ Платёж получен, но не удалось сопоставить заказ. Напишите в поддержку: /support');
         return;
       }
 
