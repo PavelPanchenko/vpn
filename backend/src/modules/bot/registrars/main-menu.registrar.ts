@@ -180,7 +180,8 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
       try {
         await ctx.editMessageText(`🏠 Главное меню:${statusText}`, menuKeyboard);
       } catch {
-        await ctx.reply(`🏠 Главное меню:${statusText}`, menuKeyboard);
+        // Не отправляем новое сообщение — иначе получится дубликат. Редактирование может не пройти,
+        // если текст не изменился (message is not modified) или сообщение устарело.
       }
     } catch (error: unknown) {
       args.logger.error('Error handling show_status action:', error);
