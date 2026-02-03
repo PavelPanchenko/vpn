@@ -130,6 +130,9 @@ model VpnUser {
   // legacy pricing visibility (existing user marker)
   firstPaidAt DateTime?
 
+  // напоминание об истечении: когда отправлено (чтобы не слать повторно до продления)
+  expiryReminderSentAt DateTime?
+
   // server selection (nullable since multi-server support)
   serverId   String?
   server     VpnServer?   @relation(fields: [serverId], references: [id], onDelete: Restrict, onUpdate: Cascade)

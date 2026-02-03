@@ -166,7 +166,7 @@ export class UsersService {
     if (shouldUpdate) {
       await this.prisma.vpnUser.update({
         where: { id: userId },
-        data: { expiresAt: sub.endsAt, status: nextStatus },
+        data: { expiresAt: sub.endsAt, status: nextStatus, expiryReminderSentAt: null },
       });
     }
 
@@ -284,7 +284,10 @@ export class UsersService {
     const effectiveExpiresAt =
       dto.trialDays != null ? expiresAtFromTrialDays : (dto.expiresAt !== undefined ? (dto.expiresAt ? new Date(dto.expiresAt) : null) : undefined);
 
-    if (effectiveExpiresAt !== undefined) updates.expiresAt = effectiveExpiresAt;
+    if (effectiveExpiresAt !== undefined) {
+      updates.expiresAt = effectiveExpiresAt;
+      updates.expiryReminderSentAt = null; // чтобы перед новым сроком отправилось новое напоминание
+    }
     if (dto.serverId !== undefined) {
       updates.server = dto.serverId ? { connect: { id: dto.serverId } } : { disconnect: true };
     }
@@ -635,8 +638,48 @@ export class UsersService {
     return this.get(userId);
   }
 
+  /**
+   * Находит пользователей, у которых подписка истекает примерно через сутки (окно 23–25 ч),
+   * отправляет им напоминание через callback и помечает expiryReminderSentAt.
+   */
+  async runExpiryReminders(sendReminder: (telegramId: string, expiresAt: Date) => Promise<void>): Promise<void> {
+    const now = new Date();
+    const windowStart = new Date(now.getTime() + 23 * 60 * 60 * 1000);
+    const windowEnd = new Date(now.getTime() + 25 * 60 * 60 * 1000);
+    const users = await this.prisma.vpnUser.findMany({
+      where: {
+        status: 'ACTIVE',
+        telegramId: { not: null },
+        expiresAt: { not: null, gt: windowStart, lte: windowEnd },
+      },
+    });
+    const cutoff24h = 24 * 60 * 60 * 1000;
+    for (const user of users) {
+      const expiresAt = user.expiresAt!;
+      const alreadySent =
+        user.expiryReminderSentAt != null &&
+        user.expiryReminderSentAt.getTime() >= expiresAt.getTime() - cutoff24h;
+      if (alreadySent) continue;
+      const telegramId = user.telegramId!;
+      try {
+        await sendReminder(telegramId, expiresAt);
+        await this.prisma.vpnUser.update({
+          where: { id: user.id },
+          data: { expiryReminderSentAt: now },
+        });
+      } catch (e: unknown) {
+        this.logger.warn(`runExpiryReminders: failed for user ${user.id} — ${(e as Error)?.message ?? e}`);
+      }
+    }
+  }
+
   async expireUsersByCron() {
     const now = new Date();
+    // Деактивируем подписки с истёкшим сроком (чтобы БД и панель были в консистентном состоянии)
+    await this.prisma.subscription.updateMany({
+      where: { active: true, endsAt: { lt: now } },
+      data: { active: false },
+    });
     const users = await this.prisma.vpnUser.findMany({
       where: { status: 'ACTIVE', expiresAt: { not: null, lt: now } },
       include: { userServers: { where: { isActive: true }, include: { server: true } }, server: true },
@@ -652,9 +695,16 @@ export class UsersService {
             const secret = this.config.getOrThrow<string>('PANEL_CRED_SECRET');
             const panelPassword = SecretBox.decrypt(server.panelPasswordEnc, secret);
             const auth = await this.xui.login(server.panelBaseUrl, server.panelUsername, panelPassword);
-            if (auth.cookie || auth.token) await this.xui.deleteClient(server.panelBaseUrl, auth, server.panelInboundId, email);
+            if (auth.cookie || auth.token) {
+              try {
+                await this.xui.updateClient(server.panelBaseUrl, auth, server.panelInboundId, email, { enable: false });
+              } catch (_) {
+                // best-effort: отключаем клиента; если не найден — удаление ниже может сработать
+              }
+              await this.xui.deleteClient(server.panelBaseUrl, auth, server.panelInboundId, email);
+            }
           } catch (e: any) {
-            this.logger.warn(`expireUsersByCron: deleteClient failed for user ${user.id} — ${e?.message ?? e}`);
+            this.logger.warn(`expireUsersByCron: panel sync failed for user ${user.id} — ${e?.message ?? e}`);
           }
         }
       }

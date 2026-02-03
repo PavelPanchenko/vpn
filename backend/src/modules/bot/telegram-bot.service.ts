@@ -9,7 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { buildMainMenuKeyboard } from './keyboards/main-menu.keyboard';
 import { escHtml, fmtDateRu, maskServerHost, planBtnLabel } from './telegram-ui.utils';
 import { scheduleDeleteMessageFromReply } from './delete-after.utils';
-import { PaymentMessages } from './messages/common.messages';
+import { BotMessages, PaymentMessages } from './messages/common.messages';
 import {
   configLinkHtml as configLinkHtmlFn,
   getConfigData as getConfigDataFn,
@@ -361,6 +361,33 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       scheduleDeleteMessageFromReply(this.bot.telegram, sent);
     } catch (error: unknown) {
       this.logger.error(`Failed to send payment success to ${telegramId}:`, error);
+    }
+  }
+
+  /**
+   * Напоминание об истечении подписки за сутки.
+   */
+  async sendExpiryReminder(telegramId: string, expiresAt: Date): Promise<void> {
+    if (!telegramId?.trim()) return;
+    if (!this.bot) {
+      this.logger.warn('Cannot send expiry reminder: bot not initialized');
+      return;
+    }
+    const dateStr = expiresAt.toLocaleString('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const text = BotMessages.expiryReminderTemplate.replace('{date}', this.esc(dateStr));
+    try {
+      await this.bot.telegram.sendMessage(telegramId, text, {
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+      });
+    } catch (error: unknown) {
+      this.logger.error(`Failed to send expiry reminder to ${telegramId}:`, error);
     }
   }
 
