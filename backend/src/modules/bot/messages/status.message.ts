@@ -62,6 +62,19 @@ export function buildStatusHtmlMessage(args: {
     message += `\n📍 Локация не выбрана\n📍 Выбрать: <code>/start</code>\n`;
   }
 
+  // Что дальше (короткий CTA)
+  if (metrics.status === 'ACTIVE') {
+    if (activeServerName) {
+      message += `\n📥 Получить конфиг: <code>/config</code>\n`;
+    }
+  } else if (metrics.status === 'NEW') {
+    message += `\n💳 Купить подписку: <code>/pay</code>\n`;
+  } else if (metrics.status === 'EXPIRED') {
+    // строка продления уже есть выше, не дублируем
+  } else {
+    message += `\n💬 Если есть вопросы — <code>/support</code>\n`;
+  }
+
   // Детали последней подписки (одна запись; общий срок уже выше — «Осталось дней»)
   if (lastSub) {
     const starts = toDateLike(lastSub.startsAt);
@@ -86,7 +99,8 @@ export function buildStatusMenuSnippet(args: { user: UserLikeWithServers; fmtDat
     periodDays: lastSub?.periodDays ?? null,
   });
 
-  let text = `\n\n${STATUS_EMOJI[metrics.status] || '❓'} Статус: ${metrics.status}`;
+  const statusLabel = STATUS_LABEL[metrics.status] || metrics.status;
+  let text = `\n\n${STATUS_EMOJI[metrics.status] || '❓'} Статус: ${statusLabel}`;
 
   if (metrics.expiresAtIso) {
     const expiresAt = new Date(metrics.expiresAtIso);

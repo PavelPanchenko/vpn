@@ -4,12 +4,18 @@ import type { TelegramRegistrarDeps } from './telegram-registrar.deps';
 import { getPaidPlansWithFallback } from '../plans/paid-plans.utils';
 import { BotMessages } from '../messages/common.messages';
 import { getMarkup } from '../telegram-markup.utils';
+import { CONFIG_CHOICE_HTML } from '../messages/config.message';
 import { editOrReplyHtml } from '../telegram-reply.utils';
 import { cbThenReplyHtml, cbThenReplyText } from '../telegram-callback.utils';
 import type { TelegramCallbackCtx, TelegramMessageCtx } from '../telegram-runtime.types';
 import { formatPlanGroupButtonLabel, groupPlansByNameAndPeriod } from '../plans/plan-grouping.utils';
 
 export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
+  const backToMenuRow = async () => {
+    const M = await getMarkup();
+    return M.inlineKeyboard([[M.button.callback('🏠 В меню', 'back_to_main')]]);
+  };
+
   args.bot.action('get_config', async (ctx: TelegramCallbackCtx) => {
     const telegramId = ctx.from.id.toString();
     const user = await args.usersService.findByTelegramId(telegramId);
@@ -19,7 +25,59 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
       return;
     }
     await ctx.answerCbQuery();
-    await args.sendConfigMessage(ctx, user);
+    const Markup = await getMarkup();
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback('📱 QR-код', 'config_show_qr'), Markup.button.callback('🔗 Ссылка', 'config_show_link')],
+      [Markup.button.callback('🏠 В меню', 'back_to_main')],
+    ]);
+    await args.editHtml(ctx, CONFIG_CHOICE_HTML, keyboard);
+  });
+
+  args.bot.action('config_show_link', async (ctx: TelegramCallbackCtx) => {
+    const telegramId = ctx.from.id.toString();
+    const user = await args.usersService.findByTelegramId(telegramId);
+    if (!user) {
+      await ctx.answerCbQuery(BotMessages.userNotFoundCbText);
+      return;
+    }
+    await ctx.answerCbQuery();
+    const data = await args.getConfigData(user);
+    const keyboard = await backToMenuRow();
+    if (!data.ok) {
+      await args.editHtml(ctx, data.htmlMessage, keyboard);
+      return;
+    }
+    await args.editHtml(ctx, args.configLinkHtml(data.url, data.serverName), keyboard);
+  });
+
+  args.bot.action('config_show_qr', async (ctx: TelegramCallbackCtx) => {
+    const telegramId = ctx.from.id.toString();
+    const user = await args.usersService.findByTelegramId(telegramId);
+    if (!user) {
+      await ctx.answerCbQuery(BotMessages.userNotFoundCbText);
+      return;
+    }
+    await ctx.answerCbQuery();
+    const data = await args.getConfigData(user);
+    const keyboard = await backToMenuRow();
+    if (!data.ok) {
+      await args.editHtml(ctx, data.htmlMessage, keyboard);
+      return;
+    }
+    await args.editHtml(ctx, '⏳ Готовлю QR…', keyboard);
+    try {
+      const qrSent = await args.sendConfigQrPhoto(ctx, data.url, data.serverName);
+      if (qrSent) {
+        const delayMs = 10 * 60 * 1000;
+        setTimeout(() => {
+          args.bot.telegram.deleteMessage(qrSent.chatId, qrSent.messageId).catch(() => {});
+        }, delayMs);
+      }
+    } catch {
+      await args.editHtml(ctx, '⚠️ Не удалось сгенерировать QR. Нажмите «Ссылка» или «В меню».', keyboard);
+      return;
+    }
+    await args.showMainMenuEdit(ctx, user);
   });
 
   args.bot.action('show_pay', async (ctx: TelegramCallbackCtx) => {
@@ -57,12 +115,16 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
       const buttons = groups.map((g) => [
         Markup.button.callback(formatPlanGroupButtonLabel(g), `select_plan_${g.representative.id}`),
       ]);
+      buttons.push([Markup.button.callback('🏠 В меню', 'back_to_main')]);
 
       await ctx.answerCbQuery();
 
       await editOrReplyHtml(
         ctx,
-        `💳 <b>Оплата подписки</b>\n\nВыберите тариф ниже — подписка активируется автоматически.`,
+        `💳 <b>Оплата</b>\n\n` +
+          `1) Выберите тариф\n` +
+          `2) Выберите способ оплаты\n\n` +
+          `После оплаты подписка активируется автоматически.`,
         Markup.inlineKeyboard(buttons),
       );
     } catch (error: unknown) {
@@ -85,13 +147,8 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
 
       await ctx.answerCbQuery();
 
-      // Просто показываем главное меню заново (кнопки строятся из актуального состояния пользователя)
-      try {
-        await ctx.editMessageText('🏠 Главное меню:');
-      } catch {
-        // ignore
-      }
-      await args.showMainMenu(ctx, user);
+      // Редактируем текущее сообщение — без нового, чат не засоряется
+      await args.showMainMenuEdit(ctx, user);
     } catch (error: unknown) {
       args.logger.error('Error handling back_to_main action:', error);
       await ctx.answerCbQuery(BotMessages.errorCbText);

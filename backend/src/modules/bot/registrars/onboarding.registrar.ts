@@ -5,6 +5,7 @@ import { getMarkup } from '../telegram-markup.utils';
 import { cbThenReplyText } from '../telegram-callback.utils';
 import type { TelegramCallbackCtx, TelegramCallbackMatch, TelegramMessageCtx } from '../telegram-runtime.types';
 import type { PlanLike, ServerLike } from '../bot-domain.types';
+import { getTelegramMiniAppUrl } from '../mini-app/mini-app-url';
 
 export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
   // /start
@@ -68,14 +69,23 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       const buttons = servers.map((server: ServerLike) => [
         Markup.button.callback(server.name, `select_server_${server.id}`),
       ]);
+      const miniAppUrl = getTelegramMiniAppUrl(args.config);
+      if (miniAppUrl) {
+        const btn = Markup?.button?.webApp
+          ? Markup.button.webApp('🚀 Открыть Mini App', miniAppUrl)
+          : Markup.button.url('🚀 Открыть Mini App', miniAppUrl);
+        buttons.push([btn]);
+      }
 
       const trialDays = await args.getTrialDaysForUser(user.id);
 
       await args.replyHtml(
         ctx,
         `👋 Привет, <b>${args.esc(userName)}</b>!\n\n` +
-          `Выберите локацию для подключения.\n` +
-          `После первого подключения будет <b>пробный период на ${args.esc(trialDays)} дн.</b>`,
+          `1) Выберите локацию\n` +
+          `2) Получите конфиг и импортируйте в приложение\n` +
+          `3) Включите VPN\n\n` +
+          `🎁 После первого подключения — пробный период <b>${args.esc(trialDays)} дн.</b>`,
         Markup.inlineKeyboard(buttons),
       );
     } catch (error: unknown) {
@@ -100,7 +110,7 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
 
       if (existingUserServer) {
         await ctx.answerCbQuery('Эта локация уже добавлена!');
-        await args.showMainMenu(ctx, user);
+        await args.showMainMenuEdit(ctx, user);
         return;
       }
 
@@ -201,7 +211,15 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       const updatedUser = result.updated;
       if (!updatedUser) return;
 
-      const expiresAtStr = updatedUser.expiresAt ? new Date(updatedUser.expiresAt).toLocaleDateString('ru-RU') : null;
+      const expiresAtStr = updatedUser.expiresAt
+        ? new Date(updatedUser.expiresAt).toLocaleString('ru-RU', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : null;
       const periodLine = result.trialCreated
         ? `🎁 Пробный период: ${args.esc(trialDays)} дн.\n\n`
         : expiresAtStr
@@ -215,7 +233,7 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
           BotMessages.afterConnectHintText,
       );
 
-      await args.showMainMenu(ctx, updatedUser);
+      await args.showMainMenuEdit(ctx, updatedUser);
     } catch (error: unknown) {
       args.logger.error('Error confirming server selection:', error);
       await cbThenReplyText({
@@ -253,16 +271,15 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       const buttons = allServers.map((server: ServerLike) => [
         Markup.button.callback(server.name, `select_server_${server.id}`),
       ]);
+      buttons.push([Markup.button.callback('🏠 В меню', 'back_to_main')]);
 
       const trialDays = user ? await args.getTrialDaysForUser(user.id) : 3;
       const messageText =
         user && user.userServers && user.userServers.length > 0
-          ? `📍 Выберите локацию:\n\nВыберите сервер для получения конфигурации или переключения.`
-          : `🚀 Выберите локацию для подключения:\n\nПосле выбора вам будет предоставлен пробный период на ${args.esc(
-              trialDays,
-            )} дн.`;
+          ? `📍 <b>Выбор локации</b>\n\nВыберите сервер для переключения или получения нового конфига.`
+          : `📍 <b>Выбор локации</b>\n\nПосле подключения будет пробный период <b>${args.esc(trialDays)} дн.</b>`;
 
-      await ctx.editMessageText(messageText, Markup.inlineKeyboard(buttons));
+      await args.editHtml(ctx, messageText, Markup.inlineKeyboard(buttons));
     } catch (error: unknown) {
       args.logger.error('Error handling back to servers:', error);
       await ctx.reply(BotMessages.errorTryLaterText);

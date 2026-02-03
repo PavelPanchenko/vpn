@@ -39,6 +39,7 @@ export type TelegramBotTelegramApi = {
   setMyCommands: (commands: Array<{ command: string; description: string }>) => Promise<unknown>;
   deleteWebhook: (args?: { drop_pending_updates?: boolean }) => Promise<unknown>;
   sendMessage: (chatId: string | number, text: string, extra?: TelegramReplyOptions) => Promise<unknown>;
+  deleteMessage: (chatId: string | number, messageId: number) => Promise<unknown>;
   sendInvoice?: (
     chatId: string | number,
     title: string,

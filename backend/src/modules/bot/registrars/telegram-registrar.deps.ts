@@ -9,6 +9,7 @@ import type { UsersService } from '../../users/users.service';
 import type { TelegramBot, TelegramCallbackCtx, TelegramMessageCtx, TelegramReplyOptions } from '../telegram-runtime.types';
 import type { PlanLike } from '../bot-domain.types';
 import type { UserForConfigMessage } from '../bot-user.types';
+import type { ConfigDataResult, SendConfigQrPhotoResult } from '../messages/config.message';
 
 export type TelegramRegistrarDeps = {
   bot: TelegramBot;
@@ -31,9 +32,17 @@ export type TelegramRegistrarDeps = {
   editHtml: (ctx: TelegramCallbackCtx, html: string, extra?: TelegramReplyOptions) => Promise<unknown>;
 
   // High-level bot helpers
-  sendConfigMessage: (ctx: TelegramMessageCtx, user: UserForConfigMessage) => Promise<unknown>;
+  sendConfigMessage: (ctx: TelegramMessageCtx, user: UserForConfigMessage, configMessageExtra?: TelegramReplyOptions) => Promise<unknown>;
+  getConfigData: (user: UserForConfigMessage) => Promise<ConfigDataResult>;
+  configLinkHtml: (url: string, serverName: string) => string;
+  sendConfigQrPhoto: (
+    ctx: TelegramMessageCtx & { replyWithPhoto?: (photo: { source: Buffer }, extra?: TelegramReplyOptions) => Promise<unknown> },
+    url: string,
+    serverName: string,
+  ) => Promise<SendConfigQrPhotoResult>;
   enableSupportMode: (ctx: TelegramMessageCtx, telegramId: string) => Promise<unknown>;
   showMainMenu: (ctx: TelegramMessageCtx, user: { id: string } & Record<string, unknown>) => Promise<unknown>;
+  showMainMenuEdit: (ctx: TelegramCallbackCtx, user: { id: string } & Record<string, unknown>) => Promise<unknown>;
   buildMainMenuKeyboard: (user: { id?: string } | null) => Promise<TelegramReplyOptions>;
 
   // UI formatting helpers

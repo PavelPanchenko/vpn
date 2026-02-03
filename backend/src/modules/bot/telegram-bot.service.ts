@@ -8,7 +8,12 @@ import { SupportService } from '../support/support.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildMainMenuKeyboard } from './keyboards/main-menu.keyboard';
 import { escHtml, fmtDateRu, maskServerHost, planBtnLabel } from './telegram-ui.utils';
-import { sendConfigMessage } from './messages/config.message';
+import {
+  configLinkHtml as configLinkHtmlFn,
+  getConfigData as getConfigDataFn,
+  sendConfigMessage,
+  sendConfigQrPhoto as sendConfigQrPhotoFn,
+} from './messages/config.message';
 import { getTrialDaysForUser, getTrialDaysFromPlans } from './trial/trial.utils';
 import { editHtml, replyHtml } from './telegram-reply.utils';
 import { registerTelegramCommands } from './registrars/telegram-commands.registrar';
@@ -177,9 +182,13 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         supportModeUsers: this.supportModeUsers,
         replyHtml: (ctx, html, extra) => this.replyHtml(ctx, html, extra),
         editHtml: (ctx, html, extra) => this.editHtml(ctx, html, extra),
-        sendConfigMessage: (ctx, user) => this.sendConfigMessage(ctx, user),
+        sendConfigMessage: (ctx, user, extra) => this.sendConfigMessage(ctx, user, extra),
+        getConfigData: (user) => getConfigDataFn({ user, usersService: this.usersService, logger: this.logger, esc: (s) => this.esc(s) }),
+        configLinkHtml: (url, serverName) => configLinkHtmlFn({ url, serverName, esc: (s) => this.esc(s) }),
+        sendConfigQrPhoto: (ctx, url, serverName) => sendConfigQrPhotoFn({ ctx, url, serverName, esc: (s) => this.esc(s), logger: this.logger }),
         enableSupportMode: (ctx, telegramId) => this.enableSupportMode(ctx, telegramId),
         showMainMenu: (ctx, user) => this.showMainMenu(ctx, user),
+        showMainMenuEdit: (ctx, user) => this.showMainMenuEdit(ctx, user),
         buildMainMenuKeyboard: (user) => this.buildMainMenuKeyboard(user),
         esc: (s) => this.esc(s),
         fmtDate: (d) => this.fmtDate(d),
@@ -262,7 +271,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     return planBtnLabel(plan);
   }
 
-  private async sendConfigMessage(ctx: TelegramMessageCtx, user: UserForConfigMessage) {
+  private async sendConfigMessage(ctx: TelegramMessageCtx, user: UserForConfigMessage, configMessageExtra?: Record<string, unknown>) {
     return sendConfigMessage({
       ctx,
       user,
@@ -270,6 +279,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       logger: this.logger,
       replyHtml: (c, html, extra) => this.replyHtml(c, html, extra),
       esc: (s) => this.esc(s),
+      configMessageExtra,
     });
   }
 
@@ -283,16 +293,21 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  private static readonly MAIN_MENU_HTML =
+    `🏠 <b>Главное меню</b>\n<i>Выберите нужное действие кнопками ниже</i>\n\n` +
+    `Информация: /info\n` +
+    `Помощь: /help`;
+
   private async buildMainMenuKeyboard(user: { id?: string } | null): Promise<TelegramReplyOptions> {
     return buildMainMenuKeyboard({ prisma: this.prisma, config: this.config, user });
   }
 
   private async showMainMenu(ctx: TelegramMessageCtx, user: { id: string } & Record<string, unknown>) {
-    await this.replyHtml(
-      ctx,
-      `🏠 <b>Главное меню</b>\n<i>Выберите действие ниже</i>`,
-      await this.buildMainMenuKeyboard(user),
-    );
+    await this.replyHtml(ctx, TelegramBotService.MAIN_MENU_HTML, await this.buildMainMenuKeyboard(user));
+  }
+
+  private async showMainMenuEdit(ctx: TelegramCallbackCtx, user: { id: string } & Record<string, unknown>) {
+    await this.editHtml(ctx, TelegramBotService.MAIN_MENU_HTML, await this.buildMainMenuKeyboard(user));
   }
 
   /**

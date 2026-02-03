@@ -1,23 +1,30 @@
+import { buildHelpMessageHtml } from '../messages/help.message';
+import { buildInfoMessageHtml } from '../messages/info.message';
 import { buildStatusHtmlMessage } from '../messages/status.message';
 import type { TelegramRegistrarDeps } from './telegram-registrar.deps';
 import { BotMessages } from '../messages/common.messages';
+import { CONFIG_CHOICE_HTML } from '../messages/config.message';
+import { getMarkup } from '../telegram-markup.utils';
 import type { TelegramMessageCtx } from '../telegram-runtime.types';
 
 export function registerTelegramCommands(args: TelegramRegistrarDeps) {
-  // /config
+  // /config — тот же выбор «QR / Ссылка», что и при нажатии «Получить конфиг»
   args.bot.command('config', async (ctx: TelegramMessageCtx) => {
     args.logger.log('Command /config received');
     const telegramId = ctx.from.id.toString();
 
     try {
-      const user = await args.usersService.findByTelegramId(telegramId, {
-        userServers: {
-          where: { isActive: true },
-          include: { server: true },
-        },
-      });
-
-      await args.sendConfigMessage(ctx, user);
+      const user = await args.usersService.findByTelegramId(telegramId);
+      if (!user) {
+        await args.replyHtml(ctx, BotMessages.userNotFoundStartHtml);
+        return;
+      }
+      const Markup = await getMarkup();
+      const keyboard = Markup.inlineKeyboard([
+        [Markup.button.callback('📱 QR-код', 'config_show_qr'), Markup.button.callback('🔗 Ссылка', 'config_show_link')],
+        [Markup.button.callback('🏠 В меню', 'back_to_main')],
+      ]);
+      await args.replyHtml(ctx, CONFIG_CHOICE_HTML, keyboard);
     } catch (error: unknown) {
       args.logger.error('Error handling /config command:', error);
       await args.replyHtml(
@@ -50,31 +57,10 @@ export function registerTelegramCommands(args: TelegramRegistrarDeps) {
     }
   });
 
-  // /help
+  // /help — тот же контент, что и по кнопке «Помощь» (по кнопке редактируется одно сообщение)
   args.bot.command('help', async (ctx: TelegramMessageCtx) => {
     try {
-      const v2rayTunUrl = 'https://v2raytun.com/';
-      const helpMessage =
-        `❓ <b>Помощь</b>\n\n` +
-        `<b>1) Подключение</b>\n` +
-        `• Получите конфиг: <code>/config</code>\n` +
-        `• Импортируйте в приложение и включите VPN\n\n` +
-        `<b>2) Рекомендуемые приложения</b>\n` +
-        `• iOS: Shadowrocket / v2rayNG\n` +
-        `• Android: v2rayNG / V2RayTun\n` +
-        `• Windows: v2rayN\n` +
-        `• macOS: ClashX\n\n` +
-        `<b>3) Инструкция для V2RayTun</b>\n` +
-        `• ${v2rayTunUrl}\n\n` +
-        `<b>4) Команды</b>\n` +
-        `• <code>/start</code> — меню\n` +
-        `• <code>/config</code> — конфиг\n` +
-        `• <code>/pay</code> — оплата\n` +
-        `• <code>/status</code> — статус\n` +
-        `• <code>/support</code> — поддержка\n\n` +
-        `Если что-то не работает — напишите в <code>/support</code>.`;
-
-      await args.replyHtml(ctx, helpMessage);
+      await args.replyHtml(ctx, buildHelpMessageHtml());
     } catch (error: unknown) {
       args.logger.error('Error handling /help command:', error);
       await ctx.reply(BotMessages.errorTryLaterText);
@@ -117,43 +103,10 @@ export function registerTelegramCommands(args: TelegramRegistrarDeps) {
     }
   });
 
-  // /info
+  // /info — тот же контент, что и по кнопке «Информация» (по кнопке редактируется одно сообщение)
   args.bot.command('info', async (ctx: TelegramMessageCtx) => {
     try {
-      const siteUrlRaw = args.config.get<string>('PUBLIC_SITE_URL') || '';
-      const siteUrl = siteUrlRaw.replace(/\/+$/, '');
-
-      const privacyUrl = siteUrl ? `${siteUrl}/privacy` : null;
-      const termsUrl = siteUrl ? `${siteUrl}/terms` : null;
-
-      const supportEmail = args.config.get<string>('PUBLIC_SUPPORT_EMAIL') || null;
-      const supportTelegram = args.config.get<string>('PUBLIC_SUPPORT_TELEGRAM') || null;
-
-      const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-      let msg = 'ℹ️ <b>Информация</b>\n\n';
-      msg += '• Документы:\n';
-      if (privacyUrl) {
-        msg += `  • <a href="${privacyUrl}">Политика конфиденциальности</a>\n`;
-      } else {
-        msg += '  • Политика конфиденциальности — не настроено\n';
-      }
-      if (termsUrl) {
-        msg += `  • <a href="${termsUrl}">Пользовательское соглашение</a>\n\n`;
-      } else {
-        msg += '  • Пользовательское соглашение — не настроено\n\n';
-      }
-      msg += '• Контакты:\n';
-      if (supportTelegram) {
-        const tgUser = supportTelegram.replace(/^@/, '');
-        msg += `  • Telegram: <a href="tg://resolve?domain=${escape(tgUser)}">${escape(supportTelegram)}</a>\n`;
-      }
-      if (supportEmail) {
-        msg += `  • Email: <a href="mailto:${escape(supportEmail)}">${escape(supportEmail)}</a>\n`;
-      }
-      if (!supportTelegram && !supportEmail) msg += '  • не настроено\n';
-
-      await ctx.reply(msg, { parse_mode: 'HTML' });
+      await args.replyHtml(ctx, buildInfoMessageHtml(args.config));
     } catch (error: unknown) {
       args.logger.error('Error handling /info command:', error);
       await ctx.reply(BotMessages.infoLoadFailedText);
