@@ -8,6 +8,7 @@ import { SupportService } from '../support/support.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildMainMenuKeyboard } from './keyboards/main-menu.keyboard';
 import { escHtml, fmtDateRu, maskServerHost, planBtnLabel } from './telegram-ui.utils';
+import { PaymentMessages } from './messages/common.messages';
 import {
   configLinkHtml as configLinkHtmlFn,
   getConfigData as getConfigDataFn,
@@ -339,6 +340,25 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     } catch (error: unknown) {
       this.logger.error(`Failed to send support reply to ${telegramId}:`, error);
       // Не пробрасываем ошибку дальше, чтобы не прерывать создание ответа в БД
+    }
+  }
+
+  /**
+   * Отправляет пользователю сообщение об успешной оплате (например, после Platega webhook).
+   */
+  async sendPaymentSuccessNotification(telegramId: string): Promise<void> {
+    if (!telegramId?.trim()) return;
+    if (!this.bot) {
+      this.logger.warn('Cannot send payment success: bot not initialized');
+      return;
+    }
+    try {
+      await this.bot.telegram.sendMessage(telegramId, PaymentMessages.paymentSuccessBotText, {
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+      });
+    } catch (error: unknown) {
+      this.logger.error(`Failed to send payment success to ${telegramId}:`, error);
     }
   }
 

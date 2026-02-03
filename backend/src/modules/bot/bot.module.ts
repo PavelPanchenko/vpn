@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { BotService } from './bot.service';
 import { BotController } from './bot.controller';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -9,7 +9,7 @@ import { PaymentsModule } from '../payments/payments.module';
 import { SupportModule } from '../support/support.module';
 
 @Module({
-  imports: [PrismaModule, UsersModule, PlansModule, PaymentsModule, SupportModule],
+  imports: [PrismaModule, UsersModule, PlansModule, forwardRef(() => PaymentsModule), SupportModule],
   providers: [BotService, TelegramBotService],
   controllers: [BotController],
   exports: [BotService, TelegramBotService],

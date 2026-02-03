@@ -339,7 +339,8 @@ export class PaymentIntentsService {
       await this.prisma.vpnUser.update({ where: { id: intent.vpnUserId }, data: { firstPaidAt: payment.createdAt } });
     }
 
-    return { ok: true };
+    const telegramId = u?.telegramId ? String(u.telegramId) : undefined;
+    return { ok: true, telegramId };
   }
 
   async handleTelegramStarsSuccessfulPayment(args: {

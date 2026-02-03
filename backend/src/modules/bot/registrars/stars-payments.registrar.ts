@@ -1,5 +1,5 @@
 import type { TelegramRegistrarDeps } from './telegram-registrar.deps';
-import { BotMessages } from '../messages/common.messages';
+import { BotMessages, PaymentMessages } from '../messages/common.messages';
 import { verifyTelegramStarsInvoicePayload } from '../../payments/telegram-stars/telegram-stars.payload';
 
 export function registerTelegramStarsPayments(args: TelegramRegistrarDeps) {
@@ -99,7 +99,7 @@ export function registerTelegramStarsPayments(args: TelegramRegistrarDeps) {
         currency,
       });
 
-      await ctx.reply('✅ Оплата получена. Подписка активирована.\n\nПолучить конфиг: /config');
+      await ctx.reply(PaymentMessages.paymentSuccessBotText);
       await args.showMainMenu(ctx, user);
     } catch (e) {
       args.logger.error('successful_payment handler failed', e);

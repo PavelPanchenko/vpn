@@ -257,8 +257,10 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
 
     if (startParam === 'pay_success') {
       setScreen('home');
-      showSuccessToast('Оплата успешна. Обновляем статус…');
-      void refresh();
+      (async () => {
+        await refresh();
+        showSuccessToast('Оплата прошла. Статус обновлён.');
+      })();
       return;
     }
     if (startParam === 'pay_fail') {

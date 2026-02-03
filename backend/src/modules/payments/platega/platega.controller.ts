@@ -1,7 +1,18 @@
-import { BadRequestException, Body, Controller, Headers, Post, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Headers,
+  Inject,
+  Optional,
+  Post,
+  UnauthorizedException,
+  forwardRef,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { PlategaCallbackPayload } from './platega-api';
 import { PaymentIntentsService } from '../payment-intents/payment-intents.service';
+import { TelegramBotService } from '../../bot/telegram-bot.service';
 
 function assertPlategaAuth(args: {
   config: ConfigService;
@@ -24,7 +35,7 @@ async function handlePlategaCallback(args: {
   merchantIdHeader: string | undefined;
   secretHeader: string | undefined;
   body: PlategaCallbackPayload;
-}) {
+}): Promise<{ ok: true; telegramId?: string }> {
   assertPlategaAuth({
     config: args.config,
     merchantIdHeader: args.merchantIdHeader,
@@ -32,14 +43,14 @@ async function handlePlategaCallback(args: {
   });
   if (!args.body?.id) throw new BadRequestException('Missing transaction id');
 
-  await args.intents.handlePlategaWebhook({
+  const result = await args.intents.handlePlategaWebhook({
     transactionId: String(args.body.id),
     callbackStatus: args.body.status,
     callbackAmount: Number(args.body.amount),
     callbackCurrency: String(args.body.currency),
   });
 
-  return { ok: true };
+  return { ok: true, telegramId: result.telegramId };
 }
 
 @Controller('payments/platega')
@@ -47,6 +58,9 @@ export class PlategaController {
   constructor(
     private readonly intents: PaymentIntentsService,
     private readonly config: ConfigService,
+    @Optional()
+    @Inject(forwardRef(() => TelegramBotService))
+    private readonly telegramBot: TelegramBotService | null,
   ) {}
 
   @Post('webhook')
@@ -55,13 +69,17 @@ export class PlategaController {
     @Headers('x-secret') secretHeader: string | undefined,
     @Body() body: PlategaCallbackPayload,
   ) {
-    return await handlePlategaCallback({
+    const result = await handlePlategaCallback({
       intents: this.intents,
       config: this.config,
       merchantIdHeader,
       secretHeader,
       body,
     });
+    if (result.telegramId && this.telegramBot) {
+      await this.telegramBot.sendPaymentSuccessNotification(result.telegramId).catch(() => {});
+    }
+    return { ok: true };
   }
 
   // Docs default callback endpoint name
@@ -71,13 +89,17 @@ export class PlategaController {
     @Headers('x-secret') secretHeader: string | undefined,
     @Body() body: PlategaCallbackPayload,
   ) {
-    return await handlePlategaCallback({
+    const result = await handlePlategaCallback({
       intents: this.intents,
       config: this.config,
       merchantIdHeader,
       secretHeader,
       body,
     });
+    if (result.telegramId && this.telegramBot) {
+      await this.telegramBot.sendPaymentSuccessNotification(result.telegramId).catch(() => {});
+    }
+    return { ok: true };
   }
 }
 
@@ -87,6 +109,9 @@ export class PlategaCallbackController {
   constructor(
     private readonly intents: PaymentIntentsService,
     private readonly config: ConfigService,
+    @Optional()
+    @Inject(forwardRef(() => TelegramBotService))
+    private readonly telegramBot: TelegramBotService | null,
   ) {}
 
   @Post('paymentStatus')
@@ -95,13 +120,17 @@ export class PlategaCallbackController {
     @Headers('x-secret') secretHeader: string | undefined,
     @Body() body: PlategaCallbackPayload,
   ) {
-    return await handlePlategaCallback({
+    const result = await handlePlategaCallback({
       intents: this.intents,
       config: this.config,
       merchantIdHeader,
       secretHeader,
       body,
     });
+    if (result.telegramId && this.telegramBot) {
+      await this.telegramBot.sendPaymentSuccessNotification(result.telegramId).catch(() => {});
+    }
+    return { ok: true };
   }
 }
 
