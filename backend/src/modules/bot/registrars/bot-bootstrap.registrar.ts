@@ -29,7 +29,6 @@ export async function registerBotCommandsMenu(args: {
     const commands = useMiniApp
       ? [
           { command: 'start', description: '🏠 Главное меню' },
-          { command: 'web', description: '🌐 Mini App в браузере' },
           { command: 'info', description: 'ℹ️ Информация и документы' },
           { command: 'help', description: '❓ Помощь и инструкции' },
           { command: 'support', description: '💬 Поддержка' },
@@ -37,7 +36,6 @@ export async function registerBotCommandsMenu(args: {
         ]
       : [
           { command: 'start', description: '🏠 Главное меню' },
-          { command: 'web', description: '🌐 Mini App в браузере' },
           { command: 'config', description: '📥 Получить конфигурацию VPN' },
           { command: 'pay', description: '💳 Оплатить подписку' },
           { command: 'status', description: '📊 Статус подписки' },

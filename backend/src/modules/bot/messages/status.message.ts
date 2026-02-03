@@ -9,6 +9,14 @@ const STATUS_LABEL: Record<string, string> = {
   EXPIRED: 'Истёк',
 };
 
+function fmtTimeRu(d: Date): string {
+  try {
+    return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+}
+
 export function buildStatusHtmlMessage(args: {
   user: UserLikeWithServers;
   esc: (s: unknown) => string;
@@ -32,7 +40,8 @@ export function buildStatusHtmlMessage(args: {
     const expiresAt = new Date(metrics.expiresAtIso);
     const daysLeft = metrics.daysLeft ?? 0;
     if (daysLeft > 0) {
-      message += `\n📅 До: <b>${esc(fmtDate(expiresAt))}</b>\n`;
+      const time = fmtTimeRu(expiresAt);
+      message += `\n📅 До: <b>${esc(fmtDate(expiresAt))}${time ? `, ${esc(time)}` : ''}</b>\n`;
       message += `⏳ Осталось: <b>${esc(daysLeft)}</b> дн.\n`;
     } else {
       message += `\n⏰ Подписка истекла\n💳 Продлить: <code>/pay</code>\n`;
@@ -44,16 +53,13 @@ export function buildStatusHtmlMessage(args: {
     }
   }
 
-  // Информация об активных серверах
-  if (user.userServers && user.userServers.length > 0) {
-    message += `\n🌐 <b>Локация</b>:\n`;
-    user.userServers.forEach((userServer) => {
-      if (userServer.server) {
-        message += `• ${esc(userServer.server.name)}\n`;
-      }
-    });
+  // Выбранная локация (активная)
+  const activeServerName =
+    user.userServers && user.userServers.length > 0 ? (user.userServers[0]?.server as any)?.name : null;
+  if (activeServerName) {
+    message += `\n📍 <b>Локация</b>: ${esc(activeServerName)}\n`;
   } else {
-    message += `\n🌐 Локация не выбрана\n📍 Выбрать: <code>/start</code>\n`;
+    message += `\n📍 Локация не выбрана\n📍 Выбрать: <code>/start</code>\n`;
   }
 
   // Детали последней подписки (одна запись; общий срок уже выше — «Осталось дней»)
@@ -68,7 +74,7 @@ export function buildStatusHtmlMessage(args: {
   return message;
 }
 
-export function buildStatusMenuSnippet(args: { user: UserLikeBase; fmtDate: (d: Date) => string }): string {
+export function buildStatusMenuSnippet(args: { user: UserLikeWithServers; fmtDate: (d: Date) => string }): string {
   const { user, fmtDate } = args;
   const lastSub = user.subscriptions?.[0] ?? null;
 
@@ -86,13 +92,20 @@ export function buildStatusMenuSnippet(args: { user: UserLikeBase; fmtDate: (d: 
     const expiresAt = new Date(metrics.expiresAtIso);
     const daysLeft = metrics.daysLeft ?? 0;
     if (daysLeft > 0) {
-      text += `\n📅 До: ${fmtDate(expiresAt)}`;
+      const time = fmtTimeRu(expiresAt);
+      text += `\n📅 До: ${fmtDate(expiresAt)}${time ? `, ${time}` : ''}`;
       text += `\n⏳ Осталось: ${daysLeft} дн.`;
     } else {
       text += `\n⏰ Подписка истекла`;
     }
   } else {
     text += `\n📅 Подписка не установлена`;
+  }
+
+  const activeServerName =
+    user.userServers && user.userServers.length > 0 ? (user.userServers[0]?.server as any)?.name : null;
+  if (activeServerName) {
+    text += `\n📍 Локация: ${String(activeServerName)}`;
   }
 
   return text;

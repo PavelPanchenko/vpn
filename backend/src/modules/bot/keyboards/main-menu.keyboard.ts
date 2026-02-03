@@ -30,20 +30,18 @@ export async function buildMainMenuKeyboard(args: {
     hydratedUser?.serverId || (hydratedUser?.userServers && hydratedUser.userServers.length > 0),
   );
 
-  const row1: unknown[] = [];
-  const row2: unknown[] = [];
-
   if (hasActiveLocation) {
-    row1.push(Markup.button.callback('📥 Получить конфиг', 'get_config'));
-    row1.push(Markup.button.callback('📊 Статус подписки', 'show_status'));
-
-    row2.push(Markup.button.callback('📍 Выбрать другую локацию', 'back_to_servers'));
-    row2.push(Markup.button.callback('💳 Оплатить подписку', 'show_pay'));
+    const rows: unknown[][] = [];
+    rows.push([Markup.button.callback('📥 Получить конфиг', 'get_config')]);
+    rows.push([Markup.button.callback('📊 Статус подписки', 'show_status')]);
+    rows.push([Markup.button.callback('📍 Выбрать другую локацию', 'back_to_servers')]);
+    rows.push([Markup.button.callback('💳 Оплатить подписку', 'show_pay')]);
+    return Markup.inlineKeyboard(rows);
   } else {
-    row1.push(Markup.button.callback('📍 Выбрать локацию', 'back_to_servers'));
-    row1.push(Markup.button.callback('💳 Оплатить подписку', 'show_pay'));
+    const rows: unknown[][] = [];
+    rows.push([Markup.button.callback('📍 Выбрать локацию', 'back_to_servers')]);
+    rows.push([Markup.button.callback('💳 Оплатить подписку', 'show_pay')]);
+    return Markup.inlineKeyboard(rows);
   }
-
-  return Markup.inlineKeyboard(row2.length > 0 ? [row1, row2] : [row1]);
 }
 

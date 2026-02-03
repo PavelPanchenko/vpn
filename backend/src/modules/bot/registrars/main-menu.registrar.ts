@@ -108,7 +108,7 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
           orderBy: { endsAt: 'desc' },
           take: 1,
         },
-        userServers: { where: { isActive: true } },
+        userServers: { where: { isActive: true }, include: { server: true } },
       });
 
       if (!user) {
