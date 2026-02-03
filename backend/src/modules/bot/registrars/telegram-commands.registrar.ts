@@ -1,3 +1,4 @@
+import { scheduleDeleteMessage, scheduleDeleteMessageFromReply } from '../delete-after.utils';
 import { buildHelpMessageHtml } from '../messages/help.message';
 import { buildInfoMessageHtml } from '../messages/info.message';
 import { buildStatusHtmlMessage } from '../messages/status.message';
@@ -24,7 +25,8 @@ export function registerTelegramCommands(args: TelegramRegistrarDeps) {
         [Markup.button.callback('📱 QR-код', 'config_show_qr'), Markup.button.callback('🔗 Ссылка', 'config_show_link')],
         [Markup.button.callback('🏠 В меню', 'back_to_main')],
       ]);
-      await args.replyHtml(ctx, CONFIG_CHOICE_HTML, keyboard);
+      const sent = await args.replyHtml(ctx, CONFIG_CHOICE_HTML, keyboard);
+      scheduleDeleteMessageFromReply(args.bot.telegram, sent);
     } catch (error: unknown) {
       args.logger.error('Error handling /config command:', error);
       await args.replyHtml(
@@ -59,8 +61,12 @@ export function registerTelegramCommands(args: TelegramRegistrarDeps) {
 
   // /help — тот же контент, что и по кнопке «Помощь» (по кнопке редактируется одно сообщение)
   args.bot.command('help', async (ctx: TelegramMessageCtx) => {
+    if (ctx.chat?.id != null && ctx.message?.message_id != null) {
+      scheduleDeleteMessage(args.bot.telegram, ctx.chat.id, ctx.message.message_id);
+    }
     try {
-      await args.replyHtml(ctx, buildHelpMessageHtml());
+      const sent = await args.replyHtml(ctx, buildHelpMessageHtml());
+      scheduleDeleteMessageFromReply(args.bot.telegram, sent);
     } catch (error: unknown) {
       args.logger.error('Error handling /help command:', error);
       await ctx.reply(BotMessages.errorTryLaterText);
@@ -90,7 +96,8 @@ export function registerTelegramCommands(args: TelegramRegistrarDeps) {
         return;
       }
 
-      await args.replyHtml(ctx, buildStatusHtmlMessage({ user, esc: args.esc, fmtDate: args.fmtDate }));
+      const sent = await args.replyHtml(ctx, buildStatusHtmlMessage({ user, esc: args.esc, fmtDate: args.fmtDate }));
+      scheduleDeleteMessageFromReply(args.bot.telegram, sent);
     } catch (error: unknown) {
       args.logger.error('Error handling /status command:', error);
       await ctx.reply(
@@ -105,8 +112,12 @@ export function registerTelegramCommands(args: TelegramRegistrarDeps) {
 
   // /info — тот же контент, что и по кнопке «Информация» (по кнопке редактируется одно сообщение)
   args.bot.command('info', async (ctx: TelegramMessageCtx) => {
+    if (ctx.chat?.id != null && ctx.message?.message_id != null) {
+      scheduleDeleteMessage(args.bot.telegram, ctx.chat.id, ctx.message.message_id);
+    }
     try {
-      await args.replyHtml(ctx, buildInfoMessageHtml(args.config));
+      const sent = await args.replyHtml(ctx, buildInfoMessageHtml(args.config));
+      scheduleDeleteMessageFromReply(args.bot.telegram, sent);
     } catch (error: unknown) {
       args.logger.error('Error handling /info command:', error);
       await ctx.reply(BotMessages.infoLoadFailedText);

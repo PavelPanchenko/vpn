@@ -1,5 +1,6 @@
 import { SupportMessageType } from '@prisma/client';
 import { buildStatusMenuSnippet } from '../messages/status.message';
+import { scheduleDeleteMessage, scheduleDeleteMessageFromReply } from '../delete-after.utils';
 import type { TelegramRegistrarDeps } from './telegram-registrar.deps';
 import { getPaidPlansWithFallback } from '../plans/paid-plans.utils';
 import { BotMessages } from '../messages/common.messages';
@@ -68,10 +69,7 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
     try {
       const qrSent = await args.sendConfigQrPhoto(ctx, data.url, data.serverName);
       if (qrSent) {
-        const delayMs = 10 * 60 * 1000;
-        setTimeout(() => {
-          args.bot.telegram.deleteMessage(qrSent.chatId, qrSent.messageId).catch(() => {});
-        }, delayMs);
+        scheduleDeleteMessage(args.bot.telegram, qrSent.chatId, qrSent.messageId);
       }
     } catch {
       await args.editHtml(ctx, '⚠️ Не удалось сгенерировать QR. Нажмите «Ссылка» или «В меню».', keyboard);
@@ -119,7 +117,7 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
 
       await ctx.answerCbQuery();
 
-      await editOrReplyHtml(
+      const sent = await editOrReplyHtml(
         ctx,
         `💳 <b>Оплата</b>\n\n` +
           `1) Выберите тариф\n` +
@@ -127,6 +125,7 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
           `После оплаты подписка активируется автоматически.`,
         Markup.inlineKeyboard(buttons),
       );
+      scheduleDeleteMessageFromReply(args.bot.telegram, sent, ctx);
     } catch (error: unknown) {
       args.logger.error('Error handling show_pay action:', error);
       await cbThenReplyText({ ctx, cbText: BotMessages.errorCbText, replyText: BotMessages.errorTryLaterText });

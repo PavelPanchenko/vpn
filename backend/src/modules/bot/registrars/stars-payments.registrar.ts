@@ -1,3 +1,4 @@
+import { scheduleDeleteMessageFromReply } from '../delete-after.utils';
 import type { TelegramRegistrarDeps } from './telegram-registrar.deps';
 import { BotMessages, PaymentMessages } from '../messages/common.messages';
 import { verifyTelegramStarsInvoicePayload } from '../../payments/telegram-stars/telegram-stars.payload';
@@ -99,7 +100,8 @@ export function registerTelegramStarsPayments(args: TelegramRegistrarDeps) {
         currency,
       });
 
-      await ctx.reply(PaymentMessages.paymentSuccessBotText);
+      const sent = await ctx.reply(PaymentMessages.paymentSuccessBotText);
+      scheduleDeleteMessageFromReply(args.bot.telegram, sent);
       await args.showMainMenu(ctx, user);
     } catch (e) {
       args.logger.error('successful_payment handler failed', e);

@@ -8,6 +8,7 @@ import { SupportService } from '../support/support.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildMainMenuKeyboard } from './keyboards/main-menu.keyboard';
 import { escHtml, fmtDateRu, maskServerHost, planBtnLabel } from './telegram-ui.utils';
+import { scheduleDeleteMessageFromReply } from './delete-after.utils';
 import { PaymentMessages } from './messages/common.messages';
 import {
   configLinkHtml as configLinkHtmlFn,
@@ -353,10 +354,11 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     try {
-      await this.bot.telegram.sendMessage(telegramId, PaymentMessages.paymentSuccessBotText, {
+      const sent = await this.bot.telegram.sendMessage(telegramId, PaymentMessages.paymentSuccessBotText, {
         parse_mode: 'HTML',
         disable_web_page_preview: true,
       });
+      scheduleDeleteMessageFromReply(this.bot.telegram, sent);
     } catch (error: unknown) {
       this.logger.error(`Failed to send payment success to ${telegramId}:`, error);
     }

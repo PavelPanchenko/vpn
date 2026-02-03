@@ -1,3 +1,4 @@
+import { scheduleDeleteMessageFromReply } from '../delete-after.utils';
 import type { TelegramRegistrarDeps } from './telegram-registrar.deps';
 import { getPaidPlansWithFallback } from '../plans/paid-plans.utils';
 import { BotMessages, PaymentMessages } from '../messages/common.messages';
@@ -47,9 +48,11 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
       `После оплаты подписка активируется автоматически.`;
 
     if (args2.mode === 'reply') {
-      await args.replyHtml(args2.ctx, text, Markup.inlineKeyboard(buttons));
+      const sent = await args.replyHtml(args2.ctx, text, Markup.inlineKeyboard(buttons));
+      scheduleDeleteMessageFromReply(args.bot.telegram, sent);
     } else {
-      await editOrReplyHtml(args2.ctx as any, text, Markup.inlineKeyboard(buttons));
+      const sent = await editOrReplyHtml(args2.ctx as any, text, Markup.inlineKeyboard(buttons));
+      scheduleDeleteMessageFromReply(args.bot.telegram, sent, args2.ctx);
     }
   }
 
@@ -134,11 +137,12 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
       rows.push([Markup.button.callback('⬅️ Назад к тарифам', 'pay_back_to_plans')]);
       rows.push([Markup.button.callback('🏠 В меню', 'back_to_main')]);
 
-      await editOrReplyHtml(
+      const sent = await editOrReplyHtml(
         ctx,
         `💳 <b>${args.esc(plan.name)}</b>\n\n` + `Выберите способ оплаты:`,
         Markup.inlineKeyboard(rows),
       );
+      scheduleDeleteMessageFromReply(args.bot.telegram, sent, ctx);
     } catch (error: unknown) {
       args.logger.error('Error handling plan selection:', error);
       await ctx.answerCbQuery(BotMessages.paymentCreateCbErrorText);
@@ -211,15 +215,16 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
           const payButtonLabel = PaymentMessages.starsPayButtonLabel.replace('{price}', args.esc(variant.price));
           const invoiceLink = intent.invoiceLink;
 
-          setTimeout(() => {
-            editOrReplyHtml(
+          setTimeout(async () => {
+            const sent = await editOrReplyHtml(
               ctx,
               subscriptionText,
               MarkupStars.inlineKeyboard([
                 [MarkupStars.button.url(payButtonLabel, invoiceLink)],
                 [MarkupStars.button.callback('🏠 В меню', 'back_to_main')],
               ]),
-            ).catch(() => {});
+            ).catch(() => null);
+            if (sent) scheduleDeleteMessageFromReply(args.bot.telegram, sent, ctx);
           }, 2000);
           return;
         }
@@ -245,7 +250,7 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
         }
 
         const Markup = await getMarkup();
-        await editOrReplyHtml(
+        const sent = await editOrReplyHtml(
           ctx,
           PaymentMessages.plategaInstructionsHtml,
           Markup.inlineKeyboard([
@@ -254,6 +259,7 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
             [Markup.button.callback('🏠 В меню', 'back_to_main')],
           ]),
         );
+        scheduleDeleteMessageFromReply(args.bot.telegram, sent, ctx);
       } catch (error: unknown) {
         args.logger.error('Error handling pay_with:', error);
         await ctx.answerCbQuery(BotMessages.paymentCreateCbErrorText);
