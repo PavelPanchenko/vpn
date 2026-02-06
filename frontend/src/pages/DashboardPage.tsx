@@ -50,6 +50,7 @@ type DashboardStats = {
 };
 
 function formatMoney(amount: number, currency: string): string {
+  if (!Number.isFinite(amount)) return '—';
   const c = String(currency || '').toUpperCase();
   if (c === 'XTR') return `${amount} ⭐`;
   try {
@@ -65,7 +66,7 @@ function formatMoney(amount: number, currency: string): string {
 }
 
 function revenueEntries(byCurrency: Record<string, number> | null | undefined) {
-  const entries = Object.entries(byCurrency ?? {}).filter(([, v]) => typeof v === 'number' && v !== 0);
+  const entries = Object.entries(byCurrency ?? {}).filter(([, v]) => typeof v === 'number' && Number.isFinite(v) && v !== 0);
   // Сначала RUB, потом XTR, потом остальные
   const weight = (c: string) => (c.toUpperCase() === 'RUB' ? 0 : c.toUpperCase() === 'XTR' ? 1 : 2);
   return entries.sort(([a], [b]) => weight(a) - weight(b) || a.localeCompare(b));

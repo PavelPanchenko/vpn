@@ -8,7 +8,10 @@ export class DashboardService {
   async getStats() {
     const toCurrencySums = (rows: Array<{ currency: string; _sum: { amount: number | null } }>) => {
       const out: Record<string, number> = {};
-      for (const r of rows) out[String(r.currency)] = Number(r._sum?.amount ?? 0);
+      for (const r of rows) {
+        const v = Number(r._sum?.amount ?? 0);
+        out[String(r.currency)] = Number.isFinite(v) ? v : 0;
+      }
       return out;
     };
 
