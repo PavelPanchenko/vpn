@@ -20,10 +20,24 @@ export class SubscriptionsService {
     });
   }
 
-  async list() {
+  async list(args?: { offset?: number; limit?: number; vpnUserId?: string; active?: string }) {
     await this.refreshExpiredUsers();
+    const offset = Math.max(0, Number(args?.offset ?? 0) || 0);
+    const limitRaw = Number(args?.limit ?? 50);
+    const limit = Math.min(1000, Math.max(1, Number.isFinite(limitRaw) ? limitRaw : 50));
+    const vpnUserId = (args?.vpnUserId ?? '').trim();
+    const activeRaw = (args?.active ?? '').trim();
+    const active =
+      activeRaw === 'true' ? true : activeRaw === 'false' ? false : undefined;
+
     return this.prisma.subscription.findMany({
       orderBy: { endsAt: 'desc' },
+      where: {
+        ...(vpnUserId ? { vpnUserId } : {}),
+        ...(active !== undefined ? { active } : {}),
+      },
+      skip: offset,
+      take: limit,
       include: { vpnUser: { include: { server: true } } },
     });
   }

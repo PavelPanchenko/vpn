@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import { api } from '../lib/api';
@@ -33,23 +33,50 @@ type UserDetails = VpnUser & {
   subscriptions: Subscription[];
 };
 
+type MigratePanelEmailsResult = {
+  ok: boolean;
+  dryRun: boolean;
+  processed: number;
+  renamed: number;
+  skipped: number;
+  failed: number;
+  details: Array<{ userServerId: string; oldEmail: string; newEmail: string; action: string; error?: string }>;
+};
+
 export function UsersPage() {
   const qc = useQueryClient();
+  const PAGE_SIZE = 50;
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<VpnUser | null>(null);
   const [editTarget, setEditTarget] = useState<VpnUser | null>(null);
   const [statusFilter, setStatusFilter] = useState<'ALL' | VpnUserStatus>('ALL');
   const [serverFilter, setServerFilter] = useState<string>('ALL');
   const [search, setSearch] = useState('');
+  const [migrateOpen, setMigrateOpen] = useState(false);
+  const [migrateDryRun, setMigrateDryRun] = useState(true);
+  const [migrateLimit, setMigrateLimit] = useState<string>('200');
+  const [migrateResult, setMigrateResult] = useState<MigratePanelEmailsResult | null>(null);
 
   const serversQ = useQuery({
     queryKey: ['servers'],
     queryFn: async () => (await api.get<VpnServer[]>('/servers')).data,
   });
 
-  const usersQ = useQuery({
-    queryKey: ['users'],
-    queryFn: async () => (await api.get<VpnUser[]>('/users')).data,
+  const qStr = useMemo(() => search.trim(), [search]);
+  const usersQ = useInfiniteQuery({
+    queryKey: ['users', { statusFilter, serverFilter, q: qStr }],
+    queryFn: async ({ pageParam }) =>
+      (await api.get<VpnUser[]>('/users', {
+        params: {
+          offset: Number(pageParam ?? 0),
+          limit: PAGE_SIZE,
+          q: qStr || undefined,
+          status: statusFilter !== 'ALL' ? statusFilter : undefined,
+          serverId: serverFilter !== 'ALL' ? serverFilter : undefined,
+        },
+      })).data,
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => (lastPage.length >= PAGE_SIZE ? allPages.length * PAGE_SIZE : undefined),
   });
 
   const createM = useMutation({
@@ -83,6 +110,18 @@ export function UsersPage() {
     onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to update user')),
   });
 
+  const migrateM = useMutation({
+    mutationFn: async (payload: { dryRun: boolean; limit?: number }) =>
+      (await api.post<MigratePanelEmailsResult>('/users/migrate-panel-emails', payload)).data,
+    onSuccess: (data) => {
+      setMigrateResult(data);
+      toast.success(data.dryRun ? 'Dry-run completed' : 'Migration completed');
+      // На всякий случай обновим пользователей, т.к. panelEmail меняется в userServers
+      qc.invalidateQueries({ queryKey: ['users'] }).catch(() => {});
+    },
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Migration failed')),
+  });
+
   const deleteM = useMutation({
     mutationFn: async (id: string) => (await api.delete(`/users/${id}`)).data,
     onSuccess: async () => {
@@ -94,27 +133,16 @@ export function UsersPage() {
   });
 
   const servers = useMemo(() => serversQ.data ?? [], [serversQ.data]);
-  const users = useMemo(() => usersQ.data ?? [], [usersQ.data]);
+  const users = useMemo(() => usersQ.data?.pages.flatMap((p) => p) ?? [], [usersQ.data]);
 
-  const filteredUsers = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return users.filter((u) => {
-      if (statusFilter !== 'ALL' && u.status !== statusFilter) return false;
-      if (serverFilter !== 'ALL') {
-        if (serverFilter === 'NO_SERVER') {
-          // Фильтр "Без сервера" - показываем только пользователей без serverId
-          if (u.serverId !== null) return false;
-        } else {
-          // Фильтр по конкретному серверу
-          if (u.serverId !== serverFilter) return false;
-        }
-      }
-      if (!term) return true;
-      const name = u.name?.toLowerCase() ?? '';
-      const tg = u.telegramId?.toLowerCase() ?? '';
-      return name.includes(term) || tg.includes(term);
-    });
-  }, [users, statusFilter, serverFilter, search]);
+  function pickActiveServer(u: VpnUser): { id: string | null; name: string | null } {
+    const active = u.userServers?.find((us) => us.isActive) ?? null;
+    const id = active?.serverId ?? u.serverId ?? null;
+    const name = active?.server?.name ?? u.server?.name ?? null;
+    return { id, name };
+  }
+
+  const filteredUsers = users;
 
   const createForm = useForm<CreateUserForm>({
     defaultValues: { serverId: '', name: '', telegramId: '', trialDays: 3 },
@@ -165,10 +193,10 @@ export function UsersPage() {
         title="Users"
         description="Пользователи VLESS (позже будут маппиться на Telegram)."
         actions={
-          <div className="flex flex-col gap-2 md:flex-row md:items-center">
-            <div className="flex flex-wrap gap-2">
+          <div className="flex w-full flex-col gap-2 md:flex-row md:items-center md:justify-end md:flex-nowrap">
+            <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center md:w-auto md:flex-nowrap">
               <select
-                className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200 sm:w-auto"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as 'ALL' | VpnUserStatus)}
               >
@@ -179,7 +207,7 @@ export function UsersPage() {
                 <option value="EXPIRED">EXPIRED</option>
               </select>
               <select
-                className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200 sm:w-auto"
                 value={serverFilter}
                 onChange={(e) => setServerFilter(e.target.value)}
               >
@@ -191,16 +219,30 @@ export function UsersPage() {
                   </option>
                 ))}
               </select>
-              <Input
-                label=""
+              <input
+                className={[
+                  'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none sm:w-64 md:w-72',
+                  'placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200',
+                ].join(' ')}
                 placeholder="Search by name / TG"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 md:flex-nowrap">
               <Button variant="secondary" onClick={() => usersQ.refetch()}>
                 Refresh
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setMigrateDryRun(true);
+                  setMigrateLimit('200');
+                  setMigrateResult(null);
+                  setMigrateOpen(true);
+                }}
+              >
+                Migrate panel emails
               </Button>
               <Button
                 onClick={() => {
@@ -242,7 +284,7 @@ export function UsersPage() {
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-slate-500">Server</span>
-                      <span className="text-right">{u.server?.name ?? u.serverId ?? '—'}</span>
+                      <span className="text-right">{pickActiveServer(u).name ?? pickActiveServer(u).id ?? '—'}</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-slate-500">Expires</span>
@@ -297,81 +339,108 @@ export function UsersPage() {
                   <div className="text-sm text-slate-500">No users yet</div>
                 </Card>
               ) : null}
+
+              {usersQ.hasNextPage ? (
+                <div className="pt-2">
+                  <Button
+                    variant="secondary"
+                    className="w-full"
+                    disabled={usersQ.isFetchingNextPage}
+                    onClick={() => usersQ.fetchNextPage()}
+                  >
+                    {usersQ.isFetchingNextPage ? 'Loading…' : 'Load more'}
+                  </Button>
+                </div>
+              ) : null}
             </div>
           }
           desktop={
-            <Table
-              columns={
-                <tr>
-                  <Th>Name</Th>
-                  <Th>UUID</Th>
-                  <Th>TG ID</Th>
-                  <Th>Server</Th>
-                  <Th>Status</Th>
-                  <Th>Expires</Th>
-                  <Th className="text-right">Actions</Th>
-                </tr>
-              }
-            >
-              {filteredUsers.map((u) => (
-                <tr key={u.id} className="border-t border-slate-100">
-                  <Td className="font-medium">{u.name}</Td>
-                  <Td className="font-mono text-xs">
-                    <Link className="text-slate-900 underline" to={`/users/${u.id}`}>
-                      {u.uuid}
-                    </Link>
-                  </Td>
-                  <Td className="font-mono text-xs">{u.telegramId ?? '-'}</Td>
-                  <Td>{u.server?.name ?? u.serverId}</Td>
-                  <Td>
-                    <select
-                      className="mt-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-                      value={u.status}
-                      onChange={(e) =>
-                        updateM.mutate({
-                          id: u.id,
-                          status: e.target.value as VpnUserStatus,
-                        })
-                      }
-                    >
-                      <option value="NEW">NEW</option>
-                      <option value="ACTIVE">ACTIVE</option>
-                      <option value="BLOCKED">BLOCKED</option>
-                      <option value="EXPIRED">EXPIRED</option>
-                    </select>
-                  </Td>
-                  <Td>{u.expiresAt ? new Date(u.expiresAt).toLocaleString() : '-'}</Td>
-                  <Td className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="secondary"
-                        onClick={() => {
-                          setEditTarget(u);
-                          editForm.reset({
-                            serverId: u.serverId ?? undefined,
-                            name: u.name,
-                            telegramId: u.telegramId ?? '',
-                            trialDays: undefined,
-                          });
-                        }}
+            <div className="grid gap-3">
+              <Table
+                columns={
+                  <tr>
+                    <Th>Name</Th>
+                    <Th>UUID</Th>
+                    <Th>TG ID</Th>
+                    <Th>Server</Th>
+                    <Th>Status</Th>
+                    <Th>Expires</Th>
+                    <Th className="text-right">Actions</Th>
+                  </tr>
+                }
+              >
+                {filteredUsers.map((u) => (
+                  <tr key={u.id} className="border-t border-slate-100">
+                    <Td className="font-medium">{u.name}</Td>
+                    <Td className="font-mono text-xs">
+                      <Link className="text-slate-900 underline" to={`/users/${u.id}`}>
+                        {u.uuid}
+                      </Link>
+                    </Td>
+                    <Td className="font-mono text-xs">{u.telegramId ?? '-'}</Td>
+                    <Td>{pickActiveServer(u).name ?? pickActiveServer(u).id ?? '—'}</Td>
+                    <Td>
+                      <select
+                        className="mt-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                        value={u.status}
+                        onChange={(e) =>
+                          updateM.mutate({
+                            id: u.id,
+                            status: e.target.value as VpnUserStatus,
+                          })
+                        }
                       >
-                        Edit
-                      </Button>
-                      <Button variant="danger" onClick={() => setDeleteTarget(u)}>
-                        Delete
-                      </Button>
-                    </div>
-                  </Td>
-                </tr>
-              ))}
-              {filteredUsers.length === 0 ? (
-                <tr className="border-t border-slate-100">
-                  <Td className="text-slate-500" colSpan={7}>
-                    No users yet
-                  </Td>
-                </tr>
+                        <option value="NEW">NEW</option>
+                        <option value="ACTIVE">ACTIVE</option>
+                        <option value="BLOCKED">BLOCKED</option>
+                        <option value="EXPIRED">EXPIRED</option>
+                      </select>
+                    </Td>
+                    <Td>{u.expiresAt ? new Date(u.expiresAt).toLocaleString() : '-'}</Td>
+                    <Td className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            setEditTarget(u);
+                            editForm.reset({
+                              serverId: u.serverId ?? undefined,
+                              name: u.name,
+                              telegramId: u.telegramId ?? '',
+                              trialDays: undefined,
+                            });
+                          }}
+                        >
+                          Edit
+                        </Button>
+                        <Button variant="danger" onClick={() => setDeleteTarget(u)}>
+                          Delete
+                        </Button>
+                      </div>
+                    </Td>
+                  </tr>
+                ))}
+                {filteredUsers.length === 0 ? (
+                  <tr className="border-t border-slate-100">
+                    <Td className="text-slate-500" colSpan={7}>
+                      No users yet
+                    </Td>
+                  </tr>
+                ) : null}
+              </Table>
+
+              {usersQ.hasNextPage ? (
+                <div className="flex justify-center">
+                  <Button
+                    variant="secondary"
+                    disabled={usersQ.isFetchingNextPage}
+                    onClick={() => usersQ.fetchNextPage()}
+                  >
+                    {usersQ.isFetchingNextPage ? 'Loading…' : 'Load more'}
+                  </Button>
+                </div>
               ) : null}
-            </Table>
+            </div>
           }
         />
       )}
@@ -584,6 +653,109 @@ export function UsersPage() {
         <div className="text-sm text-slate-700">
           Удалить пользователя <span className="font-semibold">{deleteTarget?.name}</span>? Это также удалит клиента в панели
           сервера (если он уже был создан).
+        </div>
+      </Modal>
+
+      <Modal
+        open={migrateOpen}
+        title="Migrate panel emails"
+        onClose={() => setMigrateOpen(false)}
+        footer={
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button variant="secondary" type="button" onClick={() => setMigrateOpen(false)}>
+              Close
+            </Button>
+            <Button
+              variant="secondary"
+              type="button"
+              disabled={migrateM.isPending}
+              onClick={() => {
+                const limitNum = migrateLimit.trim() ? Number(migrateLimit) : undefined;
+                migrateM.mutate({
+                  dryRun: true,
+                  limit: Number.isFinite(limitNum as any) ? (limitNum as any) : undefined,
+                });
+              }}
+            >
+              Run dry-run
+            </Button>
+            <Button
+              variant="danger"
+              type="button"
+              disabled={migrateM.isPending}
+              onClick={() => {
+                if (!confirm('Запустить миграцию реально? Это переименует клиентов в панели и обновит panelEmail в БД.')) return;
+                const limitNum = migrateLimit.trim() ? Number(migrateLimit) : undefined;
+                migrateM.mutate({
+                  dryRun: false,
+                  limit: Number.isFinite(limitNum as any) ? (limitNum as any) : undefined,
+                });
+              }}
+            >
+              Run migration
+            </Button>
+          </div>
+        }
+      >
+        <div className="grid gap-3">
+          <div className="text-sm text-slate-700">
+            По умолчанию запускай <b>dry-run</b>: он ничего не меняет, только показывает, что будет переименовано.
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={migrateDryRun}
+              onChange={(e) => setMigrateDryRun(e.target.checked)}
+            />
+            Dry-run по умолчанию (для кнопки “Run dry-run”)
+          </label>
+
+          <Input
+            label="Limit (optional)"
+            type="number"
+            value={migrateLimit}
+            onChange={(e) => setMigrateLimit(e.target.value)}
+            hint="Ограничить количество связей user-server (рекомендуется для прогрева). Пусто = без лимита."
+          />
+
+          {migrateResult ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">
+              <div className="font-medium text-slate-900 mb-2">
+                Result ({migrateResult.dryRun ? 'dry-run' : 'real'})
+              </div>
+              <div className="grid gap-1">
+                <div>processed: {migrateResult.processed}</div>
+                <div>renamed: {migrateResult.renamed}</div>
+                <div>skipped: {migrateResult.skipped}</div>
+                <div className={migrateResult.failed ? 'text-red-700' : ''}>failed: {migrateResult.failed}</div>
+              </div>
+              {migrateResult.details?.length ? (
+                <div className="mt-3 overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="text-left text-slate-500">
+                      <tr>
+                        <th className="py-1">Action</th>
+                        <th className="py-1">Old</th>
+                        <th className="py-1">New</th>
+                        <th className="py-1">Error</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-slate-800">
+                      {migrateResult.details.map((d) => (
+                        <tr key={d.userServerId} className="border-t border-slate-200">
+                          <td className="py-1 pr-2 whitespace-nowrap">{d.action}</td>
+                          <td className="py-1 pr-2 font-mono break-all">{d.oldEmail}</td>
+                          <td className="py-1 pr-2 font-mono break-all">{d.newEmail}</td>
+                          <td className="py-1 text-red-700 break-all">{d.error ?? ''}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </Modal>
     </div>

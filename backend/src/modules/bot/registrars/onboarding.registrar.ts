@@ -207,7 +207,7 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       // (сообщение вынесено в BotMessages для DRY)
 
       const trialDays = await args.getTrialDaysForUser(user.id);
-      const result = await args.usersService.addServerAndTrial(user.id, serverId, trialDays);
+      const result = await args.usersService.addServerAndTrialWithUsername(user.id, serverId, trialDays, ctx.from.username ?? null);
       const updatedUser = result.updated;
       if (!updatedUser) return;
 

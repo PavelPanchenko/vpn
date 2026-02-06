@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import { api } from '../lib/api';
@@ -20,6 +20,7 @@ type CreateSubscriptionForm = {
 
 export function SubscriptionsPage() {
   const qc = useQueryClient();
+  const PAGE_SIZE = 50;
   const [createOpen, setCreateOpen] = useState(false);
   const [userFilter, setUserFilter] = useState<string>('ALL');
   const [activeFilter, setActiveFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
@@ -35,12 +36,24 @@ export function SubscriptionsPage() {
 
   const usersQ = useQuery({
     queryKey: ['users'],
-    queryFn: async () => (await api.get<VpnUser[]>('/users')).data,
+    // Для выпадашки берём расширенный лимит (не для таблицы).
+    queryFn: async () => (await api.get<VpnUser[]>('/users', { params: { limit: 1000, offset: 0 } })).data,
   });
 
-  const subsQ = useQuery({
-    queryKey: ['subscriptions'],
-    queryFn: async () => (await api.get<any[]>('/subscriptions')).data,
+  const subsQ = useInfiniteQuery({
+    queryKey: ['subscriptions', { userFilter, activeFilter }],
+    queryFn: async ({ pageParam }) =>
+      (await api.get<any[]>('/subscriptions', {
+        params: {
+          offset: Number(pageParam ?? 0),
+          limit: PAGE_SIZE,
+          vpnUserId: userFilter !== 'ALL' ? userFilter : undefined,
+          active:
+            activeFilter === 'ACTIVE' ? 'true' : activeFilter === 'INACTIVE' ? 'false' : undefined,
+        },
+      })).data,
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => (lastPage.length >= PAGE_SIZE ? allPages.length * PAGE_SIZE : undefined),
   });
 
   // Для формы создания подписки используем выбранного пользователя
@@ -93,18 +106,9 @@ export function SubscriptionsPage() {
   });
 
   const users = useMemo(() => usersQ.data ?? [], [usersQ.data]);
-  const subs = useMemo(() => subsQ.data ?? [], [subsQ.data]);
+  const subs = useMemo(() => subsQ.data?.pages.flatMap((p) => p) ?? [], [subsQ.data]);
 
-  const filteredSubs = useMemo(
-    () =>
-      subs.filter((s: any) => {
-        if (userFilter !== 'ALL' && s.vpnUserId !== userFilter) return false;
-        if (activeFilter === 'ACTIVE' && !s.active) return false;
-        if (activeFilter === 'INACTIVE' && s.active) return false;
-        return true;
-      }),
-    [subs, userFilter, activeFilter],
-  );
+  const filteredSubs = subs;
 
   function formatPlanVariantsShort(plan: Plan) {
     const vars = (plan as any).variants ?? [];
@@ -269,6 +273,14 @@ export function SubscriptionsPage() {
                 </div>
               }
             />
+
+            {subsQ.hasNextPage ? (
+              <div className="flex justify-center pt-3">
+                <Button variant="secondary" disabled={subsQ.isFetchingNextPage} onClick={() => subsQ.fetchNextPage()}>
+                  {subsQ.isFetchingNextPage ? 'Loading…' : 'Load more'}
+                </Button>
+              </div>
+            ) : null}
           </div>
         )}
       </Card>

@@ -1,9 +1,11 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { AdminAuth } from '../../common/guards/admin-auth.decorator';
 import { IdParamDto } from '../../common/dto/id-param.dto';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { AddServerDto } from './dto/add-server.dto';
+import { MigratePanelEmailsDto } from './dto/migrate-panel-emails.dto';
 import { UsersService } from './users.service';
 
 @Controller('users')
@@ -12,8 +14,14 @@ export class UsersController {
   constructor(private readonly users: UsersService) {}
 
   @Get()
-  list() {
-    return this.users.list();
+  list(@Query() q: PaginationQueryDto & { status?: string; serverId?: string }) {
+    return this.users.list({
+      offset: q.offset,
+      limit: q.limit,
+      q: q.q,
+      status: q.status,
+      serverId: q.serverId,
+    });
   }
 
   @Get(':id')
@@ -54,5 +62,14 @@ export class UsersController {
   @Post(':id/servers/:serverId/activate')
   activateServer(@Param() params: IdParamDto, @Param('serverId') serverId: string) {
     return this.users.activateServer(params.id, serverId);
+  }
+
+  /**
+   * Миграция: переименовать panelEmail клиентов в панели на более читаемый формат.
+   * Безопасно: обновляем БД только после успешного updateClient/addClient на панели.
+   */
+  @Post('migrate-panel-emails')
+  migratePanelEmails(@Body() dto: MigratePanelEmailsDto) {
+    return this.users.migratePanelEmails(dto);
   }
 }
