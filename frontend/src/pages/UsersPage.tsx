@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import { api } from '../lib/api';
 import { getApiErrorMessage } from '../lib/apiError';
-import { type VpnServer, type VpnUser, type VpnUserStatus } from '../lib/types';
+import { type Subscription, type VpnServer, type VpnUser, type VpnUserStatus } from '../lib/types';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -27,6 +27,10 @@ type CreateUserForm = {
   name: string;
   telegramId?: string;
   trialDays: number;
+};
+
+type UserDetails = VpnUser & {
+  subscriptions: Subscription[];
 };
 
 export function UsersPage() {
@@ -125,6 +129,35 @@ export function UsersPage() {
   const editForm = useForm<EditUserForm>({
     defaultValues: { serverId: '', name: '', telegramId: '', trialDays: undefined },
   });
+
+  const editDetailsQ = useQuery({
+    queryKey: ['user', editTarget?.id],
+    queryFn: async () => (await api.get<UserDetails>(`/users/${editTarget?.id}`)).data,
+    enabled: Boolean(editTarget?.id),
+  });
+
+  const activeSub = useMemo(() => {
+    const subs = editDetailsQ.data?.subscriptions ?? [];
+    const active = subs.filter((s) => s.active);
+    if (active.length === 0) return null;
+    return active
+      .slice()
+      .sort((a, b) => new Date(b.endsAt).getTime() - new Date(a.endsAt).getTime())[0];
+  }, [editDetailsQ.data?.subscriptions]);
+
+  function fmtDate(v?: string | null) {
+    if (!v) return '—';
+    const d = new Date(v);
+    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString();
+  }
+
+  function calcDaysLeft(endsAt?: string | null) {
+    if (!endsAt) return null;
+    const end = new Date(endsAt).getTime();
+    if (Number.isNaN(end)) return null;
+    const diffMs = end - Date.now();
+    return Math.ceil(diffMs / (24 * 60 * 60 * 1000));
+  }
 
   return (
     <div className="grid gap-6">
@@ -447,6 +480,47 @@ export function UsersPage() {
         }
       >
         <form className="grid gap-3" onSubmit={(e) => e.preventDefault()}>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">
+            <div className="mb-2 font-medium text-slate-900">Подписка</div>
+            {editDetailsQ.isLoading ? (
+              <div className="text-slate-500">Загрузка…</div>
+            ) : (
+              <div className="grid gap-1">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-500">Статус</span>
+                  <span className="font-medium">{editTarget?.status ?? '—'}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-500">Expires (user)</span>
+                  <span className="font-mono text-xs">{fmtDate(editTarget?.expiresAt ?? null)}</span>
+                </div>
+                <div className="mt-2 text-xs font-medium text-slate-700">Активная подписка</div>
+                {activeSub ? (
+                  <>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-slate-500">Период</span>
+                      <span>{activeSub.periodDays} дн.</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-slate-500">Начало</span>
+                      <span className="font-mono text-xs">{fmtDate(activeSub.startsAt)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-slate-500">Конец</span>
+                      <span className="font-mono text-xs">{fmtDate(activeSub.endsAt)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-slate-500">Осталось</span>
+                      <span>{calcDaysLeft(activeSub.endsAt) ?? '—'} дн.</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-slate-500">Нет активной подписки</div>
+                )}
+              </div>
+            )}
+          </div>
+
           <label className="block">
             <div className="text-sm font-medium text-slate-700">Server</div>
             <select

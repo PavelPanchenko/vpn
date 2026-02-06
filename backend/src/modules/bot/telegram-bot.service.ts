@@ -392,6 +392,37 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Уведомление клиенту при изменении срока доступа (админка: trialDays / expiresAt).
+   */
+  async sendAccessDaysChangedNotification(telegramId: string | null, expiresAt: Date | null): Promise<void> {
+    if (!telegramId?.trim()) return;
+    if (!this.bot) {
+      this.logger.warn('Cannot send access days changed: bot not initialized');
+      return;
+    }
+    const text = expiresAt
+      ? BotMessages.accessDaysChangedTemplate.replace(
+          '{date}',
+          expiresAt.toLocaleString('ru-RU', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+        )
+      : BotMessages.accessDaysRemovedText;
+    try {
+      await this.bot.telegram.sendMessage(telegramId, text, {
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+      });
+    } catch (error: unknown) {
+      this.logger.error(`Failed to send access days changed to ${telegramId}:`, error);
+    }
+  }
+
+  /**
    * Останавливает бота и опционально отпускает advisory lock.
    * @param releaseLock — при false lock не отпускаем (смена токена в том же инстансе).
    */

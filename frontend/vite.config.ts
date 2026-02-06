@@ -5,7 +5,8 @@ export default defineConfig({
   plugins: [react()],
   server: {
     // ngrok блокируется по Host header — добавляем разрешённый домен
-    allowedHosts: ['a2833362541e.ngrok-free.app'],
+    // Разрешаем любой subdomain ngrok-free.app (удобно для dev, без постоянных правок конфига)
+    allowedHosts: ['.ngrok-free.app'],
   },
 });
 

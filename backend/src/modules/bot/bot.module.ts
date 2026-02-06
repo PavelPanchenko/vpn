@@ -9,9 +9,13 @@ import { PaymentsModule } from '../payments/payments.module';
 import { SupportModule } from '../support/support.module';
 
 @Module({
-  imports: [PrismaModule, UsersModule, PlansModule, forwardRef(() => PaymentsModule), SupportModule],
-  providers: [BotService, TelegramBotService],
+  imports: [PrismaModule, forwardRef(() => UsersModule), PlansModule, forwardRef(() => PaymentsModule), SupportModule],
+  providers: [
+    BotService,
+    TelegramBotService,
+    { provide: 'TELEGRAM_NOTIFIER', useExisting: TelegramBotService },
+  ],
   controllers: [BotController],
-  exports: [BotService, TelegramBotService],
+  exports: [BotService, TelegramBotService, 'TELEGRAM_NOTIFIER'],
 })
 export class BotModule {}

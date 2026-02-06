@@ -26,9 +26,9 @@ type DashboardStats = {
     month: number;
   };
   revenue: {
-    total: number;
-    today: number;
-    month: number;
+    total: Record<string, number>;
+    today: Record<string, number>;
+    month: Record<string, number>;
   };
   recent: {
     payments: Array<{
@@ -49,13 +49,61 @@ type DashboardStats = {
   };
 };
 
-function formatCurrency(amount: number, currency: string = 'RUB'): string {
-  return new Intl.NumberFormat('ru-RU', {
-    style: 'currency',
-    currency: currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
+function formatMoney(amount: number, currency: string): string {
+  const c = String(currency || '').toUpperCase();
+  if (c === 'XTR') return `${amount} ⭐`;
+  try {
+    return new Intl.NumberFormat('ru-RU', {
+      style: 'currency',
+      currency: c || 'RUB',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  } catch {
+    return `${amount} ${c || 'RUB'}`;
+  }
+}
+
+function revenueEntries(byCurrency: Record<string, number> | null | undefined) {
+  const entries = Object.entries(byCurrency ?? {}).filter(([, v]) => typeof v === 'number' && v !== 0);
+  // Сначала RUB, потом XTR, потом остальные
+  const weight = (c: string) => (c.toUpperCase() === 'RUB' ? 0 : c.toUpperCase() === 'XTR' ? 1 : 2);
+  return entries.sort(([a], [b]) => weight(a) - weight(b) || a.localeCompare(b));
+}
+
+function currencyChipClass(currency: string) {
+  const c = String(currency || '').toUpperCase();
+  if (c === 'RUB')
+    return 'border-emerald-200 bg-emerald-50 text-emerald-900';
+  if (c === 'XTR')
+    return 'border-amber-200 bg-amber-50 text-amber-900';
+  return 'border-slate-200 bg-slate-50 text-slate-900';
+}
+
+function RevenueChips({ byCurrency }: { byCurrency: Record<string, number> | null | undefined }) {
+  const entries = revenueEntries(byCurrency);
+  if (entries.length === 0) return <span className="text-slate-400">—</span>;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {entries.map(([currency, amount]) => {
+        const c = String(currency || '').toUpperCase();
+        const label = c === 'XTR' ? 'STARS' : c;
+        return (
+          <span
+            key={currency}
+            className={[
+              'inline-flex items-center gap-2 rounded-full border px-3 py-1',
+              'text-sm leading-none',
+              currencyChipClass(c),
+            ].join(' ')}
+          >
+            <span className="font-semibold">{formatMoney(amount, c)}</span>
+            <span className="text-[11px] opacity-70">{label}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
 }
 
 export function DashboardPage() {
@@ -66,6 +114,7 @@ export function DashboardPage() {
   });
 
   const stats = statsQ.data;
+  const revenue = stats?.revenue ?? null;
 
   return (
     <div className="grid gap-6">
@@ -125,18 +174,18 @@ export function DashboardPage() {
           {/* Доходы */}
           <div className="grid gap-4 md:grid-cols-3">
             <Card title="Доход (всего)">
-              <div className="text-xl font-bold text-green-600 sm:text-2xl">
-                {formatCurrency(stats.revenue.total)}
+              <div className="text-xl font-bold sm:text-2xl">
+                <RevenueChips byCurrency={revenue?.total} />
               </div>
             </Card>
             <Card title="Доход (сегодня)">
-              <div className="text-xl font-bold text-slate-900 sm:text-2xl">
-                {formatCurrency(stats.revenue.today)}
+              <div className="text-xl font-bold sm:text-2xl">
+                <RevenueChips byCurrency={revenue?.today} />
               </div>
             </Card>
             <Card title="Доход (месяц)">
-              <div className="text-xl font-bold text-slate-900 sm:text-2xl">
-                {formatCurrency(stats.revenue.month)}
+              <div className="text-xl font-bold sm:text-2xl">
+                <RevenueChips byCurrency={revenue?.month} />
               </div>
             </Card>
           </div>
@@ -159,7 +208,7 @@ export function DashboardPage() {
                         </div>
                       </div>
                       <div className="text-sm font-semibold text-green-600">
-                        {formatCurrency(p.amount, p.currency)}
+                        {formatMoney(p.amount, p.currency)}
                       </div>
                     </div>
                   ))}

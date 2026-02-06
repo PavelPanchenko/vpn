@@ -179,7 +179,7 @@ export class XuiService {
     baseUrl: string,
     auth: PanelAuth,
     inboundId: number,
-    client: { id: string; email: string; flow?: string; expiryTime?: number; enable?: boolean },
+    client: { id: string; email: string; flow?: string; expiryTime?: number; enable?: boolean; limitIp?: number },
   ): Promise<any> {
     const inbound = await this.getInbound(baseUrl, inboundId, auth);
     const settings = typeof inbound.settings === 'string' ? JSON.parse(inbound.settings) : inbound.settings;
@@ -197,6 +197,7 @@ export class XuiService {
       obj.expire = Math.floor(client.expiryTime / 1000);
     }
     if (client.enable !== undefined) obj.enable = client.enable;
+    if (client.limitIp !== undefined && client.limitIp > 0) obj.limitIp = client.limitIp;
     clients.push(obj);
 
     const url = `${this.normalizeBaseUrl(baseUrl)}/panel/api/inbounds/update/${inboundId}`;
@@ -217,7 +218,7 @@ export class XuiService {
     auth: PanelAuth,
     inboundId: number,
     email: string,
-    patch: { email?: string; flow?: string; expiryTime?: number; enable?: boolean },
+    patch: { email?: string; flow?: string; expiryTime?: number; enable?: boolean; limitIp?: number },
   ): Promise<any> {
     const inbound = await this.getInbound(baseUrl, inboundId, auth);
     const settings = typeof inbound.settings === 'string' ? JSON.parse(inbound.settings) : inbound.settings;
@@ -231,6 +232,7 @@ export class XuiService {
       clients[idx].expire = patch.expiryTime > 0 ? Math.floor(patch.expiryTime / 1000) : 0;
     }
     if (patch.enable !== undefined) clients[idx].enable = patch.enable;
+    if (patch.limitIp !== undefined) clients[idx].limitIp = patch.limitIp > 0 ? patch.limitIp : 0;
 
     const url = `${this.normalizeBaseUrl(baseUrl)}/panel/api/inbounds/update/${inboundId}`;
     const body = { ...inbound, settings: JSON.stringify({ ...settings, clients }) };

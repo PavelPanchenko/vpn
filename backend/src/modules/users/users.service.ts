@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, type VpnUser } from '@prisma/client';
 import { randomUUID } from 'crypto';
@@ -15,7 +15,19 @@ function buildPanelEmail(uuid: string, serverId: string): string {
   return `${uuid}@vpn-${prefix}`;
 }
 
-type EnsurePanelClientOptions = { expiryTime?: number; enable?: boolean };
+/** Лимит одновременных подключений (устройств) в панели. Берётся из PANEL_CLIENT_LIMIT_IP (по умолчанию 2). */
+function getPanelClientLimitIp(config: ConfigService): number {
+  const v = config.get<string>('PANEL_CLIENT_LIMIT_IP');
+  if (v == null || v === '') return 2;
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n >= 0 ? n : 2;
+}
+
+type EnsurePanelClientOptions = { expiryTime?: number; enable?: boolean; limitIp?: number };
+
+type TelegramNotifier = {
+  sendAccessDaysChangedNotification: (telegramId: string | null, expiresAt: Date | null) => Promise<void>;
+};
 
 @Injectable()
 export class UsersService {
@@ -25,6 +37,7 @@ export class UsersService {
     private readonly prisma: PrismaService,
     private readonly xui: XuiService,
     private readonly config: ConfigService,
+    @Inject('TELEGRAM_NOTIFIER') private readonly telegramBot: TelegramNotifier,
   ) {}
 
   /**
@@ -87,6 +100,7 @@ export class UsersService {
     }
 
     const expiryTime = options?.expiryTime ?? 0;
+    const limitIp = options?.limitIp ?? getPanelClientLimitIp(this.config);
 
     try {
       await this.xui.addClient(server.panelBaseUrl, auth, server.panelInboundId, {
@@ -95,14 +109,16 @@ export class UsersService {
         flow: server.security === 'REALITY' ? 'xtls-rprx-vision' : '',
         expiryTime: expiryTime > 0 ? expiryTime : undefined,
         enable: options?.enable,
+        limitIp: limitIp > 0 ? limitIp : undefined,
       });
     } catch (addErr: any) {
-      // idempotency: если клиент уже есть — обновим expiry/enable (в т.ч. если email совпал)
+      // idempotency: если клиент уже есть — обновим expiry/enable/limitIp (в т.ч. если email совпал)
       const msg = String(addErr?.message ?? addErr);
       if (addErr instanceof BadRequestException && msg.includes('already exists')) {
         await this.xui.updateClient(server.panelBaseUrl, auth, server.panelInboundId, panelEmail, {
           ...(options?.enable !== undefined && { enable: options.enable }),
           ...(options?.expiryTime !== undefined && { expiryTime: options.expiryTime }),
+          ...(limitIp > 0 && { limitIp }),
         });
       } else {
         this.logger.error(`ensurePanelClient failed for ${panelEmail}: ${msg}`);
@@ -267,7 +283,7 @@ export class UsersService {
   async update(id: string, dto: UpdateUserDto) {
     const user = await this.prisma.vpnUser.findUnique({
       where: { id },
-      include: { server: true, userServers: { where: { isActive: true }, include: { server: true } } },
+      include: { server: true, userServers: { include: { server: true } } },
     });
     if (!user) throw new NotFoundException('User not found');
 
@@ -340,50 +356,62 @@ export class UsersService {
       await this.prisma.vpnUser.update({ where: { id }, data: updates });
     }
 
-    const activeUserServer = user.userServers.find((us) => us.isActive);
-    const server = activeUserServer?.server ?? user.server;
-    if (server?.panelBaseUrl && server.panelUsername && server.panelPasswordEnc && server.panelInboundId != null) {
-      const email = activeUserServer?.panelEmail ?? user.panelEmail;
-      if (email) {
+    const expiryTime =
+      effectiveExpiresAt === undefined
+        ? undefined
+        : effectiveExpiresAt
+          ? effectiveExpiresAt.getTime()
+          : 0;
+    const statusForPanel =
+      dto.status ??
+      (effectiveExpiresAt !== undefined
+        ? (user.status === 'BLOCKED'
+            ? 'BLOCKED'
+            : effectiveExpiresAt === null
+              ? 'ACTIVE'
+              : effectiveExpiresAt.getTime() < now.getTime()
+                ? 'EXPIRED'
+                : 'ACTIVE')
+        : user.status);
+    const enable =
+      dto.status !== undefined || effectiveExpiresAt !== undefined
+        ? statusForPanel === 'ACTIVE'
+        : undefined;
+    const shouldSyncPanel = expiryTime !== undefined || enable !== undefined;
+
+    const panelTargets: Array<{ server: any; email: string }> = [];
+    if (user.userServers?.length) {
+      for (const us of user.userServers) {
+        if (us.panelEmail && us.server) panelTargets.push({ server: us.server, email: us.panelEmail });
+      }
+    }
+    if (panelTargets.length === 0 && user.server && user.panelEmail) {
+      panelTargets.push({ server: user.server, email: user.panelEmail });
+    }
+    if (shouldSyncPanel && panelTargets.length > 0) {
+      const secret = this.config.getOrThrow<string>('PANEL_CRED_SECRET');
+      for (const { server, email } of panelTargets) {
+        if (!server?.panelBaseUrl || !server?.panelUsername || !server?.panelPasswordEnc || server?.panelInboundId == null) continue;
         try {
-          const secret = this.config.getOrThrow<string>('PANEL_CRED_SECRET');
           const panelPassword = SecretBox.decrypt(server.panelPasswordEnc, secret);
           const auth = await this.xui.login(server.panelBaseUrl, server.panelUsername, panelPassword);
           if (auth.cookie || auth.token) {
-            const expiryTime =
-              effectiveExpiresAt === undefined
-                ? undefined
-                : effectiveExpiresAt
-                  ? effectiveExpiresAt.getTime()
-                  : 0;
-            const statusForPanel =
-              dto.status ??
-              (effectiveExpiresAt !== undefined
-                ? (user.status === 'BLOCKED'
-                    ? 'BLOCKED'
-                    : effectiveExpiresAt === null
-                      ? 'ACTIVE'
-                      : effectiveExpiresAt.getTime() < now.getTime()
-                        ? 'EXPIRED'
-                        : 'ACTIVE')
-                : user.status);
-
-            const enable =
-              dto.status !== undefined || effectiveExpiresAt !== undefined
-                ? statusForPanel === 'ACTIVE'
-                : undefined;
-
-            if (expiryTime !== undefined || enable !== undefined) {
-              await this.xui.updateClient(server.panelBaseUrl, auth, server.panelInboundId, email, {
-                ...(expiryTime !== undefined && { expiryTime }),
-                ...(enable !== undefined && { enable }),
-              });
-            }
+            const limitIp = getPanelClientLimitIp(this.config);
+            await this.xui.updateClient(server.panelBaseUrl, auth, server.panelInboundId, email, {
+              ...(expiryTime !== undefined && { expiryTime }),
+              ...(enable !== undefined && { enable }),
+              ...(limitIp > 0 && { limitIp }),
+            });
           }
         } catch (e: any) {
-          this.logger.warn(`update: panel sync failed — ${e?.message ?? e}`);
+          this.logger.warn(`update: panel sync failed for ${email} — ${e?.message ?? e}`);
         }
       }
+    }
+    if (effectiveExpiresAt !== undefined && user.telegramId) {
+      this.telegramBot
+        .sendAccessDaysChangedNotification(user.telegramId, effectiveExpiresAt ?? null)
+        .catch(() => {});
     }
     return this.get(id);
   }
@@ -682,30 +710,35 @@ export class UsersService {
     });
     const users = await this.prisma.vpnUser.findMany({
       where: { status: 'ACTIVE', expiresAt: { not: null, lt: now } },
-      include: { userServers: { where: { isActive: true }, include: { server: true } }, server: true },
+      include: { userServers: { include: { server: true } }, server: true },
     });
     for (const user of users) {
       await this.prisma.vpnUser.update({ where: { id: user.id }, data: { status: 'EXPIRED' } });
-      const activeUs = user.userServers.find((us) => us.isActive);
-      const server = activeUs?.server ?? user.server;
-      if (server?.panelBaseUrl && server.panelUsername && server.panelPasswordEnc && server.panelInboundId != null) {
-        const email = activeUs?.panelEmail ?? user.panelEmail;
-        if (email) {
-          try {
-            const secret = this.config.getOrThrow<string>('PANEL_CRED_SECRET');
-            const panelPassword = SecretBox.decrypt(server.panelPasswordEnc, secret);
-            const auth = await this.xui.login(server.panelBaseUrl, server.panelUsername, panelPassword);
-            if (auth.cookie || auth.token) {
-              try {
-                await this.xui.updateClient(server.panelBaseUrl, auth, server.panelInboundId, email, { enable: false });
-              } catch (_) {
-                // best-effort: отключаем клиента; если не найден — удаление ниже может сработать
-              }
-              await this.xui.deleteClient(server.panelBaseUrl, auth, server.panelInboundId, email);
+      const panelTargets: Array<{ server: any; email: string }> = [];
+      if (user.userServers?.length) {
+        for (const us of user.userServers) {
+          if (us.panelEmail && us.server) panelTargets.push({ server: us.server, email: us.panelEmail });
+        }
+      }
+      if (panelTargets.length === 0 && user.server && user.panelEmail) {
+        panelTargets.push({ server: user.server, email: user.panelEmail });
+      }
+      const secret = this.config.getOrThrow<string>('PANEL_CRED_SECRET');
+      for (const { server, email } of panelTargets) {
+        if (!server?.panelBaseUrl || !server?.panelUsername || !server?.panelPasswordEnc || server?.panelInboundId == null) continue;
+        try {
+          const panelPassword = SecretBox.decrypt(server.panelPasswordEnc, secret);
+          const auth = await this.xui.login(server.panelBaseUrl, server.panelUsername, panelPassword);
+          if (auth.cookie || auth.token) {
+            try {
+              await this.xui.updateClient(server.panelBaseUrl, auth, server.panelInboundId, email, { enable: false });
+            } catch (_) {
+              // best-effort
             }
-          } catch (e: any) {
-            this.logger.warn(`expireUsersByCron: panel sync failed for user ${user.id} — ${e?.message ?? e}`);
+            await this.xui.deleteClient(server.panelBaseUrl, auth, server.panelInboundId, email);
           }
+        } catch (e: any) {
+          this.logger.warn(`expireUsersByCron: panel sync failed for user ${user.id} (${email}) — ${e?.message ?? e}`);
         }
       }
     }

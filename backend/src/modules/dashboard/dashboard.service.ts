@@ -6,6 +6,12 @@ export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getStats() {
+    const toCurrencySums = (rows: Array<{ currency: string; _sum: { amount: number | null } }>) => {
+      const out: Record<string, number> = {};
+      for (const r of rows) out[String(r.currency)] = Number(r._sum?.amount ?? 0);
+      return out;
+    };
+
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -30,7 +36,14 @@ export class DashboardService {
     });
 
     // Статистика платежей
-    const [totalPayments, todayPayments, monthPayments, totalRevenue, todayRevenue, monthRevenue] = await Promise.all([
+    const [
+      totalPayments,
+      todayPayments,
+      monthPayments,
+      totalRevenueByCurrency,
+      todayRevenueByCurrency,
+      monthRevenueByCurrency,
+    ] = await Promise.all([
       this.prisma.payment.count({ where: { status: 'PAID' } }),
       this.prisma.payment.count({
         where: { status: 'PAID', createdAt: { gte: todayStart } },
@@ -38,15 +51,18 @@ export class DashboardService {
       this.prisma.payment.count({
         where: { status: 'PAID', createdAt: { gte: monthStart } },
       }),
-      this.prisma.payment.aggregate({
+      this.prisma.payment.groupBy({
+        by: ['currency'],
         where: { status: 'PAID' },
         _sum: { amount: true },
       }),
-      this.prisma.payment.aggregate({
+      this.prisma.payment.groupBy({
+        by: ['currency'],
         where: { status: 'PAID', createdAt: { gte: todayStart } },
         _sum: { amount: true },
       }),
-      this.prisma.payment.aggregate({
+      this.prisma.payment.groupBy({
+        by: ['currency'],
         where: { status: 'PAID', createdAt: { gte: monthStart } },
         _sum: { amount: true },
       }),
@@ -96,9 +112,9 @@ export class DashboardService {
         month: monthPayments,
       },
       revenue: {
-        total: totalRevenue._sum.amount ?? 0,
-        today: todayRevenue._sum.amount ?? 0,
-        month: monthRevenue._sum.amount ?? 0,
+        total: toCurrencySums(totalRevenueByCurrency),
+        today: toCurrencySums(todayRevenueByCurrency),
+        month: toCurrencySums(monthRevenueByCurrency),
       },
       recent: {
         payments: recentPayments,

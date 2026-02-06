@@ -10,7 +10,7 @@ import { AccessRevokerService } from './access/access-revoker.service';
 import { BotModule } from '../bot/bot.module';
 
 @Module({
-  imports: [SubscriptionsModule, UsersModule, forwardRef(() => BotModule)],
+  imports: [forwardRef(() => SubscriptionsModule), forwardRef(() => UsersModule), forwardRef(() => BotModule)],
   controllers: [PaymentsController, PaymentIntentsController, PlategaController, PlategaCallbackController],
   providers: [PaymentsService, PaymentIntentsService, AccessRevokerService],
   exports: [PaymentsService, PaymentIntentsService],
