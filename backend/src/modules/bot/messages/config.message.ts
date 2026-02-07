@@ -4,6 +4,14 @@ import type { TelegramMessageCtx, TelegramReplyOptions } from '../telegram-runti
 import type { UserForConfigMessage } from '../bot-user.types';
 import type { BotLang } from '../i18n/bot-lang';
 
+const V2RAYTUN_URL = 'https://v2raytun.com';
+
+function v2rayTunHintHtml(lang: BotLang): string {
+  if (lang === 'en') return `📱 <b>Recommended app:</b> V2RayTun\n${V2RAYTUN_URL}`;
+  if (lang === 'uk') return `📱 <b>Рекомендований застосунок:</b> V2RayTun\n${V2RAYTUN_URL}`;
+  return `📱 <b>Рекомендуемое приложение:</b> V2RayTun\n${V2RAYTUN_URL}`;
+}
+
 export function configChoiceHtml(lang: BotLang): string {
   if (lang === 'en') return `📥 <b>How to show the config?</b>`;
   if (lang === 'uk') return `📥 <b>Як показати конфіг?</b>`;
@@ -130,10 +138,10 @@ export async function sendConfigMessage(args: {
       {
         caption:
           lang === 'en'
-            ? `📱 <b>QR to connect</b>\n` + `<i>${esc(serverName)}</i>\n\n` + `Scan the QR in your VPN client.`
+            ? `📱 <b>QR to connect</b>\n` + `<i>${esc(serverName)}</i>\n\n` + `Scan the QR in your VPN client.\n\n` + v2rayTunHintHtml(lang)
             : lang === 'uk'
-              ? `📱 <b>QR для підключення</b>\n` + `<i>${esc(serverName)}</i>\n\n` + `Відскануйте QR у вашому VPN‑клієнті.`
-            : `📱 <b>QR для подключения</b>\n` + `<i>${esc(serverName)}</i>\n\n` + `Отсканируйте QR в вашем VPN‑клиенте.`,
+              ? `📱 <b>QR для підключення</b>\n` + `<i>${esc(serverName)}</i>\n\n` + `Відскануйте QR у вашому VPN‑клієнті.\n\n` + v2rayTunHintHtml(lang)
+              : `📱 <b>QR для подключения</b>\n` + `<i>${esc(serverName)}</i>\n\n` + `Отсканируйте QR в вашем VPN‑клиенте.\n\n` + v2rayTunHintHtml(lang),
         parse_mode: 'HTML',
       },
     );
@@ -155,14 +163,17 @@ export async function sendConfigMessage(args: {
     lang === 'en'
       ? `📥 <b>Configuration</b> <i>(${esc(serverName)})</i>\n\n` +
           `<pre>${esc(configUrl)}</pre>\n` +
-          `Copy the link and import it into the app.`
+          `Copy the link and import it into the app.\n\n` +
+          v2rayTunHintHtml(lang)
       : lang === 'uk'
         ? `📥 <b>Конфігурація</b> <i>(${esc(serverName)})</i>\n\n` +
             `<pre>${esc(configUrl)}</pre>\n` +
-            `Скопіюйте посилання та імпортуйте в застосунок.`
+            `Скопіюйте посилання та імпортуйте в застосунок.\n\n` +
+            v2rayTunHintHtml(lang)
       : `📥 <b>Конфигурация</b> <i>(${esc(serverName)})</i>\n\n` +
           `<pre>${esc(configUrl)}</pre>\n` +
-          `Скопируйте ссылку и импортируйте в приложение.`,
+          `Скопируйте ссылку и импортируйте в приложение.\n\n` +
+          v2rayTunHintHtml(lang),
     configMessageExtra,
   );
 }
@@ -174,14 +185,17 @@ export function configLinkHtml(args: { lang: BotLang; url: string; serverName: s
     (lang === 'en'
       ? `📥 <b>Configuration</b> <i>(${esc(serverName)})</i>\n\n` +
         `<pre>${esc(url)}</pre>\n` +
-        `Copy the link and import it into the app.`
+        `Copy the link and import it into the app.\n\n` +
+        v2rayTunHintHtml(lang)
       : lang === 'uk'
         ? `📥 <b>Конфігурація</b> <i>(${esc(serverName)})</i>\n\n` +
           `<pre>${esc(url)}</pre>\n` +
-          `Скопіюйте посилання та імпортуйте в застосунок.`
+          `Скопіюйте посилання та імпортуйте в застосунок.\n\n` +
+          v2rayTunHintHtml(lang)
       : `📥 <b>Конфигурация</b> <i>(${esc(serverName)})</i>\n\n` +
         `<pre>${esc(url)}</pre>\n` +
-        `Скопируйте ссылку и импортируйте в приложение.`)
+        `Скопируйте ссылку и импортируйте в приложение.\n\n` +
+        v2rayTunHintHtml(lang))
   );
 }
 
@@ -216,10 +230,10 @@ export async function sendConfigQrPhoto(args: {
       {
         caption:
           lang === 'en'
-            ? `📱 <b>QR to connect</b>\n` + `<i>${esc(serverName)}</i>\n\n` + `Scan the QR in your VPN client.`
+            ? `📱 <b>QR to connect</b>\n` + `<i>${esc(serverName)}</i>\n\n` + `Scan the QR in your VPN client.\n\n` + v2rayTunHintHtml(lang)
             : lang === 'uk'
-              ? `📱 <b>QR для підключення</b>\n` + `<i>${esc(serverName)}</i>\n\n` + `Відскануйте QR у вашому VPN‑клієнті.`
-            : `📱 <b>QR для подключения</b>\n` + `<i>${esc(serverName)}</i>\n\n` + `Отсканируйте QR в вашем VPN‑клиенте.`,
+              ? `📱 <b>QR для підключення</b>\n` + `<i>${esc(serverName)}</i>\n\n` + `Відскануйте QR у вашому VPN‑клієнті.\n\n` + v2rayTunHintHtml(lang)
+              : `📱 <b>QR для подключения</b>\n` + `<i>${esc(serverName)}</i>\n\n` + `Отсканируйте QR в вашем VPN‑клиенте.\n\n` + v2rayTunHintHtml(lang),
         parse_mode: 'HTML',
       },
     )) as { chat?: { id: string | number }; message_id?: number } | undefined;
