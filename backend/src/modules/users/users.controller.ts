@@ -23,6 +23,21 @@ export class UsersController {
     });
   }
 
+  @Get('online')
+  getOnlineUserIds() {
+    return this.users.getOnlineUserIds();
+  }
+
+  @Get(':id/config')
+  getConfig(@Param() params: IdParamDto) {
+    return this.users.getConfig(params.id);
+  }
+
+  @Get(':id/traffic')
+  getTraffic(@Param() params: IdParamDto) {
+    return this.users.getTraffic(params.id);
+  }
+
   @Get(':id')
   get(@Param() params: IdParamDto) {
     return this.users.get(params.id);
@@ -41,11 +56,6 @@ export class UsersController {
   @Delete(':id')
   remove(@Param() params: IdParamDto) {
     return this.users.remove(params.id);
-  }
-
-  @Get(':id/config')
-  getConfig(@Param() params: IdParamDto) {
-    return this.users.getConfig(params.id);
   }
 
   @Post(':id/servers')

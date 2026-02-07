@@ -370,7 +370,7 @@ export function PaymentsPage() {
             }
             desktop={
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm table-fixed">
                   <thead className="text-left text-slate-500">
                     <tr>
                       <th className="py-2">User</th>
@@ -380,7 +380,7 @@ export function PaymentsPage() {
                       <th className="py-2">Currency</th>
                       <th className="py-2">Provider</th>
                       <th className="py-2">Status</th>
-                      <th className="py-2">External ID</th>
+                      <th className="py-2 w-[180px]">External ID</th>
                       <th className="py-2"></th>
                     </tr>
                   </thead>
@@ -397,7 +397,9 @@ export function PaymentsPage() {
                         <td className="py-2">{it.currency}</td>
                         <td className="py-2">{it.provider}</td>
                         <td className="py-2">{it.status}</td>
-                        <td className="py-2 font-mono text-xs">{it.externalId ?? ''}</td>
+                        <td className="py-2 font-mono text-xs max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" title={it.externalId ?? undefined}>
+                          {it.externalId ?? ''}
+                        </td>
                         <td className="py-2 text-right">
                           {it.checkoutUrl ? (
                             <Button variant="secondary" onClick={() => window.open(it.checkoutUrl!, '_blank', 'noopener,noreferrer')}>

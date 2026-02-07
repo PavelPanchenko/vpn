@@ -75,15 +75,14 @@ export function UserDetailsPage() {
     onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to activate server')),
   });
 
-  // Traffic отключён
-
-  function formatBytes(bytes: number): string {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
-  }
+  const trafficQ = useQuery({
+    queryKey: ['user-traffic', id],
+    queryFn: async () =>
+      (await api.get<{ traffic: { up: number; down: number; total: number; reset: number; lastOnline: number; online?: boolean; serverId?: string; serverName?: string } | null; error?: string }>(`/users/${id}/traffic`)).data,
+    enabled: Boolean(id),
+    staleTime: 0,
+    refetchOnMount: 'always',
+  });
 
   const activeServers = useMemo(() => {
     if (!u?.userServers) return [];
@@ -134,7 +133,40 @@ export function UserDetailsPage() {
         )}
       </Card>
 
-      {/* Traffic statistics отключены */}
+      <Card
+        title="Онлайн"
+        right={
+          <Button variant="secondary" size="sm" onClick={() => qc.invalidateQueries({ queryKey: ['user-traffic', id] })} disabled={trafficQ.isFetching}>
+            {trafficQ.isFetching ? '…' : 'Refresh'}
+          </Button>
+        }
+      >
+        {trafficQ.isLoading ? (
+          <div className="text-sm text-slate-600">Загрузка…</div>
+        ) : trafficQ.error ? (
+          <div className="text-sm text-red-600">{getApiErrorMessage(trafficQ.error, 'Не удалось загрузить статус')}</div>
+        ) : trafficQ.data?.traffic != null ? (
+          <div className="grid gap-1 text-sm text-slate-800">
+            <div className="flex items-center gap-2">
+              <span
+                className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${trafficQ.data.traffic.online ? 'bg-green-500' : 'bg-red-400'}`}
+                title={trafficQ.data.traffic.online ? 'онлайн' : 'офлайн'}
+                aria-hidden
+              />
+              <span>{trafficQ.data.traffic.online ? 'Онлайн' : 'Офлайн'}</span>
+            </div>
+            {(trafficQ.data.traffic.serverName || trafficQ.data.traffic.serverId) && (
+              <div className="text-xs text-slate-500">
+                Сервер: {trafficQ.data.traffic.serverName ?? trafficQ.data.traffic.serverId}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="text-sm text-slate-600">
+            {trafficQ.data?.error ?? 'Укажи Xray Stats host и port в настройках сервера.'}
+          </div>
+        )}
+      </Card>
 
       <Card
         title="VPN configs"

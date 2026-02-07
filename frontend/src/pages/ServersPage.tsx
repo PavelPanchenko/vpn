@@ -38,6 +38,8 @@ const empty: ServerForm = {
   panelBaseUrl: null,
   panelUsername: null,
   panelInboundId: null,
+  xrayStatsHost: null,
+  xrayStatsPort: null,
   maxUsers: 0,
   isRecommended: false,
   active: true,
@@ -178,6 +180,8 @@ export function ServersPage() {
       panelBaseUrl: s.panelBaseUrl ?? null,
       panelUsername: s.panelUsername ?? null,
       panelInboundId: s.panelInboundId ?? null,
+      xrayStatsHost: s.xrayStatsHost ?? null,
+      xrayStatsPort: s.xrayStatsPort ?? null,
       maxUsers: s.maxUsers,
       isRecommended: s.isRecommended ?? false,
       active: s.active,
@@ -506,6 +510,8 @@ export function ServersPage() {
                       maxUsers: Number(v.maxUsers ?? 0),
                       isRecommended: Boolean(v.isRecommended),
                       active: Boolean(v.active),
+                      xrayStatsHost: v.xrayStatsHost ?? undefined,
+                      xrayStatsPort: v.xrayStatsPort != null && !Number.isNaN(Number(v.xrayStatsPort)) ? Number(v.xrayStatsPort) : undefined,
                     },
                   });
                 })}
@@ -557,6 +563,10 @@ export function ServersPage() {
           <Input label="SNI (optional, для TLS/REALITY)" {...editForm.register('sni')} placeholder="sub.example.com" />
           <Input label="Public key" {...editForm.register('publicKey', { required: 'Required' })} error={editForm.formState.errors.publicKey?.message} />
           <Input label="Short ID" {...editForm.register('shortId', { required: 'Required' })} error={editForm.formState.errors.shortId?.message} />
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Xray Stats host (gRPC)" {...editForm.register('xrayStatsHost')} placeholder="127.0.0.1 или IP сервера" />
+            <Input label="Xray Stats port" type="number" {...editForm.register('xrayStatsPort', { valueAsNumber: true })} placeholder="8080" />
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <Input label="Max users (0 = unlimited)" type="number" {...editForm.register('maxUsers', { valueAsNumber: true })} />

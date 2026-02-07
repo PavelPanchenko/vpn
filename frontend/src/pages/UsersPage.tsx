@@ -48,6 +48,16 @@ export function UsersPage() {
     queryFn: async () => (await api.get<VpnServer[]>('/servers')).data,
   });
 
+  const onlineIdsQ = useQuery({
+    queryKey: ['users-online'],
+    queryFn: async () => (await api.get<string[]>('/users/online')).data,
+    refetchInterval: 30_000,
+  });
+  const onlineSet = useMemo(
+    () => new Set(Array.isArray(onlineIdsQ.data) ? onlineIdsQ.data : []),
+    [onlineIdsQ.data],
+  );
+
   const qStr = useMemo(() => search.trim(), [search]);
   const usersQ = useInfiniteQuery({
     queryKey: ['users', { statusFilter, serverFilter, q: qStr }],
@@ -250,6 +260,14 @@ export function UsersPage() {
                       <span className="text-right">{pickActiveServer(u).name ?? pickActiveServer(u).id ?? '—'}</span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
+                      <span className="text-slate-500">Онлайн</span>
+                      <span
+                        className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${onlineSet.has(u.id) ? 'bg-green-500' : 'bg-red-400'}`}
+                        title={onlineSet.has(u.id) ? 'онлайн' : 'офлайн'}
+                        aria-hidden
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
                       <span className="text-slate-500">Expires</span>
                       <span className="text-right">{u.expiresAt ? new Date(u.expiresAt).toLocaleString() : '—'}</span>
                     </div>
@@ -326,6 +344,7 @@ export function UsersPage() {
                     <Th>UUID</Th>
                     <Th>TG ID</Th>
                     <Th>Server</Th>
+                    <Th>Онлайн</Th>
                     <Th>Status</Th>
                     <Th>Expires</Th>
                     <Th className="text-right">Actions</Th>
@@ -342,6 +361,13 @@ export function UsersPage() {
                     </Td>
                     <Td className="font-mono text-xs">{u.telegramId ?? '-'}</Td>
                     <Td>{pickActiveServer(u).name ?? pickActiveServer(u).id ?? '—'}</Td>
+                    <Td>
+                      <span
+                        className={`inline-block h-2.5 w-2.5 rounded-full ${onlineSet.has(u.id) ? 'bg-green-500' : 'bg-red-400'}`}
+                        title={onlineSet.has(u.id) ? 'онлайн' : 'офлайн'}
+                        aria-hidden
+                      />
+                    </Td>
                     <Td>
                       <select
                         className="mt-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
@@ -385,7 +411,7 @@ export function UsersPage() {
                 ))}
                 {filteredUsers.length === 0 ? (
                   <tr className="border-t border-slate-100">
-                    <Td className="text-slate-500" colSpan={7}>
+                    <Td className="text-slate-500" colSpan={8}>
                       No users yet
                     </Td>
                   </tr>
@@ -618,6 +644,7 @@ export function UsersPage() {
           сервера (если он уже был создан).
         </div>
       </Modal>
+
     </div>
   );
 }

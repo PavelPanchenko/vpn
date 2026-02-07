@@ -4,6 +4,7 @@ import { Prisma, type VpnUser } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { XuiService } from '../xui/xui.service';
+import { XrayStatsService } from '../xui/xray-stats.service';
 import { SecretBox } from '../../common/crypto/secret-box';
 import { addDaysUtc } from '../../common/utils/date.utils';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -23,6 +24,18 @@ function sanitizeTelegramUsername(v: string): string {
     .replace(/[^a-z0-9_]+/g, '_')
     .replace(/^_+|_+$/g, '');
   return s.slice(0, 20);
+}
+
+/** Совпадает ли panelEmail с кем-то из списка онлайн. Xray возвращает "user>>>email>>>online". */
+function isUserOnline(onlineList: string[], panelEmail: string): boolean {
+  if (!Array.isArray(onlineList) || !panelEmail) return false;
+  const email = panelEmail.trim();
+  const expected = `user>>>${email}>>>online`;
+  for (const item of onlineList) {
+    const s = String(item ?? '').trim();
+    if (s === expected || s === email || s === `user>>>${email}` || s.endsWith(`>>>${email}>>>online`) || s.toLowerCase() === expected.toLowerCase()) return true;
+  }
+  return false;
 }
 
 function buildReadablePanelEmail(args: { telegramId: string; telegramUsername?: string | null; uuid: string; serverId: string }): string {
@@ -46,13 +59,17 @@ type TelegramNotifier = {
   sendAccessDaysChangedNotification: (telegramId: string | null, expiresAt: Date | null) => Promise<void>;
 };
 
+const TRAFFIC_CACHE_TTL_MS = 5000;
+
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
+  private readonly trafficCache = new Map<string, { result: Awaited<ReturnType<UsersService['getTraffic']>>; cachedAt: number }>();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly xui: XuiService,
+    private readonly xrayStats: XrayStatsService,
     private readonly config: ConfigService,
     @Inject('TELEGRAM_NOTIFIER') private readonly telegramBot: TelegramNotifier,
   ) {}
@@ -279,6 +296,106 @@ export class UsersService {
     });
     if (!user) throw new NotFoundException('User not found');
     return user;
+  }
+
+  /**
+   * Статус онлайн пользователя по активному серверу (Xray GetAllOnlineUsers). Без статистики трафика.
+   * Ответ кэшируется на 5 с.
+   */
+  async getTraffic(userId: string): Promise<{
+    traffic: { online: boolean; serverId?: string; serverName?: string } | null;
+    error?: string;
+  }> {
+    const cached = this.trafficCache.get(userId);
+    if (cached && Date.now() - cached.cachedAt < TRAFFIC_CACHE_TTL_MS) {
+      return cached.result;
+    }
+    const user = await this.prisma.vpnUser.findUnique({
+      where: { id: userId },
+      include: {
+        userServers: { include: { server: true }, orderBy: [{ isActive: 'desc' }, { createdAt: 'asc' }] },
+      },
+    });
+    if (!user) return { traffic: null, error: 'User not found' };
+    const sorted = [...(user.userServers || [])].sort((a, b) => {
+      if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    });
+    const us = sorted[0] ?? null;
+    if (!us) {
+      return { traffic: null, error: 'No servers linked to user' };
+    }
+    const server = us.server;
+    const panelEmail = us.panelEmail;
+    if (!server.xrayStatsHost) {
+      return {
+        traffic: null,
+        error: 'Set Xray Stats host and port in server settings',
+      };
+    }
+
+    const port = server.xrayStatsPort ?? 8080;
+    const timeoutMs = 10000;
+    try {
+      const onlineUsers = await Promise.race([
+        this.xrayStats.getOnlineUsers(server.xrayStatsHost, port),
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Xray API timeout')), timeoutMs);
+        }),
+      ]);
+      const online = isUserOnline(onlineUsers, panelEmail);
+      const result = {
+        traffic: { online, serverId: server.id, serverName: server.name },
+      };
+      this.trafficCache.set(userId, { result, cachedAt: Date.now() });
+      return result;
+    } catch (e) {
+      const msg = (e as Error).message;
+      this.logger.warn(`getTraffic for user ${userId} server ${server.id}: ${msg}`);
+      return { traffic: null, error: `${server.name}: ${msg}` };
+    }
+  }
+
+  /** Сбросить кэш трафика при смене активного сервера (чтобы следующий запрос получил свежие данные с нового сервера). */
+  clearTrafficCache(userId: string): void {
+    this.trafficCache.delete(userId);
+  }
+
+  /**
+   * Список id пользователей, которые сейчас онлайн (хотя бы на одном из своих серверов).
+   * По каждому серверу с xrayStatsHost вызывается GetAllOnlineUsers.
+   */
+  async getOnlineUserIds(): Promise<string[]> {
+    const servers = await this.prisma.vpnServer.findMany({
+      where: { xrayStatsHost: { not: null } },
+      select: { id: true, xrayStatsHost: true, xrayStatsPort: true },
+    });
+    const onlineUserIds = new Set<string>();
+    const timeoutMs = 8000;
+    for (const server of servers) {
+      const host = server.xrayStatsHost!;
+      const port = server.xrayStatsPort ?? 8080;
+      try {
+        const emails = await Promise.race([
+          this.xrayStats.getOnlineUsers(host, port),
+          new Promise<string[]>((_, reject) =>
+            setTimeout(() => reject(new Error('timeout')), timeoutMs),
+          ),
+        ]);
+        const userServers = await this.prisma.userServer.findMany({
+          where: { serverId: server.id },
+          select: { vpnUserId: true, panelEmail: true },
+        });
+        for (const us of userServers) {
+          if (isUserOnline(emails, us.panelEmail)) {
+            onlineUserIds.add(us.vpnUserId);
+          }
+        }
+      } catch {
+        // один сервер недоступен — пропускаем
+      }
+    }
+    return Array.from(onlineUserIds);
   }
 
   async create(dto: CreateUserDto) {
@@ -774,6 +891,7 @@ export class UsersService {
         await this.ensurePanelClient(us.server, user.uuid, emailForPanel, { expiryTime, enable: true });
       }
     }
+    this.clearTrafficCache(userId);
     return this.get(userId);
   }
 
