@@ -14,6 +14,8 @@ export type VpnServer = {
   panelBaseUrl?: string | null;
   panelUsername?: string | null;
   panelInboundId?: number | null;
+  xrayStatsHost?: string | null;
+  xrayStatsPort?: number | null;
   maxUsers: number;
   isRecommended: boolean;
   active: boolean;

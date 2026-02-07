@@ -104,6 +104,10 @@ model VpnServer {
   security         VpnSecurity @default(NONE)
   sni              String?
 
+  // Xray Stats API (gRPC): если заданы — трафик берётся через GetStats вместо панели
+  xrayStatsHost    String?
+  xrayStatsPort    Int?
+
   // UI
   isRecommended    Boolean     @default(false)
 

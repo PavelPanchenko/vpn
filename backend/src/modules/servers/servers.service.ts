@@ -209,6 +209,8 @@ export class ServersService {
         maxUsers: dto.maxUsers,
         isRecommended: dto.isRecommended,
         active: dto.active,
+        ...(dto.xrayStatsHost !== undefined && { xrayStatsHost: dto.xrayStatsHost || null }),
+        ...(dto.xrayStatsPort !== undefined && { xrayStatsPort: dto.xrayStatsPort ?? null }),
       },
     });
     return this.maskServer(updated);

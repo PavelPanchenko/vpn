@@ -47,5 +47,15 @@ export class CreateServerDto {
 
   @IsBoolean()
   active!: boolean;
+
+  @IsOptional()
+  @IsString()
+  xrayStatsHost?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(65535)
+  xrayStatsPort?: number;
 }
 
