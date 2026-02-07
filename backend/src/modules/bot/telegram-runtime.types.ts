@@ -3,6 +3,8 @@ export type TelegramFrom = {
   first_name?: string;
   last_name?: string;
   username?: string;
+  /** Telegram client language (e.g. 'ru', 'en'). */
+  language_code?: string;
 };
 
 export type TelegramMessage = {
@@ -36,7 +38,10 @@ export type TelegramCallbackCtx<TMatch = TelegramCallbackMatch | undefined> = Te
 };
 
 export type TelegramBotTelegramApi = {
-  setMyCommands: (commands: Array<{ command: string; description: string }>) => Promise<unknown>;
+  setMyCommands: (
+    commands: Array<{ command: string; description: string }>,
+    extra?: { language_code?: string } & Record<string, unknown>,
+  ) => Promise<unknown>;
   deleteWebhook: (args?: { drop_pending_updates?: boolean }) => Promise<unknown>;
   sendMessage: (chatId: string | number, text: string, extra?: TelegramReplyOptions) => Promise<unknown>;
   deleteMessage: (chatId: string | number, messageId: number) => Promise<unknown>;

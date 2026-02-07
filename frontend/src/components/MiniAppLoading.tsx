@@ -1,7 +1,9 @@
 import type { TelegramTheme } from '../hooks/useTelegramWebAppUi';
+import type { MiniLang } from '../lib/miniLang';
+import type { mm } from '../lib/miniMessages';
 
-export function MiniAppLoading(props: { theme: TelegramTheme }) {
-  const { theme } = props;
+export function MiniAppLoading(props: { theme: TelegramTheme; lang: MiniLang; m: ReturnType<typeof mm> }) {
+  const { theme, m } = props;
   return (
     <div
       className="min-h-screen flex items-center justify-center px-4"
@@ -34,9 +36,9 @@ export function MiniAppLoading(props: { theme: TelegramTheme }) {
               />
             </div>
             <div className="min-w-0">
-              <div className="text-base font-semibold">Загружаем данные…</div>
+              <div className="text-base font-semibold">{m.loading.title}</div>
               <div className="text-sm mt-1" style={{ color: theme.hint }}>
-                Обычно это занимает пару секунд.
+                {m.loading.subtitle}
               </div>
             </div>
           </div>

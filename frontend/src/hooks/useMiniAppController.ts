@@ -15,6 +15,8 @@ import type { MiniPlan, MiniServer, MiniStatus } from '../lib/miniTypes';
 import type { MiniToastState } from '../components/MiniAppToast';
 import type { TelegramWebApp } from '../lib/telegramWebAppTypes';
 import { groupPlans, type MiniPlanGroup } from '../lib/planGrouping';
+import { extractMiniLanguageCode, miniLangFromTelegram, type MiniLang } from '../lib/miniLang';
+import { mm } from '../lib/miniMessages';
 
 function getInitDataFromUrl(): string {
   try {
@@ -73,6 +75,7 @@ function logDevError(error: unknown) {
 export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
   const { tg } = args;
 
+  const [lang, setLang] = useState<MiniLang>('ru');
   const [initData, setInitData] = useState<string>('');
   const [standaloneGate, setStandaloneGate] = useState(false);
   const [browserLogin, setBrowserLogin] = useState<{
@@ -108,11 +111,18 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
   const [paymentSheetOpen, setPaymentSheetOpen] = useState(false);
   const [selectedPlanGroupKey, setSelectedPlanGroupKey] = useState<string | null>(null);
 
+  const m = useMemo(() => mm(lang), [lang]);
+
   const planGroups: MiniPlanGroup[] = useMemo(() => groupPlans(plans), [plans]);
   const selectedPlanGroup = useMemo(
     () => (selectedPlanGroupKey ? planGroups.find((g) => g.key === selectedPlanGroupKey) ?? null : null),
     [planGroups, selectedPlanGroupKey],
   );
+
+  useEffect(() => {
+    const code = extractMiniLanguageCode({ tg, initData });
+    if (code) setLang(miniLangFromTelegram(code));
+  }, [tg, initData]);
 
   const showErrorToast = useCallback((error: unknown, fallback: string) => {
     logDevError(error);
@@ -224,14 +234,14 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
         await loadStatusAndMaybeServers();
       } catch (e: unknown) {
         logDevError(e);
-        setFatalError(getApiErrorMessage(e, 'Не удалось загрузить статус.'));
+        setFatalError(getApiErrorMessage(e, m.toasts.statusLoadFailed));
       } finally {
         setLoading(false);
       }
     };
 
     void run();
-  }, [tg, loadStatusAndMaybeServers]);
+  }, [tg, loadStatusAndMaybeServers, m.toasts.statusLoadFailed]);
 
   // Handle deep-link return from payment providers (t.me/<bot>/app?startapp=...)
   useEffect(() => {
@@ -251,7 +261,7 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
         setStatus(next);
       } catch (e: unknown) {
         // best-effort: show toast but don't block UI
-        showErrorToast(e, 'Не удалось обновить статус.');
+        showErrorToast(e, m.toasts.statusRefreshFailed);
       }
     };
 
@@ -259,17 +269,17 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
       setScreen('home');
       (async () => {
         await refresh();
-        showSuccessToast('Оплата прошла. Статус обновлён.');
+        showSuccessToast(m.toasts.paymentSuccessStatusUpdated);
       })();
       return;
     }
     if (startParam === 'pay_fail') {
       setScreen('home');
-      setToast({ type: 'error', message: 'Оплата не завершена.' });
+      setToast({ type: 'error', message: m.toasts.paymentNotCompleted });
       void refresh();
       return;
     }
-  }, [initData, showErrorToast, showSuccessToast]);
+  }, [initData, showErrorToast, showSuccessToast, m.toasts.paymentNotCompleted, m.toasts.paymentSuccessStatusUpdated, m.toasts.statusRefreshFailed]);
 
   const submitStandaloneInitData = useCallback(
     async (raw: string) => {
@@ -282,12 +292,12 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
         await bootstrapWithInitData(v);
       } catch (e: unknown) {
         logDevError(e);
-        setFatalError(getApiErrorMessage(e, 'Не удалось загрузить статус.'));
+        setFatalError(getApiErrorMessage(e, m.toasts.statusLoadFailed));
       } finally {
         setLoading(false);
       }
     },
-    [bootstrapWithInitData],
+    [bootstrapWithInitData, m.toasts.statusLoadFailed],
   );
 
   const restartBrowserLogin = useCallback(async () => {
@@ -295,9 +305,9 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
       const s = await startMiniBrowserLogin();
       setBrowserLogin({ loginId: s.loginId, expiresAt: s.expiresAt, deepLink: s.deepLink, status: 'PENDING' });
     } catch (e: unknown) {
-      showErrorToast(e, 'Не удалось получить код');
+      showErrorToast(e, m.toasts.codeFailed);
     }
-  }, [showErrorToast]);
+  }, [showErrorToast, m.toasts.codeFailed]);
 
   // Poll browser login status
   useEffect(() => {
@@ -337,15 +347,15 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
       const res = await fetchMiniConfig(initData);
       const cfg = res?.configs?.[0];
       if (!cfg || !cfg.url) {
-        setToast({ type: 'error', message: 'Конфигурация недоступна. Сначала выберите и активируйте локацию.' });
+        setToast({ type: 'error', message: m.toasts.configUnavailableChooseLocation });
         return;
       }
       setConfigUrl(cfg.url);
       setScreen('config');
     } catch (e: unknown) {
-      showErrorToast(e, 'Не удалось получить конфигурацию.');
+      showErrorToast(e, m.toasts.configLoadFailed);
     }
-  }, [initData, showErrorToast]);
+  }, [initData, showErrorToast, m.toasts.configLoadFailed, m.toasts.configUnavailableChooseLocation]);
 
   const handleLoadPlans = useCallback(async () => {
     if (!initData) return;
@@ -355,9 +365,9 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
       setPlans(list);
       setScreen('plans');
     } catch (e: unknown) {
-      showErrorToast(e, 'Не удалось загрузить тарифы.');
+      showErrorToast(e, m.toasts.plansLoadFailed);
     }
-  }, [initData, showErrorToast]);
+  }, [initData, showErrorToast, m.toasts.plansLoadFailed]);
 
   const handleRefreshServers = useCallback(async () => {
     if (!initData) return;
@@ -367,11 +377,11 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
       const list = await fetchMiniServers(initData);
       setServers(list);
     } catch (e: unknown) {
-      showErrorToast(e, 'Не удалось загрузить список локаций.');
+      showErrorToast(e, m.toasts.serversLoadFailed);
     } finally {
       setRefreshingServers(false);
     }
-  }, [initData, showErrorToast]);
+  }, [initData, showErrorToast, m.toasts.serversLoadFailed]);
 
   const handleActivateServer = useCallback(
     async (serverId: string) => {
@@ -383,13 +393,13 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
         setStatus(next);
         tg?.HapticFeedback?.notificationOccurred?.('success');
       } catch (e: unknown) {
-        showErrorToast(e, 'Не удалось активировать локацию.');
+        showErrorToast(e, m.toasts.serverActivateFailed);
         tg?.HapticFeedback?.notificationOccurred?.('error');
       } finally {
         setActivatingServerId(null);
       }
     },
-    [initData, showErrorToast, tg],
+    [initData, showErrorToast, tg, m.toasts.serverActivateFailed],
   );
 
   const handleLoadStatusSilent = useCallback(async () => {
@@ -405,7 +415,7 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
   const handlePay = useCallback(
     async (variantId: string, provider: 'TELEGRAM_STARS' | 'PLATEGA', payingKey: string) => {
       if (!initData) {
-        setToast({ type: 'error', message: 'Сессия истекла. Закройте и откройте приложение снова.' });
+        setToast({ type: 'error', message: m.toasts.sessionExpired });
         return;
       }
       setToast(null);
@@ -415,7 +425,7 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
 
         if ('invoiceLink' in res && res.invoiceLink) {
           if (!tg?.openInvoice) {
-            setToast({ type: 'error', message: 'Оплата доступна только внутри Telegram.' });
+            setToast({ type: 'error', message: m.toasts.paymentTelegramOnly });
             return;
           }
 
@@ -427,11 +437,11 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
 
           if (status === 'paid') {
             tg?.HapticFeedback?.notificationOccurred?.('success');
-            showSuccessToast('Оплата прошла. Подписка продлена.');
+            showSuccessToast(m.toasts.paymentSuccessExtended);
           } else if (status === 'cancelled') {
-            setToast({ type: 'error', message: 'Оплата отменена.' });
+            setToast({ type: 'error', message: m.toasts.paymentCancelled });
           } else {
-            setToast({ type: 'error', message: 'Не удалось выполнить оплату.' });
+            setToast({ type: 'error', message: m.toasts.paymentFailed });
           }
           return;
         }
@@ -439,20 +449,32 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
         if ('paymentUrl' in res && res.paymentUrl) {
           if (tg?.openLink) tg.openLink(res.paymentUrl);
           else window.open(res.paymentUrl, '_blank', 'noopener,noreferrer');
-          setToast({ type: 'success', message: 'Открываем страницу оплаты…' });
+          setToast({ type: 'success', message: m.toasts.openingPaymentPage });
           return;
         }
 
         await handleLoadStatusSilent();
         tg?.HapticFeedback?.notificationOccurred?.('success');
-        showSuccessToast('Оплата прошла. Подписка продлена.');
+        showSuccessToast(m.toasts.paymentSuccessExtended);
       } catch (e: unknown) {
-        showErrorToast(e, 'Не удалось выполнить оплату.');
+        showErrorToast(e, m.toasts.paymentFailed);
       } finally {
         setPayingPlanKey(null);
       }
     },
-    [initData, handleLoadStatusSilent, showErrorToast, showSuccessToast, tg],
+    [
+      initData,
+      handleLoadStatusSilent,
+      showErrorToast,
+      showSuccessToast,
+      tg,
+      m.toasts.openingPaymentPage,
+      m.toasts.paymentCancelled,
+      m.toasts.paymentFailed,
+      m.toasts.paymentSuccessExtended,
+      m.toasts.paymentTelegramOnly,
+      m.toasts.sessionExpired,
+    ],
   );
 
   const openPaymentMethodsForGroup = useCallback((groupKey: string) => {
@@ -472,7 +494,7 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
           : selectedPlanGroup.variants.find((v) => v.currency !== 'XTR');
 
       if (!variant) {
-        setToast({ type: 'error', message: 'Этот способ оплаты недоступен для выбранного тарифа.' });
+        setToast({ type: 'error', message: m.toasts.paymentMethodUnavailable });
         return;
       }
 
@@ -489,9 +511,9 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
       setConfigCopied(true);
       setTimeout(() => setConfigCopied(false), 2000);
     } catch (e: unknown) {
-      showErrorToast(e, 'Не удалось скопировать');
+      showErrorToast(e, m.toasts.copyFailed);
     }
-  }, [configUrl, showErrorToast]);
+  }, [configUrl, showErrorToast, m.toasts.copyFailed]);
 
   const hasActiveServer = useMemo(() => Boolean(status?.servers?.length), [status?.servers?.length]);
   const activeServerId = useMemo(() => status?.servers?.[0]?.id ?? null, [status?.servers]);
@@ -504,6 +526,10 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
   const goHelp = useCallback(() => setScreen('help' as any), []);
 
   return {
+    // i18n
+    lang,
+    m,
+
     // ui state
     appName,
     publicMeta,

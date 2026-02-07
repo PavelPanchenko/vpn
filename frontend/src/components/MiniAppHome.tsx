@@ -1,9 +1,13 @@
 import type { TelegramTheme } from '../hooks/useTelegramWebAppUi';
 import type { MiniServer, MiniStatus } from '../lib/miniTypes';
+import type { MiniLang } from '../lib/miniLang';
+import type { mm } from '../lib/miniMessages';
 
 export function MiniAppHome(props: {
   theme: TelegramTheme;
   btnTapClass: string;
+  lang: MiniLang;
+  m: ReturnType<typeof mm>;
   status: MiniStatus;
   servers: MiniServer[];
   refreshingServers: boolean;
@@ -18,6 +22,8 @@ export function MiniAppHome(props: {
   const {
     theme,
     btnTapClass,
+    lang,
+    m,
     status,
     servers,
     refreshingServers,
@@ -42,7 +48,7 @@ export function MiniAppHome(props: {
       >
         <div className="flex items-center justify-between">
           <span className="text-sm" style={{ color: theme.hint }}>
-            Статус аккаунта
+            {m.home.accountStatus}
           </span>
           <span
             className="inline-flex items-center rounded-full px-3 py-1 text-xs font-medium"
@@ -58,7 +64,7 @@ export function MiniAppHome(props: {
               color: theme.text,
             }}
           >
-            {status.status === 'NEW' && '🆕 Без подписки'}
+            {status.status === 'NEW' && m.home.statusNew}
             {status.status === 'ACTIVE' && '✅ ACTIVE'}
             {status.status === 'BLOCKED' && '🚫 BLOCKED'}
             {status.status === 'EXPIRED' && '⏰ EXPIRED'}
@@ -68,10 +74,10 @@ export function MiniAppHome(props: {
         {status.expiresAt ? (
           <>
             <div className="flex items-center justify-between text-sm">
-              <span style={{ color: theme.hint }}>Действует до</span>
+              <span style={{ color: theme.hint }}>{m.home.validUntil}</span>
               <span>
-                {new Date(status.expiresAt).toLocaleDateString('ru-RU')}{' '}
-                {status.daysLeft !== null && `(${status.daysLeft} дн.)`}
+                {new Date(status.expiresAt).toLocaleDateString(lang === 'en' ? 'en-GB' : lang === 'uk' ? 'uk-UA' : 'ru-RU')}{' '}
+                {m.home.daysShort(status.daysLeft)}
               </span>
             </div>
             {status.progressLeftPct != null ? (
@@ -92,14 +98,14 @@ export function MiniAppHome(props: {
           <div className="flex items-center justify-between text-sm gap-4">
             <div>
               <div style={{ color: theme.hint }} className="mb-1">
-                Активная локация
+                {m.home.activeLocation}
               </div>
               <div className="font-medium">{status.servers[0].name}</div>
             </div>
           </div>
         ) : (
           <p className="text-sm" style={{ color: theme.hint }}>
-            У вас пока нет активной локации. Выберите её ниже.
+            {m.home.noActiveLocationHint}
           </p>
         )}
       </section>
@@ -109,20 +115,20 @@ export function MiniAppHome(props: {
         style={{ borderColor: 'rgba(255,255,255,0.12)', background: theme.secondaryBg }}
       >
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Локации</h2>
+          <h2 className="text-sm font-semibold">{m.home.locationsTitle}</h2>
           <button
             onClick={onRefreshServers}
             disabled={refreshingServers}
             className={`text-xs disabled:opacity-60 disabled:cursor-not-allowed ${btnTapClass}`}
             style={{ color: theme.link }}
           >
-            {refreshingServers ? 'Обновление…' : 'Обновить'}
+            {refreshingServers ? m.common.loadingDots : m.common.refresh}
           </button>
         </div>
 
         {servers.length === 0 ? (
           <div className="text-sm" style={{ color: theme.hint }}>
-            Локации не загружены. Нажмите «Обновить».
+            {m.home.locationsNotLoaded}
           </div>
         ) : (
           <div
@@ -133,7 +139,7 @@ export function MiniAppHome(props: {
               const isActive = activeServerId != null && s.id === activeServerId;
               const isBusy = activatingServerId === s.id;
               const isRecommended = s.isRecommended ?? false;
-              const slotsText = s.freeSlots != null ? `мест: ${s.freeSlots}` : null;
+              const slotsText = s.freeSlots != null ? m.home.slotsText(s.freeSlots) : null;
               return (
                 <button
                   key={s.id}
@@ -176,7 +182,7 @@ export function MiniAppHome(props: {
                                 className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold"
                                 style={{ background: theme.button, color: theme.buttonText }}
                               >
-                                Активна
+                                {m.home.activeBadge}
                               </span>
                             ) : isRecommended ? (
                               <span
@@ -187,12 +193,12 @@ export function MiniAppHome(props: {
                                   border: '1px solid ' + theme.button + '66',
                                 }}
                               >
-                                Рекомендуем
+                                {m.home.recommendedBadge}
                               </span>
                             ) : null}
                           </div>
                           <div className="text-[11px] mt-0.5" style={{ color: theme.hint }}>
-                            {isBusy ? 'Подключаем…' : isActive ? 'Подключено' : 'Нажмите, чтобы подключить'}
+                            {isBusy ? m.home.connecting : isActive ? m.home.connectedBtn : m.home.tapToConnectBtn}
                           </div>
                         </div>
 
@@ -227,18 +233,18 @@ export function MiniAppHome(props: {
         className="rounded-2xl border p-4 space-y-4"
         style={{ borderColor: 'rgba(255,255,255,0.12)', background: theme.secondaryBg }}
       >
-        <h2 className="text-sm font-semibold">Конфигурация</h2>
+        <h2 className="text-sm font-semibold">{m.home.configTitle}</h2>
         <button
           onClick={onOpenConfig}
           disabled={!hasActiveServer}
           className={`w-full inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed ${btnTapClass}`}
           style={{ background: theme.button, color: theme.buttonText }}
         >
-          📥 Получить конфиг
+          {m.home.getConfigBtn}
         </button>
         {!hasActiveServer ? (
           <div className="text-xs" style={{ color: theme.hint }}>
-            Сначала выберите локацию.
+            {m.home.selectLocationFirst}
           </div>
         ) : null}
       </section>
@@ -248,13 +254,13 @@ export function MiniAppHome(props: {
         style={{ borderColor: 'rgba(255,255,255,0.12)', background: theme.secondaryBg }}
       >
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Тарифы</h2>
+          <h2 className="text-sm font-semibold">{m.home.plansTitle}</h2>
           <button onClick={onOpenPlans} className={`text-xs ${btnTapClass}`} style={{ color: theme.link }}>
-            Открыть
+            {m.home.openBtn}
           </button>
         </div>
         <p className="text-sm" style={{ color: theme.hint }}>
-          Оплата и продление подписки.
+          {m.home.plansHint}
         </p>
       </section>
     </>

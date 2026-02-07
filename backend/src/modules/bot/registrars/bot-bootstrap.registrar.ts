@@ -2,13 +2,15 @@ import type { Logger } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { TelegramRegistrarDeps } from './telegram-registrar.deps';
-import { BotMessages } from '../messages/common.messages';
+import { bm } from '../messages/common.messages';
 import type { TelegramBot } from '../telegram-runtime.types';
+import { botLangFromTelegram } from '../i18n/bot-lang';
 
 export function registerBotCatch(args: { bot: TelegramBot; logger: Logger }) {
   args.bot.catch((err: unknown, ctx) => {
     args.logger.error('Bot error:', err);
-    ctx.reply(BotMessages.errorTryLaterText);
+    const lang = botLangFromTelegram((ctx as any)?.from?.language_code ?? null);
+    ctx.reply(bm(lang).errorTryLaterText);
   });
 }
 
@@ -25,8 +27,7 @@ export async function registerBotCommandsMenu(args: {
     });
     const useMiniApp = Boolean(activeBot?.useMiniApp);
 
-    // Строгий mini-app режим: оставляем только базовые команды, остальное — внутри mini app
-    const commands = useMiniApp
+    const ruCommands = useMiniApp
       ? [
           { command: 'start', description: '🏠 Главное меню' },
           { command: 'info', description: 'ℹ️ Информация и документы' },
@@ -45,7 +46,49 @@ export async function registerBotCommandsMenu(args: {
           { command: 'cancel', description: '❌ Отменить режим поддержки' },
         ];
 
-    await args.bot.telegram.setMyCommands(commands);
+    const enCommands = useMiniApp
+      ? [
+          { command: 'start', description: '🏠 Menu' },
+          { command: 'info', description: 'ℹ️ Info & documents' },
+          { command: 'help', description: '❓ Help & guides' },
+          { command: 'support', description: '💬 Support' },
+          { command: 'cancel', description: '❌ Cancel support mode' },
+        ]
+      : [
+          { command: 'start', description: '🏠 Menu' },
+          { command: 'config', description: '📥 Get VPN config' },
+          { command: 'pay', description: '💳 Pay subscription' },
+          { command: 'status', description: '📊 Subscription status' },
+          { command: 'info', description: 'ℹ️ Info & documents' },
+          { command: 'support', description: '💬 Support' },
+          { command: 'help', description: '❓ Help & guides' },
+          { command: 'cancel', description: '❌ Cancel support mode' },
+        ];
+
+    const ukCommands = useMiniApp
+      ? [
+          { command: 'start', description: '🏠 Головне меню' },
+          { command: 'info', description: 'ℹ️ Інформація і документи' },
+          { command: 'help', description: '❓ Допомога та інструкції' },
+          { command: 'support', description: '💬 Підтримка' },
+          { command: 'cancel', description: '❌ Скасувати режим підтримки' },
+        ]
+      : [
+          { command: 'start', description: '🏠 Головне меню' },
+          { command: 'config', description: '📥 Отримати конфігурацію VPN' },
+          { command: 'pay', description: '💳 Оплатити підписку' },
+          { command: 'status', description: '📊 Статус підписки' },
+          { command: 'info', description: 'ℹ️ Інформація і документи' },
+          { command: 'support', description: '💬 Підтримка' },
+          { command: 'help', description: '❓ Допомога та інструкції' },
+          { command: 'cancel', description: '❌ Скасувати режим підтримки' },
+        ];
+
+    // Telegram поддерживает отдельные команды по language_code.
+    // По умолчанию держим русский, и отдельно задаём английский для en.
+    await args.bot.telegram.setMyCommands(ruCommands);
+    await args.bot.telegram.setMyCommands(enCommands, { language_code: 'en' });
+    await args.bot.telegram.setMyCommands(ukCommands, { language_code: 'uk' });
     args.logger.log('Bot commands registered successfully');
   } catch (error: unknown) {
     args.logger.warn('Failed to register bot commands:', error);

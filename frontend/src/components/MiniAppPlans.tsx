@@ -1,17 +1,21 @@
 import type { TelegramTheme } from '../hooks/useTelegramWebAppUi';
 import type { MiniPlanGroup } from '../lib/planGrouping';
 import { formatPlanGroupPrice } from '../lib/planGrouping';
+import type { MiniLang } from '../lib/miniLang';
+import type { mm } from '../lib/miniMessages';
 
 export function MiniAppPlans(props: {
   theme: TelegramTheme;
   btnTapClass: string;
+  lang: MiniLang;
+  m: ReturnType<typeof mm>;
   planGroups: MiniPlanGroup[];
   payingPlanKey: string | null;
   onRefresh: () => void;
   onBack: () => void;
   onSelectPlan: (groupKey: string) => void;
 }) {
-  const { theme, btnTapClass, planGroups, payingPlanKey, onRefresh, onBack, onSelectPlan } = props;
+  const { theme, btnTapClass, lang, m, planGroups, payingPlanKey, onRefresh, onBack, onSelectPlan } = props;
 
   return (
     <section
@@ -19,20 +23,20 @@ export function MiniAppPlans(props: {
       style={{ borderColor: 'rgba(255,255,255,0.12)', background: theme.secondaryBg }}
     >
       <div className="flex items-center justify-between">
-        <div className="text-sm font-semibold">Тарифы</div>
+        <div className="text-sm font-semibold">{m.plans.title}</div>
         <div className="flex items-center gap-3">
           <button onClick={onRefresh} className={`text-xs ${btnTapClass}`} style={{ color: theme.link }}>
-            Обновить
+            {m.common.refresh}
           </button>
           <button onClick={onBack} className={`text-xs ${btnTapClass}`} style={{ color: theme.link }}>
-            Назад
+            {m.common.back}
           </button>
         </div>
       </div>
 
       {planGroups.length === 0 ? (
         <p className="text-sm py-4" style={{ color: theme.hint }}>
-          Нажмите «Обновить», чтобы загрузить доступные тарифы.
+          {m.plans.hintRefresh}
         </p>
       ) : (
         <div className="space-y-4">
@@ -63,12 +67,12 @@ export function MiniAppPlans(props: {
                           className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
                           style={{ background: theme.button, color: theme.buttonText }}
                         >
-                          ⭐ Топ тариф
+                          {m.plans.topPlan}
                         </span>
                       )}
                     </div>
                     <div className="mt-1 text-sm" style={{ color: theme.hint }}>
-                      {g.periodDays} {g.periodDays === 1 ? 'день' : g.periodDays < 5 ? 'дня' : 'дней'}
+                      {m.plans.periodDays(g.periodDays)}
                     </div>
                     {g.description ? (
                       <p className="mt-2 text-xs leading-snug" style={{ color: theme.hint }}>
@@ -76,10 +80,10 @@ export function MiniAppPlans(props: {
                       </p>
                     ) : null}
                     <div className="mt-2 text-xs" style={{ color: theme.hint }}>
-                      Способы оплаты:{' '}
+                      {m.plans.paymentMethods}{' '}
                       {hasStars ? <span style={{ color: theme.text }}>Stars</span> : null}
                       {hasStars && hasExternal ? ' · ' : null}
-                      {hasExternal ? <span style={{ color: theme.text }}>Карта</span> : null}
+                      {hasExternal ? <span style={{ color: theme.text }}>{m.plans.card}</span> : null}
                     </div>
                   </div>
                   <div className="shrink-0 text-right">
@@ -97,7 +101,7 @@ export function MiniAppPlans(props: {
                       className={`mt-2 inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed ${btnTapClass}`}
                       style={{ background: theme.button, color: theme.buttonText }}
                     >
-                      {payingPlanKey === g.key ? 'Оплата...' : 'Оплатить'}
+                      {payingPlanKey === g.key ? m.common.paymentInProgress : m.plans.payBtn}
                     </button>
                   </div>
                 </div>

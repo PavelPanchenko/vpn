@@ -3,76 +3,81 @@ import { buildStatusMenuSnippet } from '../messages/status.message';
 import { scheduleDeleteMessage, scheduleDeleteMessageFromReply } from '../delete-after.utils';
 import type { TelegramRegistrarDeps } from './telegram-registrar.deps';
 import { getPaidPlansWithFallback } from '../plans/paid-plans.utils';
-import { BotMessages } from '../messages/common.messages';
 import { getMarkup } from '../telegram-markup.utils';
-import { CONFIG_CHOICE_HTML } from '../messages/config.message';
+import { bm } from '../messages/common.messages';
+import { configChoiceHtml } from '../messages/config.message';
+import { ui } from '../messages/ui.messages';
 import { editOrReplyHtml } from '../telegram-reply.utils';
 import { cbThenReplyHtml, cbThenReplyText } from '../telegram-callback.utils';
 import type { TelegramCallbackCtx, TelegramMessageCtx } from '../telegram-runtime.types';
 import { formatPlanGroupButtonLabel, groupPlansByNameAndPeriod } from '../plans/plan-grouping.utils';
+import { botLangFromCtx, extractTelegramLanguageCode } from '../i18n/bot-lang';
 
 export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
-  const backToMenuRow = async () => {
-    const M = await getMarkup();
-    return M.inlineKeyboard([[M.button.callback('🏠 В меню', 'back_to_main')]]);
-  };
-
   args.bot.action('get_config', async (ctx: TelegramCallbackCtx) => {
     const telegramId = ctx.from.id.toString();
+    const lang = botLangFromCtx(ctx);
+    void args.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
     const user = await args.usersService.findByTelegramId(telegramId);
 
     if (!user) {
-      await ctx.answerCbQuery(BotMessages.userNotFoundCbText);
+      await ctx.answerCbQuery(bm(lang).userNotFoundCbText);
       return;
     }
     await ctx.answerCbQuery();
     const Markup = await getMarkup();
     const keyboard = Markup.inlineKeyboard([
-      [Markup.button.callback('📱 QR-код', 'config_show_qr'), Markup.button.callback('🔗 Ссылка', 'config_show_link')],
-      [Markup.button.callback('🏠 В меню', 'back_to_main')],
+      [Markup.button.callback(ui(lang).qrBtn, 'config_show_qr'), Markup.button.callback(ui(lang).linkBtn, 'config_show_link')],
+      [Markup.button.callback(ui(lang).backToMenuBtn, 'back_to_main')],
     ]);
-    await args.editHtml(ctx, CONFIG_CHOICE_HTML, keyboard);
+    await args.editHtml(ctx, configChoiceHtml(lang), keyboard);
   });
 
   args.bot.action('config_show_link', async (ctx: TelegramCallbackCtx) => {
     const telegramId = ctx.from.id.toString();
+    const lang = botLangFromCtx(ctx);
+    void args.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
     const user = await args.usersService.findByTelegramId(telegramId);
     if (!user) {
-      await ctx.answerCbQuery(BotMessages.userNotFoundCbText);
+      await ctx.answerCbQuery(bm(lang).userNotFoundCbText);
       return;
     }
     await ctx.answerCbQuery();
-    const data = await args.getConfigData(user);
-    const keyboard = await backToMenuRow();
+    const data = await args.getConfigData(user, lang);
+    const Markup = await getMarkup();
+    const keyboard = Markup.inlineKeyboard([[Markup.button.callback(ui(lang).backToMenuBtn, 'back_to_main')]]);
     if (!data.ok) {
       await args.editHtml(ctx, data.htmlMessage, keyboard);
       return;
     }
-    await args.editHtml(ctx, args.configLinkHtml(data.url, data.serverName), keyboard);
+    await args.editHtml(ctx, args.configLinkHtml(data.url, data.serverName, lang), keyboard);
   });
 
   args.bot.action('config_show_qr', async (ctx: TelegramCallbackCtx) => {
     const telegramId = ctx.from.id.toString();
+    const lang = botLangFromCtx(ctx);
+    void args.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
     const user = await args.usersService.findByTelegramId(telegramId);
     if (!user) {
-      await ctx.answerCbQuery(BotMessages.userNotFoundCbText);
+      await ctx.answerCbQuery(bm(lang).userNotFoundCbText);
       return;
     }
     await ctx.answerCbQuery();
-    const data = await args.getConfigData(user);
-    const keyboard = await backToMenuRow();
+    const data = await args.getConfigData(user, lang);
+    const Markup = await getMarkup();
+    const keyboard = Markup.inlineKeyboard([[Markup.button.callback(ui(lang).backToMenuBtn, 'back_to_main')]]);
     if (!data.ok) {
       await args.editHtml(ctx, data.htmlMessage, keyboard);
       return;
     }
-    await args.editHtml(ctx, '⏳ Готовлю QR…', keyboard);
+    await args.editHtml(ctx, ui(lang).preparingQrText, keyboard);
     try {
-      const qrSent = await args.sendConfigQrPhoto(ctx, data.url, data.serverName);
+      const qrSent = await args.sendConfigQrPhoto(ctx, data.url, data.serverName, lang);
       if (qrSent) {
         scheduleDeleteMessage(args.bot.telegram, qrSent.chatId, qrSent.messageId);
       }
     } catch {
-      await args.editHtml(ctx, '⚠️ Не удалось сгенерировать QR. Нажмите «Ссылка» или «В меню».', keyboard);
+      await args.editHtml(ctx, ui(lang).qrFailedText, keyboard);
       return;
     }
     await args.showMainMenuEdit(ctx, user);
@@ -80,12 +85,14 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
 
   args.bot.action('show_pay', async (ctx: TelegramCallbackCtx) => {
     const telegramId = ctx.from.id.toString();
+    const lang = botLangFromCtx(ctx);
+    void args.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
 
     try {
       const user = await args.usersService.findByTelegramId(telegramId);
 
       if (!user) {
-        await ctx.answerCbQuery(BotMessages.userNotFoundCbText);
+        await ctx.answerCbQuery(bm(lang).userNotFoundCbText);
         return;
       }
 
@@ -101,8 +108,8 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
       if (paidPlans.length === 0) {
         await cbThenReplyHtml({
           ctx,
-          cbText: BotMessages.noPaidPlansCbText,
-          html: BotMessages.noPaidPlansHtml,
+          cbText: bm(lang).noPaidPlansCbText,
+          html: bm(lang).noPaidPlansHtml,
           replyHtml: args.replyHtml,
         });
         return;
@@ -113,34 +120,42 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
       const buttons = groups.map((g) => [
         Markup.button.callback(formatPlanGroupButtonLabel(g), `select_plan_${g.representative.id}`),
       ]);
-      buttons.push([Markup.button.callback('🏠 В меню', 'back_to_main')]);
+      buttons.push([Markup.button.callback(ui(lang).backToMenuBtn, 'back_to_main')]);
 
       await ctx.answerCbQuery();
 
       const sent = await editOrReplyHtml(
         ctx,
-        `💳 <b>Оплата</b>\n\n` +
-          `1) Выберите тариф\n` +
-          `2) Выберите способ оплаты\n\n` +
-          `После оплаты подписка активируется автоматически.`,
+        lang === 'en'
+          ? `💳 <b>Payment</b>\n\n` +
+              `1) Choose a plan\n` +
+              `2) Choose a payment method\n\n` +
+              `After payment the subscription activates automatically.`
+          : `💳 <b>Оплата</b>\n\n` +
+              `1) Выберите тариф\n` +
+              `2) Выберите способ оплаты\n\n` +
+              `После оплаты подписка активируется автоматически.`,
         Markup.inlineKeyboard(buttons),
       );
       scheduleDeleteMessageFromReply(args.bot.telegram, sent, ctx);
     } catch (error: unknown) {
       args.logger.error('Error handling show_pay action:', error);
-      await cbThenReplyText({ ctx, cbText: BotMessages.errorCbText, replyText: BotMessages.errorTryLaterText });
+      const lang = botLangFromCtx(ctx);
+      await cbThenReplyText({ ctx, cbText: bm(lang).errorCbText, replyText: bm(lang).errorTryLaterText });
     }
   });
 
   // Обработка кнопки "Назад в меню"
   args.bot.action('back_to_main', async (ctx: TelegramCallbackCtx) => {
     const telegramId = ctx.from.id.toString();
+    const lang = botLangFromCtx(ctx);
+    void args.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
 
     try {
       const user = await args.usersService.findByTelegramId(telegramId, { userServers: true });
 
       if (!user) {
-        await ctx.answerCbQuery(BotMessages.userNotFoundCbText);
+        await ctx.answerCbQuery(bm(lang).userNotFoundCbText);
         return;
       }
 
@@ -150,12 +165,14 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
       await args.showMainMenuEdit(ctx, user);
     } catch (error: unknown) {
       args.logger.error('Error handling back_to_main action:', error);
-      await ctx.answerCbQuery(BotMessages.errorCbText);
+      await ctx.answerCbQuery(bm(lang).errorCbText);
     }
   });
 
   args.bot.action('show_status', async (ctx: TelegramCallbackCtx) => {
     const telegramId = ctx.from.id.toString();
+    const lang = botLangFromCtx(ctx);
+    void args.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
 
     try {
       const user = await args.usersService.findByTelegramId(telegramId, {
@@ -168,36 +185,38 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
       });
 
       if (!user) {
-        await ctx.answerCbQuery(BotMessages.userNotFoundCbText);
+        await ctx.answerCbQuery(bm(lang).userNotFoundCbText);
         return;
       }
 
-      const statusText = buildStatusMenuSnippet({ user, fmtDate: args.fmtDate });
-      const menuKeyboard = await args.buildMainMenuKeyboard(user);
+      const statusText = buildStatusMenuSnippet({ lang, user, fmtDate: (d) => args.fmtDate(lang, d) });
+      const menuKeyboard = await args.buildMainMenuKeyboard(user, lang);
 
       await ctx.answerCbQuery();
 
       try {
-        await ctx.editMessageText(`🏠 Главное меню:${statusText}`, menuKeyboard);
+        await ctx.editMessageText(`${lang === 'en' ? '🏠 Menu' : '🏠 Главное меню'}:${statusText}`, menuKeyboard);
       } catch {
         // Не отправляем новое сообщение — иначе получится дубликат. Редактирование может не пройти,
         // если текст не изменился (message is not modified) или сообщение устарело.
       }
     } catch (error: unknown) {
       args.logger.error('Error handling show_status action:', error);
-      await ctx.answerCbQuery(BotMessages.errorCbText);
+      await ctx.answerCbQuery(bm(lang).errorCbText);
     }
   });
 
   // Обработка кнопки "Поддержка"
   args.bot.action('start_support', async (ctx: TelegramCallbackCtx) => {
     const telegramId = ctx.from.id.toString();
+    const lang = botLangFromCtx(ctx);
+    void args.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
 
     try {
       const user = await args.usersService.findByTelegramId(telegramId);
 
       if (!user) {
-        await ctx.answerCbQuery(BotMessages.userNotFoundCbText);
+        await ctx.answerCbQuery(bm(lang).userNotFoundCbText);
         return;
       }
 
@@ -205,7 +224,7 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
       await args.enableSupportMode(ctx, telegramId);
     } catch (error: unknown) {
       args.logger.error('Error starting support mode:', error);
-      await ctx.answerCbQuery(BotMessages.errorCbText);
+      await ctx.answerCbQuery(bm(lang).errorCbText);
     }
   });
 
@@ -215,6 +234,8 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
     if (ctx.message.text?.startsWith('/')) return;
 
     const telegramId = ctx.from.id.toString();
+    const lang = botLangFromCtx(ctx);
+    void args.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
 
     // Проверяем, находится ли пользователь в режиме поддержки
     if (!args.supportModeUsers.get(telegramId)) return;
@@ -226,7 +247,7 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
       const user = await args.usersService.findByTelegramId(telegramId);
 
       if (!user) {
-        await ctx.reply(BotMessages.userNotFoundUseStartText);
+        await ctx.reply(bm(lang).userNotFoundUseStartText);
         args.supportModeUsers.delete(telegramId);
         return;
       }
@@ -240,13 +261,11 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
 
       await args.replyHtml(
         ctx,
-        `✅ <b>Сообщение отправлено</b>\n\n` +
-          `Если хотите добавить детали — отправьте ещё одно сообщение.\n` +
-          `Выйти: <code>/cancel</code> или <code>/start</code>`,
+        bm(lang).supportMessageSentHtml,
       );
     } catch (error: unknown) {
       args.logger.error('Error handling user message:', error);
-      await ctx.reply(BotMessages.supportSendFailedText);
+      await ctx.reply(bm(lang).supportSendFailedText);
     }
   });
 }

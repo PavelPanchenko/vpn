@@ -1,7 +1,9 @@
 import type { TelegramTheme } from '../hooks/useTelegramWebAppUi';
+import type { MiniLang } from '../lib/miniLang';
+import type { mm } from '../lib/miniMessages';
 
-export function MiniAppHeader(props: { theme: TelegramTheme; title: string }) {
-  const { theme, title } = props;
+export function MiniAppHeader(props: { theme: TelegramTheme; lang: MiniLang; m: ReturnType<typeof mm>; title: string }) {
+  const { theme, m, title } = props;
   return (
     <header
       className="shrink-0 pt-12 pb-5 border-b max-w-md mx-auto w-full px-4"
@@ -12,7 +14,7 @@ export function MiniAppHeader(props: { theme: TelegramTheme; title: string }) {
         <div>
           <h1 className="text-2xl font-bold">{title}</h1>
           <p className="text-sm mt-0.5" style={{ color: theme.hint }}>
-            Ваш доступ к VPN и подписке прямо в Telegram.
+            {m.header.subtitle}
           </p>
         </div>
       </div>

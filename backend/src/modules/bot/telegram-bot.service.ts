@@ -7,9 +7,10 @@ import { PaymentsService } from '../payments/payments.service';
 import { SupportService } from '../support/support.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildMainMenuKeyboard } from './keyboards/main-menu.keyboard';
-import { escHtml, fmtDateRu, maskServerHost, planBtnLabel } from './telegram-ui.utils';
+import { escHtml, fmtDateByLang, maskServerHost, planBtnLabel } from './telegram-ui.utils';
 import { scheduleDeleteMessageFromReply } from './delete-after.utils';
-import { BotMessages, PaymentMessages } from './messages/common.messages';
+import { bm, pm } from './messages/common.messages';
+import { botLangFromCtx, botLangFromTelegram, extractTelegramLanguageCode, type BotLang } from './i18n/bot-lang';
 import {
   configLinkHtml as configLinkHtmlFn,
   getConfigData as getConfigDataFn,
@@ -162,11 +163,12 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       // Обработка команды /cancel - выход из режима поддержки
       this.bot.command('cancel', async (ctx: TelegramMessageCtx) => {
         const telegramId = ctx.from.id.toString();
+        const lang = botLangFromCtx(ctx);
+        void this.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
         this.supportModeUsers.delete(telegramId);
         await this.replyHtml(
           ctx,
-          `✅ <b>Режим поддержки выключен</b>\n\n` +
-            `Вернуться в меню: <code>/start</code>`,
+          bm(lang).supportModeCancelledHtml,
         );
       });
 
@@ -184,16 +186,18 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         supportModeUsers: this.supportModeUsers,
         replyHtml: (ctx, html, extra) => this.replyHtml(ctx, html, extra),
         editHtml: (ctx, html, extra) => this.editHtml(ctx, html, extra),
-        sendConfigMessage: (ctx, user, extra) => this.sendConfigMessage(ctx, user, extra),
-        getConfigData: (user) => getConfigDataFn({ user, usersService: this.usersService, logger: this.logger, esc: (s) => this.esc(s) }),
-        configLinkHtml: (url, serverName) => configLinkHtmlFn({ url, serverName, esc: (s) => this.esc(s) }),
-        sendConfigQrPhoto: (ctx, url, serverName) => sendConfigQrPhotoFn({ ctx, url, serverName, esc: (s) => this.esc(s), logger: this.logger }),
+        sendConfigMessage: (ctx, user, lang, extra) => this.sendConfigMessage(ctx, user, lang, extra),
+        getConfigData: (user, lang) =>
+          getConfigDataFn({ user, lang, usersService: this.usersService, logger: this.logger, esc: (s) => this.esc(s) }),
+        configLinkHtml: (url, serverName, lang) => configLinkHtmlFn({ url, serverName, lang, esc: (s) => this.esc(s) }),
+        sendConfigQrPhoto: (ctx, url, serverName, lang) =>
+          sendConfigQrPhotoFn({ ctx, url, serverName, lang, esc: (s) => this.esc(s), logger: this.logger }),
         enableSupportMode: (ctx, telegramId) => this.enableSupportMode(ctx, telegramId),
         showMainMenu: (ctx, user) => this.showMainMenu(ctx, user),
         showMainMenuEdit: (ctx, user) => this.showMainMenuEdit(ctx, user),
-        buildMainMenuKeyboard: (user) => this.buildMainMenuKeyboard(user),
+        buildMainMenuKeyboard: (user, lang) => this.buildMainMenuKeyboard(user, lang),
         esc: (s) => this.esc(s),
-        fmtDate: (d) => this.fmtDate(d),
+        fmtDate: (lang, d) => this.fmtDate(lang, d),
         maskServerHost: (host) => this.maskServerHost(host),
         planBtnLabel: (plan) => this.planBtnLabel(plan),
         getTrialDaysForUser: (userId) => this.getTrialDaysForUser(userId),
@@ -248,8 +252,8 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     return escHtml(s);
   }
 
-  private fmtDate(d: Date): string {
-    return fmtDateRu(d);
+  private fmtDate(lang: BotLang, d: Date): string {
+    return fmtDateByLang(lang, d);
   }
 
   // --- Trial helpers (DRY) ---
@@ -273,10 +277,16 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     return planBtnLabel(plan);
   }
 
-  private async sendConfigMessage(ctx: TelegramMessageCtx, user: UserForConfigMessage, configMessageExtra?: Record<string, unknown>) {
+  private async sendConfigMessage(
+    ctx: TelegramMessageCtx,
+    user: UserForConfigMessage,
+    lang: BotLang,
+    configMessageExtra?: Record<string, unknown>,
+  ) {
     return sendConfigMessage({
       ctx,
       user,
+      lang,
       usersService: this.usersService,
       logger: this.logger,
       replyHtml: (c, html, extra) => this.replyHtml(c, html, extra),
@@ -286,30 +296,62 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async enableSupportMode(ctx: TelegramMessageCtx, telegramId: string) {
+    const lang = botLangFromCtx(ctx);
+    void this.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
     this.supportModeUsers.set(telegramId, true);
     await this.replyHtml(
       ctx,
-      `💬 <b>Поддержка</b>\n\n` +
-        `Напишите ваш вопрос одним сообщением — мы ответим как можно скорее.\n\n` +
-        `Выйти из режима: <code>/cancel</code> или <code>/start</code>`,
+      bm(lang).supportModeIntroHtml,
     );
   }
 
-  private static readonly MAIN_MENU_HTML =
-    `🏠 <b>Главное меню</b>\n<i>Выберите нужное действие кнопками ниже</i>\n\n` +
-    `Информация: /info\n` +
-    `Помощь: /help`;
+  private mainMenuHtml(lang: BotLang): string {
+    if (lang === 'en') {
+      return `🏠 <b>Main menu</b>\n<i>Choose an action using the buttons below</i>\n\n` + `Info: /info\n` + `Help: /help`;
+    }
+    if (lang === 'uk') {
+      return `🏠 <b>Головне меню</b>\n<i>Оберіть дію кнопками нижче</i>\n\n` + `Інформація: /info\n` + `Допомога: /help`;
+    }
+    return `🏠 <b>Главное меню</b>\n<i>Выберите нужное действие кнопками ниже</i>\n\n` + `Информация: /info\n` + `Помощь: /help`;
+  }
 
-  private async buildMainMenuKeyboard(user: { id?: string } | null): Promise<TelegramReplyOptions> {
-    return buildMainMenuKeyboard({ prisma: this.prisma, config: this.config, user });
+  private async langForTelegramId(telegramId: string): Promise<BotLang> {
+    try {
+      const row = await this.prisma.vpnUser.findFirst({
+        where: { telegramId },
+        select: { telegramLanguageCode: true },
+      });
+      return botLangFromTelegram(row?.telegramLanguageCode ?? null);
+    } catch {
+      return 'ru';
+    }
+  }
+
+  private fmtDateTimeForLang(lang: BotLang, d: Date): string {
+    const locale = lang === 'en' ? 'en-GB' : lang === 'uk' ? 'uk-UA' : 'ru-RU';
+    return d.toLocaleString(locale, {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  private async buildMainMenuKeyboard(user: { id?: string } | null, lang: BotLang): Promise<TelegramReplyOptions> {
+    return buildMainMenuKeyboard({ prisma: this.prisma, config: this.config, user, lang });
   }
 
   private async showMainMenu(ctx: TelegramMessageCtx, user: { id: string } & Record<string, unknown>) {
-    await this.replyHtml(ctx, TelegramBotService.MAIN_MENU_HTML, await this.buildMainMenuKeyboard(user));
+    const lang = botLangFromCtx(ctx);
+    void this.usersService.updateTelegramLanguageCodeByTelegramId(ctx.from.id.toString(), extractTelegramLanguageCode(ctx));
+    await this.replyHtml(ctx, this.mainMenuHtml(lang), await this.buildMainMenuKeyboard(user, lang));
   }
 
   private async showMainMenuEdit(ctx: TelegramCallbackCtx, user: { id: string } & Record<string, unknown>) {
-    await this.editHtml(ctx, TelegramBotService.MAIN_MENU_HTML, await this.buildMainMenuKeyboard(user));
+    const lang = botLangFromCtx(ctx);
+    void this.usersService.updateTelegramLanguageCodeByTelegramId(ctx.from.id.toString(), extractTelegramLanguageCode(ctx));
+    await this.editHtml(ctx, this.mainMenuHtml(lang), await this.buildMainMenuKeyboard(user, lang));
   }
 
   /**
@@ -331,10 +373,11 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     // Пытаемся отправить сообщение даже если isRunning=false
     // bot.telegram API может работать, даже если бот не запущен через launch()
     try {
+      const lang = await this.langForTelegramId(telegramId);
       this.logger.log(`Sending support reply to ${telegramId}`);
       await this.bot.telegram.sendMessage(
         telegramId,
-        `💬 <b>Ответ поддержки</b>\n\n${this.esc(message)}`,
+        bm(lang).supportReplyHeaderTemplate.replace('{message}', this.esc(message)),
         { parse_mode: 'HTML', disable_web_page_preview: true },
       );
       this.logger.log(`Support reply sent successfully to ${telegramId}`);
@@ -354,7 +397,8 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     try {
-      const sent = await this.bot.telegram.sendMessage(telegramId, PaymentMessages.paymentSuccessBotText, {
+      const lang = await this.langForTelegramId(telegramId);
+      const sent = await this.bot.telegram.sendMessage(telegramId, pm(lang).paymentSuccessBotText, {
         parse_mode: 'HTML',
         disable_web_page_preview: true,
       });
@@ -373,15 +417,10 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn('Cannot send expiry reminder: bot not initialized');
       return;
     }
-    const dateStr = expiresAt.toLocaleString('ru-RU', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-    const text = BotMessages.expiryReminderTemplate.replace('{date}', this.esc(dateStr));
     try {
+      const lang = await this.langForTelegramId(telegramId);
+      const dateStr = this.fmtDateTimeForLang(lang, expiresAt);
+      const text = bm(lang).expiryReminderTemplate.replace('{date}', this.esc(dateStr));
       await this.bot.telegram.sendMessage(telegramId, text, {
         parse_mode: 'HTML',
         disable_web_page_preview: true,
@@ -400,19 +439,11 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn('Cannot send access days changed: bot not initialized');
       return;
     }
-    const text = expiresAt
-      ? BotMessages.accessDaysChangedTemplate.replace(
-          '{date}',
-          expiresAt.toLocaleString('ru-RU', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-        )
-      : BotMessages.accessDaysRemovedText;
     try {
+      const lang = await this.langForTelegramId(telegramId);
+      const text = expiresAt
+        ? bm(lang).accessDaysChangedTemplate.replace('{date}', this.fmtDateTimeForLang(lang, expiresAt))
+        : bm(lang).accessDaysRemovedText;
       await this.bot.telegram.sendMessage(telegramId, text, {
         parse_mode: 'HTML',
         disable_web_page_preview: true,
