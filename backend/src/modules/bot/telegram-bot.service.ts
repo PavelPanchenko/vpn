@@ -321,7 +321,10 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         where: { telegramId },
         select: { telegramLanguageCode: true },
       });
-      return botLangFromTelegram(row?.telegramLanguageCode ?? null);
+      // Для уведомлений вне контекста чата используем сохранённый language_code.
+      // Если он ещё не сохранён (старые пользователи) — по умолчанию показываем ru (у нас основной язык).
+      if (!row?.telegramLanguageCode) return 'ru';
+      return botLangFromTelegram(row.telegramLanguageCode);
     } catch {
       return 'ru';
     }
