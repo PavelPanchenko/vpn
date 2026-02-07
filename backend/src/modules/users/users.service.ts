@@ -8,7 +8,6 @@ import { SecretBox } from '../../common/crypto/secret-box';
 import { addDaysUtc } from '../../common/utils/date.utils';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { MigratePanelEmailsDto } from './dto/migrate-panel-emails.dto';
 
 /** Единый формат panelEmail: только uuid и serverId. Одинаковый при создании и при поиске. */
 function buildPanelEmail(uuid: string, serverId: string): string {
@@ -57,37 +56,6 @@ export class UsersService {
     private readonly config: ConfigService,
     @Inject('TELEGRAM_NOTIFIER') private readonly telegramBot: TelegramNotifier,
   ) {}
-
-  private async getActiveBotToken(): Promise<string | null> {
-    const cfg = await this.prisma.botConfig.findFirst({ where: { active: true }, orderBy: { createdAt: 'desc' } });
-    if (!cfg) return null;
-    const secret = this.config.get<string>('PANEL_CRED_SECRET') || '';
-    if (!secret) return null;
-    try {
-      return SecretBox.decrypt(cfg.tokenEnc, secret);
-    } catch {
-      return null;
-    }
-  }
-
-  private async tryFetchTelegramUsername(args: { botToken: string | null; telegramId: string }): Promise<string | null> {
-    if (!args.botToken) return null;
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), 7_000);
-    try {
-      const url =
-        `https://api.telegram.org/bot${encodeURIComponent(args.botToken)}/getChat?chat_id=${encodeURIComponent(args.telegramId)}`;
-      const res = await fetch(url, { signal: controller.signal });
-      if (!res.ok) return null;
-      const json = (await res.json()) as any;
-      const username = String(json?.result?.username ?? '').trim();
-      return username ? username : null;
-    } catch {
-      return null;
-    } finally {
-      clearTimeout(t);
-    }
-  }
 
   /**
    * DRY: единая точка поиска пользователя по telegramId.
@@ -743,138 +711,6 @@ export class UsersService {
       });
     });
     return { updated: await this.get(userId), trialCreated: true };
-  }
-
-  async migratePanelEmails(dto: MigratePanelEmailsDto) {
-    const dryRun = dto.dryRun ?? true;
-    const hardLimit = dto.limit ?? null;
-
-    const botToken = await this.getActiveBotToken();
-    const secret = this.config.get<string>('PANEL_CRED_SECRET') || '';
-
-    const serverAuthCache = new Map<string, { cookie?: string; token?: string }>();
-    const usernameCache = new Map<string, string | null>();
-
-    let processed = 0;
-    let renamed = 0;
-    let skipped = 0;
-    let failed = 0;
-
-    const details: Array<{ userServerId: string; oldEmail: string; newEmail: string; action: string; error?: string }> = [];
-
-    let cursor: { id: string } | undefined;
-    while (true) {
-      const take = 200;
-      const batch = await this.prisma.userServer.findMany({
-        take,
-        ...(cursor ? { skip: 1, cursor } : {}),
-        orderBy: { id: 'asc' },
-        include: {
-          server: true,
-          vpnUser: { select: { id: true, uuid: true, telegramId: true, expiresAt: true, status: true, panelEmail: true, serverId: true } },
-        },
-      });
-      if (batch.length === 0) break;
-      cursor = { id: batch[batch.length - 1].id };
-
-      for (const us of batch) {
-        if (hardLimit != null && processed >= hardLimit) break;
-        processed++;
-
-        const user = us.vpnUser as any;
-        const server = us.server as any;
-        const telegramId = String(user?.telegramId ?? '').trim();
-        if (!telegramId) {
-          skipped++;
-          continue;
-        }
-
-        if (!server?.panelBaseUrl || !server?.panelUsername || !server?.panelPasswordEnc || server?.panelInboundId == null) {
-          skipped++;
-          continue;
-        }
-
-        let username: string | null;
-        if (usernameCache.has(telegramId)) {
-          username = usernameCache.get(telegramId)!;
-        } else {
-          username = await this.tryFetchTelegramUsername({ botToken, telegramId });
-          usernameCache.set(telegramId, username);
-        }
-
-        let newEmail = buildReadablePanelEmail({
-          telegramId,
-          telegramUsername: username,
-          uuid: user.uuid,
-          serverId: server.id,
-        });
-
-        const oldEmail = us.panelEmail;
-        if (newEmail === oldEmail) {
-          skipped++;
-          continue;
-        }
-
-        // DB uniqueness guard (на случай коллизий/ручных правок)
-        const exists = await this.prisma.userServer.findUnique({ where: { panelEmail: newEmail } });
-        if (exists && exists.id !== us.id) {
-          const suffix = String(user.uuid).replace(/-/g, '').slice(0, 4);
-          newEmail = newEmail.replace(/^([^@]+)@/, `$1-${suffix}@`);
-        }
-
-        if (dryRun) {
-          renamed++;
-          if (details.length < 50) details.push({ userServerId: us.id, oldEmail, newEmail, action: 'dry_run' });
-          continue;
-        }
-
-        try {
-          let auth = serverAuthCache.get(server.id);
-          if (!auth) {
-            if (!secret) throw new Error('PANEL_CRED_SECRET missing');
-            const panelPassword = SecretBox.decrypt(server.panelPasswordEnc, secret);
-            auth = await this.xui.login(server.panelBaseUrl, server.panelUsername, panelPassword);
-            serverAuthCache.set(server.id, auth);
-          }
-
-          const expiryTime = user.expiresAt ? new Date(user.expiresAt).getTime() : 0;
-          const enable = expiryTime === 0 ? true : expiryTime > Date.now();
-
-          try {
-            await this.xui.updateClient(server.panelBaseUrl, auth, server.panelInboundId, oldEmail, { email: newEmail });
-          } catch (e: any) {
-            const msg = String(e?.message ?? e);
-            if (msg.includes('Client not found')) {
-              // Клиента могли удалить руками — восстановим под новым email, чтобы не ломать выдачу конфига.
-              await this.ensurePanelClient(server, user.uuid, newEmail, {
-                expiryTime: expiryTime > 0 ? expiryTime : undefined,
-                enable,
-              });
-            } else {
-              throw e;
-            }
-          }
-
-          // Обновляем БД только после успешной операции на панели
-          await this.prisma.userServer.update({ where: { id: us.id }, data: { panelEmail: newEmail } });
-          if (user.panelEmail === oldEmail && user.serverId === server.id) {
-            await this.prisma.vpnUser.update({ where: { id: user.id }, data: { panelEmail: newEmail } });
-          }
-
-          renamed++;
-          if (details.length < 50) details.push({ userServerId: us.id, oldEmail, newEmail, action: 'renamed' });
-        } catch (e: any) {
-          failed++;
-          if (details.length < 50) {
-            details.push({ userServerId: us.id, oldEmail, newEmail, action: 'failed', error: String(e?.message ?? e) });
-          }
-        }
-      }
-
-      if (hardLimit != null && processed >= hardLimit) break;
-    }
-
-    return { ok: true, dryRun, processed, renamed, skipped, failed, details };
   }
 
   async activateServer(userId: string, serverId: string) {

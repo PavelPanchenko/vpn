@@ -33,16 +33,6 @@ type UserDetails = VpnUser & {
   subscriptions: Subscription[];
 };
 
-type MigratePanelEmailsResult = {
-  ok: boolean;
-  dryRun: boolean;
-  processed: number;
-  renamed: number;
-  skipped: number;
-  failed: number;
-  details: Array<{ userServerId: string; oldEmail: string; newEmail: string; action: string; error?: string }>;
-};
-
 export function UsersPage() {
   const qc = useQueryClient();
   const PAGE_SIZE = 50;
@@ -52,10 +42,6 @@ export function UsersPage() {
   const [statusFilter, setStatusFilter] = useState<'ALL' | VpnUserStatus>('ALL');
   const [serverFilter, setServerFilter] = useState<string>('ALL');
   const [search, setSearch] = useState('');
-  const [migrateOpen, setMigrateOpen] = useState(false);
-  const [migrateDryRun, setMigrateDryRun] = useState(true);
-  const [migrateLimit, setMigrateLimit] = useState<string>('200');
-  const [migrateResult, setMigrateResult] = useState<MigratePanelEmailsResult | null>(null);
 
   const serversQ = useQuery({
     queryKey: ['servers'],
@@ -108,18 +94,6 @@ export function UsersPage() {
       await qc.invalidateQueries({ queryKey: ['users'] });
     },
     onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to update user')),
-  });
-
-  const migrateM = useMutation({
-    mutationFn: async (payload: { dryRun: boolean; limit?: number }) =>
-      (await api.post<MigratePanelEmailsResult>('/users/migrate-panel-emails', payload)).data,
-    onSuccess: (data) => {
-      setMigrateResult(data);
-      toast.success(data.dryRun ? 'Dry-run completed' : 'Migration completed');
-      // На всякий случай обновим пользователей, т.к. panelEmail меняется в userServers
-      qc.invalidateQueries({ queryKey: ['users'] }).catch(() => {});
-    },
-    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Migration failed')),
   });
 
   const deleteM = useMutation({
@@ -221,7 +195,7 @@ export function UsersPage() {
               </select>
               <input
                 className={[
-                  'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none sm:w-64 md:w-72',
+                  'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none sm:w-56 md:w-60',
                   'placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200',
                 ].join(' ')}
                 placeholder="Search by name / TG"
@@ -232,17 +206,6 @@ export function UsersPage() {
             <div className="flex gap-2 md:flex-nowrap">
               <Button variant="secondary" onClick={() => usersQ.refetch()}>
                 Refresh
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setMigrateDryRun(true);
-                  setMigrateLimit('200');
-                  setMigrateResult(null);
-                  setMigrateOpen(true);
-                }}
-              >
-                Migrate panel emails
               </Button>
               <Button
                 onClick={() => {
@@ -653,109 +616,6 @@ export function UsersPage() {
         <div className="text-sm text-slate-700">
           Удалить пользователя <span className="font-semibold">{deleteTarget?.name}</span>? Это также удалит клиента в панели
           сервера (если он уже был создан).
-        </div>
-      </Modal>
-
-      <Modal
-        open={migrateOpen}
-        title="Migrate panel emails"
-        onClose={() => setMigrateOpen(false)}
-        footer={
-          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-            <Button variant="secondary" type="button" onClick={() => setMigrateOpen(false)}>
-              Close
-            </Button>
-            <Button
-              variant="secondary"
-              type="button"
-              disabled={migrateM.isPending}
-              onClick={() => {
-                const limitNum = migrateLimit.trim() ? Number(migrateLimit) : undefined;
-                migrateM.mutate({
-                  dryRun: true,
-                  limit: Number.isFinite(limitNum as any) ? (limitNum as any) : undefined,
-                });
-              }}
-            >
-              Run dry-run
-            </Button>
-            <Button
-              variant="danger"
-              type="button"
-              disabled={migrateM.isPending}
-              onClick={() => {
-                if (!confirm('Запустить миграцию реально? Это переименует клиентов в панели и обновит panelEmail в БД.')) return;
-                const limitNum = migrateLimit.trim() ? Number(migrateLimit) : undefined;
-                migrateM.mutate({
-                  dryRun: false,
-                  limit: Number.isFinite(limitNum as any) ? (limitNum as any) : undefined,
-                });
-              }}
-            >
-              Run migration
-            </Button>
-          </div>
-        }
-      >
-        <div className="grid gap-3">
-          <div className="text-sm text-slate-700">
-            По умолчанию запускай <b>dry-run</b>: он ничего не меняет, только показывает, что будет переименовано.
-          </div>
-
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={migrateDryRun}
-              onChange={(e) => setMigrateDryRun(e.target.checked)}
-            />
-            Dry-run по умолчанию (для кнопки “Run dry-run”)
-          </label>
-
-          <Input
-            label="Limit (optional)"
-            type="number"
-            value={migrateLimit}
-            onChange={(e) => setMigrateLimit(e.target.value)}
-            hint="Ограничить количество связей user-server (рекомендуется для прогрева). Пусто = без лимита."
-          />
-
-          {migrateResult ? (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800">
-              <div className="font-medium text-slate-900 mb-2">
-                Result ({migrateResult.dryRun ? 'dry-run' : 'real'})
-              </div>
-              <div className="grid gap-1">
-                <div>processed: {migrateResult.processed}</div>
-                <div>renamed: {migrateResult.renamed}</div>
-                <div>skipped: {migrateResult.skipped}</div>
-                <div className={migrateResult.failed ? 'text-red-700' : ''}>failed: {migrateResult.failed}</div>
-              </div>
-              {migrateResult.details?.length ? (
-                <div className="mt-3 overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead className="text-left text-slate-500">
-                      <tr>
-                        <th className="py-1">Action</th>
-                        <th className="py-1">Old</th>
-                        <th className="py-1">New</th>
-                        <th className="py-1">Error</th>
-                      </tr>
-                    </thead>
-                    <tbody className="text-slate-800">
-                      {migrateResult.details.map((d) => (
-                        <tr key={d.userServerId} className="border-t border-slate-200">
-                          <td className="py-1 pr-2 whitespace-nowrap">{d.action}</td>
-                          <td className="py-1 pr-2 font-mono break-all">{d.oldEmail}</td>
-                          <td className="py-1 pr-2 font-mono break-all">{d.newEmail}</td>
-                          <td className="py-1 text-red-700 break-all">{d.error ?? ''}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
         </div>
       </Modal>
     </div>
