@@ -1,8 +1,9 @@
 import { IsBoolean, IsOptional, IsString, IsInt, Min } from 'class-validator';
 
 export class CreatePlanVariantDto {
+  @IsOptional()
   @IsString()
-  code!: string;
+  code?: string;
 
   @IsString()
   currency!: string;

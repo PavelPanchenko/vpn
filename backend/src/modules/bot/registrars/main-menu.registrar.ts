@@ -117,8 +117,19 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
 
       const Markup = await getMarkup();
       const groups = groupPlansByNameAndPeriod(paidPlans);
+      const providersAllowed = await args.paymentIntentsService.getAvailableProvidersForTelegramLanguageCode({
+        telegramLanguageCode: user.telegramLanguageCode ?? null,
+      });
       const buttons = groups.map((g) => [
-        Markup.button.callback(formatPlanGroupButtonLabel(g), `select_plan_${g.representative.id}`),
+        Markup.button.callback(
+          formatPlanGroupButtonLabel(g, {
+            showPlatega: providersAllowed.PLATEGA,
+            showCryptoCloud: providersAllowed.CRYPTOCLOUD,
+            showStars: providersAllowed.TELEGRAM_STARS,
+            cryptoTelegramLanguageCode: user.telegramLanguageCode ?? null,
+          }),
+          `select_plan_${g.representative.id}`,
+        ),
       ]);
       buttons.push([Markup.button.callback(ui(lang).backToMenuBtn, 'back_to_main')]);
 

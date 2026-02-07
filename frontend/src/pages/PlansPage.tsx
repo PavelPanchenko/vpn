@@ -61,7 +61,10 @@ function defaultVariantCode(planCode: string, currency: string) {
 }
 
 function defaultProviderForCurrency(currency: string) {
-  return currency.toUpperCase() === 'XTR' ? 'TELEGRAM_STARS' : 'PLATEGA';
+  const c = currency.toUpperCase();
+  if (c === 'XTR') return 'TELEGRAM_STARS';
+  if (c === 'USD' || c === 'UAH' || c === 'EUR') return 'CRYPTOCLOUD';
+  return 'PLATEGA';
 }
 
 function formatVariantsPrice(variants: Plan['variants'] | undefined) {
@@ -77,6 +80,7 @@ function formatVariantsPrice(variants: Plan['variants'] | undefined) {
 function shortProvider(provider: string) {
   if (provider === 'TELEGRAM_STARS') return 'STARS';
   if (provider === 'PLATEGA') return 'CARD';
+  if (provider === 'CRYPTOCLOUD') return 'CRYPTO';
   return provider;
 }
 
@@ -763,27 +767,25 @@ export function PlansPage() {
                           <span className="font-semibold">{v.currency}</span>{' '}
                           <span className="text-xs text-slate-500 font-mono">{preview}</span>
                         </div>
-                        {v.currency !== 'RUB' ? (
-                          <Button
-                            variant="secondary"
-                            type="button"
-                            onClick={async () => {
-                              if (!confirm(`Удалить вариант ${v.currency}?`)) return;
-                              try {
-                                await api.delete(`/plans/variants/${v.id}`);
-                                toast.success('Вариант удалён');
-                                await qc.invalidateQueries({ queryKey: ['plans'] });
-                                setEditTarget((prev) =>
-                                  prev ? { ...prev, variants: (prev.variants ?? []).filter((x) => x.id !== v.id) } : prev,
-                                );
-                              } catch (err: any) {
-                                toast.error(getApiErrorMessage(err, 'Не удалось удалить вариант'));
-                              }
-                            }}
-                          >
-                            Удалить
-                          </Button>
-                        ) : null}
+                        <Button
+                          variant="secondary"
+                          type="button"
+                          onClick={async () => {
+                            if (!confirm(`Удалить вариант ${v.currency}?`)) return;
+                            try {
+                              await api.delete(`/plans/variants/${v.id}`);
+                              toast.success('Вариант удалён');
+                              await qc.invalidateQueries({ queryKey: ['plans'] });
+                              setEditTarget((prev) =>
+                                prev ? { ...prev, variants: (prev.variants ?? []).filter((x) => x.id !== v.id) } : prev,
+                              );
+                            } catch (err: any) {
+                              toast.error(getApiErrorMessage(err, 'Не удалось удалить вариант'));
+                            }
+                          }}
+                        >
+                          Удалить
+                        </Button>
                       </div>
 
                       <div className="mt-3 grid grid-cols-3 gap-3 items-end">
@@ -809,6 +811,7 @@ export function PlansPage() {
                             }}
                           >
                             <option value="PLATEGA">PLATEGA</option>
+                            <option value="CRYPTOCLOUD">CRYPTOCLOUD</option>
                             <option value="TELEGRAM_STARS">TELEGRAM_STARS</option>
                           </select>
                         </label>

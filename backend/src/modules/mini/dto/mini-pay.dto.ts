@@ -6,7 +6,7 @@ export class MiniPayDto extends MiniInitDataDto {
   variantId!: string;
 
   @IsOptional()
-  @IsIn(['TELEGRAM_STARS', 'PLATEGA'])
-  provider?: 'TELEGRAM_STARS' | 'PLATEGA';
+  @IsIn(['TELEGRAM_STARS', 'PLATEGA', 'CRYPTOCLOUD'])
+  provider?: 'TELEGRAM_STARS' | 'PLATEGA' | 'CRYPTOCLOUD';
 }
 

@@ -139,6 +139,7 @@ export function MiniAppPage() {
             btnTapClass={BTN_TAP}
             lang={controller.lang}
             m={controller.m}
+            paymentProviders={controller.paymentProviders}
             planGroups={controller.planGroups}
             payingPlanKey={controller.payingPlanKey}
             onRefresh={controller.handleLoadPlans}
@@ -167,18 +168,36 @@ export function MiniAppPage() {
         }
         m={controller.m}
         options={[
-          {
-            id: 'TELEGRAM_STARS',
-            title: controller.m.paymentSheet.starsTitle,
-            subtitle: controller.m.paymentSheet.starsSubtitle,
-            badge: 'XTR',
-          },
-          {
-            id: 'PLATEGA',
-            title: controller.m.paymentSheet.cardTitle,
-            subtitle: controller.m.paymentSheet.cardSubtitle,
-            badge: 'RUB',
-          },
+          ...(controller.paymentProviders.TELEGRAM_STARS
+            ? [
+                {
+                  id: 'TELEGRAM_STARS' as const,
+                  title: controller.m.paymentSheet.starsTitle,
+                  subtitle: controller.m.paymentSheet.starsSubtitle,
+                  badge: 'XTR',
+                },
+              ]
+            : []),
+          ...(controller.paymentProviders.PLATEGA
+            ? [
+                {
+                  id: 'PLATEGA' as const,
+                  title: controller.m.paymentSheet.cardTitle,
+                  subtitle: controller.m.paymentSheet.cardSubtitle,
+                  badge: 'RUB',
+                },
+              ]
+            : []),
+          ...(controller.paymentProviders.CRYPTOCLOUD
+            ? [
+                {
+                  id: 'CRYPTOCLOUD' as const,
+                  title: controller.m.paymentSheet.cryptoTitle,
+                  subtitle: controller.m.paymentSheet.cryptoSubtitle,
+                  badge: 'CRYPTO',
+                },
+              ]
+            : []),
         ]}
         onClose={controller.closePaymentSheet}
         onSelect={controller.choosePaymentMethod}

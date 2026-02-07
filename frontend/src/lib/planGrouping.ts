@@ -1,5 +1,6 @@
 import type { MiniPlan } from './miniTypes';
 import { formatPrice } from './formatters';
+import { pickCryptoCloudVariant, pickPlategaVariant, pickStarsVariant, type SimpleLang } from './variantPicking';
 
 export type MiniPlanGroup = {
   key: string;
@@ -14,24 +15,30 @@ function normalizeName(name: string): string {
   return name.trim().toLowerCase();
 }
 
-function pickVariantForExternal(group: MiniPlanGroup): MiniPlan | null {
-  // Приоритет: RUB -> USD -> любой не-XTR
-  return group.variants.find((v) => v.currency === 'RUB') ?? group.variants.find((v) => v.currency === 'USD') ?? group.variants.find((v) => v.currency !== 'XTR') ?? null;
-}
-
-function pickVariantForStars(group: MiniPlanGroup): MiniPlan | null {
-  return group.variants.find((v) => v.currency === 'XTR') ?? null;
-}
-
 export function formatPlanGroupPrice(group: MiniPlanGroup): string {
-  const external = pickVariantForExternal(group);
-  const stars = pickVariantForStars(group);
+  return formatPlanGroupPriceForProviders(group, { TELEGRAM_STARS: true, PLATEGA: true });
+}
+
+export function formatPlanGroupPriceForProviders(
+  group: MiniPlanGroup,
+  providers: { TELEGRAM_STARS: boolean; PLATEGA: boolean; CRYPTOCLOUD?: boolean },
+  opts?: { lang?: SimpleLang },
+): string {
+  const platega = pickPlategaVariant(group.variants);
+  const crypto = pickCryptoCloudVariant(group.variants, opts?.lang);
+  const stars = pickStarsVariant(group.variants);
 
   const parts: string[] = [];
-  if (external) parts.push(formatPrice(external.price, external.currency));
-  if (stars) parts.push(formatPrice(stars.price, stars.currency));
+  if (providers.PLATEGA && platega) parts.push(formatPrice(platega.price, platega.currency));
+  if (providers.CRYPTOCLOUD && crypto) {
+    const cur = String(crypto.currency).toUpperCase();
+    const displayCur = cur === 'USD' ? 'USDT' : crypto.currency;
+    parts.push(formatPrice(crypto.price, displayCur));
+  }
+  if (providers.TELEGRAM_STARS && stars) parts.push(formatPrice(stars.price, stars.currency));
 
-  return parts.join(' | ');
+  // Dedup (if same label appears twice)
+  return Array.from(new Set(parts)).join(' | ');
 }
 
 export function groupPlans(plans: MiniPlan[]): MiniPlanGroup[] {

@@ -2,7 +2,7 @@ import type { TelegramTheme } from '../hooks/useTelegramWebAppUi';
 import type { mm } from '../lib/miniMessages';
 
 export type PaymentMethodOption = {
-  id: 'TELEGRAM_STARS' | 'PLATEGA';
+  id: 'TELEGRAM_STARS' | 'PLATEGA' | 'CRYPTOCLOUD';
   title: string;
   subtitle: string;
   badge?: string;

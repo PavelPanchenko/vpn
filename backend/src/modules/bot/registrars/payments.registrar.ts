@@ -6,7 +6,14 @@ import { getMarkup } from '../telegram-markup.utils';
 import { editOrReplyHtml } from '../telegram-reply.utils';
 import type { TelegramCallbackCtx, TelegramCallbackMatch, TelegramMessageCtx } from '../telegram-runtime.types';
 import { getErrorMessage } from '../telegram-error.utils';
-import { formatPlanGroupButtonLabel, groupPlansByNameAndPeriod } from '../plans/plan-grouping.utils';
+import {
+  formatPlanGroupButtonLabel,
+  groupPlansByNameAndPeriod,
+  pickVariantForCryptoCloudByLang,
+  pickVariantForPlatega,
+  pickVariantForStars,
+} from '../plans/plan-grouping.utils';
+import type { PlanLike } from '../bot-domain.types';
 import { botLangFromCtx, extractTelegramLanguageCode } from '../i18n/bot-lang';
 import { ui } from '../messages/ui.messages';
 
@@ -22,6 +29,10 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
       await args.replyHtml(args2.ctx, bm(lang).userNotFoundUseStartText);
       return;
     }
+
+    const providersAllowed = await args.paymentIntentsService.getAvailableProvidersForTelegramLanguageCode({
+      telegramLanguageCode: user.telegramLanguageCode ?? null,
+    });
 
     const { plans: paidPlans, basePlans } = await getPaidPlansWithFallback({
       userId: user.id,
@@ -41,7 +52,17 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
 
     const Markup = await getMarkup();
     const groups = groupPlansByNameAndPeriod(paidPlans);
-    const buttons = groups.map((g) => [Markup.button.callback(formatPlanGroupButtonLabel(g), `select_plan_${g.representative.id}`)]);
+    const buttons = groups.map((g) => [
+      Markup.button.callback(
+        formatPlanGroupButtonLabel(g, {
+          showPlatega: providersAllowed.PLATEGA,
+          showCryptoCloud: providersAllowed.CRYPTOCLOUD,
+          showStars: providersAllowed.TELEGRAM_STARS,
+          cryptoTelegramLanguageCode: user.telegramLanguageCode ?? null,
+        }),
+        `select_plan_${g.representative.id}`,
+      ),
+    ]);
     buttons.push([Markup.button.callback(ui(lang).backToMenuBtn, 'back_to_main')]);
 
     const text =
@@ -119,28 +140,45 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
         return;
       }
 
-      const variants = (plan as any).variants ?? [];
-      const starsVariant = variants.find((v: any) => v.currency === 'XTR') ?? null;
-      const externalVariant =
-        variants.find((v: any) => v.currency === 'RUB') ?? variants.find((v: any) => v.currency !== 'XTR') ?? null;
+      const variants = (((plan as any) as PlanLike).variants ?? []) as NonNullable<PlanLike['variants']>;
+      const starsVariant = pickVariantForStars(variants) ?? null;
+      const plategaVariant = pickVariantForPlatega(variants) ?? null;
+      const cryptoVariant = pickVariantForCryptoCloudByLang(variants, user.telegramLanguageCode ?? null) ?? null;
 
       const Markup = await getMarkup();
       const methodButtons: Array<Array<ReturnType<typeof Markup.button.callback>>> = [];
 
-      if (starsVariant)
+      const providersAllowed = await args.paymentIntentsService.getAvailableProvidersForTelegramLanguageCode({
+        telegramLanguageCode: user.telegramLanguageCode ?? null,
+      });
+
+      if (starsVariant && providersAllowed.TELEGRAM_STARS)
         methodButtons.push([
           Markup.button.callback(
             `⭐ Stars — ${args.esc(starsVariant.price)} XTR`,
             `pay_with_TELEGRAM_STARS_${starsVariant.id}`,
           ),
         ]);
-      if (externalVariant)
+      if (plategaVariant && providersAllowed.PLATEGA)
         methodButtons.push([
           Markup.button.callback(
             lang === 'en'
-              ? `💳 Card/Instant — ${args.esc(externalVariant.price)} ${args.esc(externalVariant.currency)}`
-              : `💳 Карта/СБП — ${args.esc(externalVariant.price)} ${args.esc(externalVariant.currency)}`,
-            `pay_with_PLATEGA_${externalVariant.id}`,
+              ? `💳 Card/Instant — ${args.esc(plategaVariant.price)} ${args.esc(plategaVariant.currency)}`
+              : `💳 Карта/СБП — ${args.esc(plategaVariant.price)} ${args.esc(plategaVariant.currency)}`,
+            `pay_with_PLATEGA_${plategaVariant.id}`,
+          ),
+        ]);
+      if (cryptoVariant && providersAllowed.CRYPTOCLOUD)
+        methodButtons.push([
+          Markup.button.callback(
+            (() => {
+              const c = String(cryptoVariant.currency ?? '').toUpperCase();
+              const labelCur = c === 'USD' ? 'USDT' : c || cryptoVariant.currency;
+              return lang === 'en'
+                ? `🪙 Crypto — ${args.esc(cryptoVariant.price)} ${args.esc(labelCur)}`
+                : `🪙 Крипто — ${args.esc(cryptoVariant.price)} ${args.esc(labelCur)}`;
+            })(),
+            `pay_with_CRYPTOCLOUD_${cryptoVariant.id}`,
           ),
         ]);
 
@@ -178,9 +216,9 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
 
   // Выбор способа оплаты
   args.bot.action(
-    /^pay_with_(TELEGRAM_STARS|PLATEGA)_(.+)$/,
+    /^pay_with_(TELEGRAM_STARS|PLATEGA|CRYPTOCLOUD)_(.+)$/,
     async (ctx: TelegramCallbackCtx<TelegramCallbackMatch>) => {
-      const provider = ctx.match[1] as 'TELEGRAM_STARS' | 'PLATEGA';
+      const provider = ctx.match[1] as 'TELEGRAM_STARS' | 'PLATEGA' | 'CRYPTOCLOUD';
       const variantId = ctx.match[2];
       const telegramId = ctx.from.id.toString();
       const lang = botLangFromCtx(ctx);
@@ -267,7 +305,7 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
           return;
         }
 
-        // PLATEGA
+        // External providers (PLATEGA / CRYPTOCLOUD)
         if (variant.currency === 'XTR') {
           await editOrReplyHtml(
             ctx,
@@ -281,28 +319,37 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
         const intent = await args.paymentIntentsService.createForVariant({
           vpnUserId: user.id,
           variantId: variant.id,
-          provider: 'PLATEGA',
+          provider,
         });
         if ('type' in intent && intent.type === 'UNSUPPORTED') {
           await editOrReplyHtml(
             ctx,
             lang === 'en'
-              ? `⚠️ External payment is not available yet.\n\n${args.esc(intent.reason)}`
-              : `⚠️ Внешняя оплата пока недоступна.\n\n${args.esc(intent.reason)}`,
+              ? `⚠️ Payment is not available yet.\n\n${args.esc(intent.reason)}`
+              : `⚠️ Оплата пока недоступна.\n\n${args.esc(intent.reason)}`,
           );
           return;
         }
         if (!('paymentUrl' in intent)) {
-          await editOrReplyHtml(ctx, lang === 'en' ? `⚠️ External payment is not available yet.` : `⚠️ Внешняя оплата пока недоступна.`);
+          await editOrReplyHtml(ctx, lang === 'en' ? `⚠️ Payment is not available yet.` : `⚠️ Оплата пока недоступна.`);
           return;
         }
 
         const Markup = await getMarkup();
+        const instructionsHtml =
+          provider === 'PLATEGA'
+            ? pm(lang).plategaInstructionsHtml
+            : lang === 'en'
+              ? `🪙 <b>CryptoCloud</b>\n\nOpen the payment page and complete payment.\n\nAfter payment your subscription activates automatically.`
+              : `🪙 <b>CryptoCloud</b>\n\nОткройте страницу оплаты и завершите платёж.\n\nПосле оплаты подписка активируется автоматически.`;
+        const btnLabel =
+          provider === 'PLATEGA' ? pm(lang).openPaymentButtonLabel : lang === 'en' ? 'Open payment page' : 'Открыть оплату';
+
         const sent = await editOrReplyHtml(
           ctx,
-          pm(lang).plategaInstructionsHtml,
+          instructionsHtml,
           Markup.inlineKeyboard([
-            [Markup.button.url(pm(lang).openPaymentButtonLabel, intent.paymentUrl)],
+            [Markup.button.url(btnLabel, intent.paymentUrl)],
             [Markup.button.callback(lang === 'en' ? '⬅️ Back to plans' : '⬅️ Назад к тарифам', 'pay_back_to_plans')],
             [Markup.button.callback(ui(lang).backToMenuBtn, 'back_to_main')],
           ]),

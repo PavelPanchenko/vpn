@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
+import { defaultProviderForCurrency, defaultVariantCode, normalizeCurrency } from './plan-variant.utils';
 
 @Injectable()
 export class PlansService {
@@ -77,13 +78,18 @@ export class PlansService {
       throw new Error('Plan variants are required');
     }
 
-    const variants = dto.variants.map((v) => ({
-      code: v.code,
-      currency: v.currency,
-      price: v.price,
-      provider: v.provider ?? (v.currency === 'XTR' ? 'TELEGRAM_STARS' : 'PLATEGA'),
-      active: v.active ?? true,
-    }));
+    const variants = dto.variants.map((v) => {
+      const currency = normalizeCurrency(v.currency);
+      const code = String(v.code ?? '').trim() || defaultVariantCode(dto.code, currency);
+      if (!code) throw new Error('Plan variant code is required');
+      return {
+        code,
+        currency,
+        price: v.price,
+        provider: v.provider ?? defaultProviderForCurrency(currency),
+        active: v.active ?? true,
+      };
+    });
 
     const created = await this.prisma.plan.create({
       data: {

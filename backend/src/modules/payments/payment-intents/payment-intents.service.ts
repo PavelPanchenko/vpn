@@ -8,11 +8,16 @@ import { plategaCreateTransaction, type PlategaPaymentStatus } from '../platega/
 import { buildPlategaPayload, verifyPlategaPayload } from '../platega/platega-payload';
 import { buildTelegramStarsInvoicePayload, verifyTelegramStarsInvoicePayload } from '../telegram-stars/telegram-stars.payload';
 import { createTelegramStarsInvoiceLink } from '../telegram-stars/telegram-bot-api';
+import type { CryptoCloudPostbackBody } from '../cryptocloud/cryptocloud-postback';
+import { cryptocloudCreateInvoice, parseCryptoCloudDateUtc } from '../cryptocloud/cryptocloud-api';
+import { isCurrencySupportedByProvider } from '../payment-providers/provider-currency.rules';
+import { normalizeCurrency } from '../../../common/currencies';
 
 type CreateIntentResult =
   | { provider: 'TELEGRAM_STARS'; intentId: string; invoiceLink: string }
   | { provider: 'PLATEGA'; intentId: string; paymentUrl: string }
-  | { provider: 'PLATEGA' | 'TELEGRAM_STARS'; intentId: string; type: 'UNSUPPORTED'; reason: string };
+  | { provider: 'CRYPTOCLOUD'; intentId: string; paymentUrl: string }
+  | { provider: 'PLATEGA' | 'TELEGRAM_STARS' | 'CRYPTOCLOUD'; intentId: string; type: 'UNSUPPORTED'; reason: string };
 
 function parseHhMmSsToMs(v: string | undefined | null): number | null {
   if (!v) return null;
@@ -66,6 +71,104 @@ export class PaymentIntentsService {
     });
   }
 
+  private normalizeLang(code: string | null | undefined): 'ru' | 'en' | 'uk' | null {
+    const v = String(code ?? '').trim().toLowerCase();
+    if (!v) return null;
+    if (v.startsWith('ru')) return 'ru';
+    if (v.startsWith('uk')) return 'uk';
+    if (v.startsWith('en')) return 'en';
+    return null;
+  }
+
+  private async getActivePaymentSettings(): Promise<{
+    paymentsStarsEnabled: boolean;
+    paymentsPlategaEnabled: boolean;
+    paymentsPlategaAllowedLangs: Array<'ru' | 'en' | 'uk'>;
+  }> {
+    const cfg = await this.prisma.botConfig.findFirst({
+      where: { active: true },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        paymentsStarsEnabled: true,
+        paymentsPlategaEnabled: true,
+        paymentsPlategaAllowedLangs: true,
+      },
+    });
+    const langsRaw = (cfg?.paymentsPlategaAllowedLangs ?? ['ru']).map((x) => String(x).trim().toLowerCase());
+    const langs = langsRaw.filter((x) => x === 'ru' || x === 'en' || x === 'uk') as Array<'ru' | 'en' | 'uk'>;
+    return {
+      paymentsStarsEnabled: cfg?.paymentsStarsEnabled ?? true,
+      paymentsPlategaEnabled: cfg?.paymentsPlategaEnabled ?? true,
+      paymentsPlategaAllowedLangs: langs.length ? langs : ['ru'],
+    };
+  }
+
+  private async getActivePaymentMethods(): Promise<
+    Array<{ key: 'TELEGRAM_STARS' | 'PLATEGA' | 'CRYPTOCLOUD'; enabled: boolean; allowedLangs: Array<'ru' | 'en' | 'uk'> }>
+  > {
+    const cfg = await (this.prisma as any).botConfig.findFirst({
+      where: { active: true },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    if (!cfg?.id) return [];
+    const rows = await (this.prisma as any).botPaymentMethod.findMany({
+      where: { botConfigId: cfg.id },
+      orderBy: { key: 'asc' },
+      select: { key: true, enabled: true, allowedLangs: true },
+    });
+    return (rows ?? []).map((r: any) => {
+      const rawKey = String(r.key ?? '').trim().toUpperCase();
+      const key: 'TELEGRAM_STARS' | 'PLATEGA' | 'CRYPTOCLOUD' =
+        rawKey === 'PLATEGA' ? 'PLATEGA' : rawKey === 'CRYPTOCLOUD' ? 'CRYPTOCLOUD' : 'TELEGRAM_STARS';
+      const langsRaw = Array.isArray(r.allowedLangs) ? r.allowedLangs : [];
+      const langs = langsRaw
+        .map((x: any) => String(x).trim().toLowerCase())
+        .filter((x: string) => x === 'ru' || x === 'en' || x === 'uk') as Array<'ru' | 'en' | 'uk'>;
+      return { key, enabled: Boolean(r.enabled), allowedLangs: langs };
+    });
+  }
+
+  private isPlategaAllowedForLang(args: { telegramLanguageCode: string | null; allowedLangs: Array<'ru' | 'en' | 'uk'> }): boolean {
+    const lang = this.normalizeLang(args.telegramLanguageCode);
+    if (!lang) {
+      // Без языка не ломаем существующий UX: разрешаем внешний провайдер.
+      return true;
+    }
+    return args.allowedLangs.includes(lang);
+  }
+
+  async getAvailableProvidersForTelegramLanguageCode(args: { telegramLanguageCode: string | null }): Promise<{
+    TELEGRAM_STARS: boolean;
+    PLATEGA: boolean;
+    CRYPTOCLOUD: boolean;
+  }> {
+    const methods = await this.getActivePaymentMethods();
+    // Если таблица ещё не заполнена — fallback на старые поля BotConfig (совместимость).
+    if (!methods.length) {
+      const s = await this.getActivePaymentSettings();
+      return {
+        TELEGRAM_STARS: Boolean(s.paymentsStarsEnabled),
+        PLATEGA:
+          Boolean(s.paymentsPlategaEnabled) &&
+          this.isPlategaAllowedForLang({ telegramLanguageCode: args.telegramLanguageCode, allowedLangs: s.paymentsPlategaAllowedLangs }),
+        CRYPTOCLOUD: false,
+      };
+    }
+
+    const stars = methods.find((m) => m.key === 'TELEGRAM_STARS') ?? { enabled: true, allowedLangs: [] as any[] };
+    const platega = methods.find((m) => m.key === 'PLATEGA') ?? { enabled: true, allowedLangs: ['ru'] as any };
+    const cc = methods.find((m) => m.key === 'CRYPTOCLOUD') ?? { enabled: false, allowedLangs: [] as any[] };
+    const lang = this.normalizeLang(args.telegramLanguageCode);
+    const plategaAllowed = platega.allowedLangs.length === 0 ? true : lang ? platega.allowedLangs.includes(lang) : true;
+    const ccAllowed = cc.allowedLangs.length === 0 ? true : lang ? cc.allowedLangs.includes(lang) : true;
+    return {
+      TELEGRAM_STARS: Boolean(stars.enabled),
+      PLATEGA: Boolean(platega.enabled) && plategaAllowed,
+      CRYPTOCLOUD: Boolean(cc.enabled) && ccAllowed,
+    };
+  }
+
   /**
    * Create PENDING intent + return checkout details for Mini/Bot.
    * For Stars, caller must provide botToken (because bot token is stored encrypted in DB).
@@ -73,7 +176,7 @@ export class PaymentIntentsService {
   async createForVariant(args: {
     vpnUserId: string;
     variantId: string;
-    provider?: 'TELEGRAM_STARS' | 'PLATEGA';
+    provider?: 'TELEGRAM_STARS' | 'PLATEGA' | 'CRYPTOCLOUD';
     botToken?: string; // required for TELEGRAM_STARS invoice creation
   }): Promise<CreateIntentResult> {
     const user = await this.prisma.vpnUser.findUnique({ where: { id: args.vpnUserId } });
@@ -88,15 +191,35 @@ export class PaymentIntentsService {
       return { provider: 'PLATEGA', intentId: 'n/a', type: 'UNSUPPORTED', reason: 'Plan variant is not available' };
     }
 
-    const provider =
-      args.provider ??
-      (String(variant.provider || '').toUpperCase() === 'TELEGRAM_STARS' ? 'TELEGRAM_STARS' : 'PLATEGA');
+    const provider = (args.provider ??
+      (String(variant.provider || '').toUpperCase() === 'TELEGRAM_STARS'
+        ? 'TELEGRAM_STARS'
+        : String(variant.provider || '').toUpperCase() === 'CRYPTOCLOUD'
+          ? 'CRYPTOCLOUD'
+          : 'PLATEGA')) as 'TELEGRAM_STARS' | 'PLATEGA' | 'CRYPTOCLOUD';
+
+    const allowed = await this.getAvailableProvidersForTelegramLanguageCode({
+      telegramLanguageCode: (user as any).telegramLanguageCode ?? null,
+    });
+    if (provider === 'TELEGRAM_STARS' && !allowed.TELEGRAM_STARS) {
+      return { provider: 'TELEGRAM_STARS', intentId: 'n/a', type: 'UNSUPPORTED', reason: 'Payment method is disabled' };
+    }
+    if (provider === 'PLATEGA' && !allowed.PLATEGA) {
+      return { provider: 'PLATEGA', intentId: 'n/a', type: 'UNSUPPORTED', reason: 'Payment method is not available for your language' };
+    }
+    if (provider === 'CRYPTOCLOUD' && !allowed.CRYPTOCLOUD) {
+      return { provider: 'CRYPTOCLOUD', intentId: 'n/a', type: 'UNSUPPORTED', reason: 'Payment method is disabled' };
+    }
 
     if (provider === 'TELEGRAM_STARS' && String(variant.currency) !== 'XTR') {
       return { provider: 'TELEGRAM_STARS', intentId: 'n/a', type: 'UNSUPPORTED', reason: 'Variant is not XTR' };
     }
-    if (provider === 'PLATEGA' && String(variant.currency) === 'XTR') {
-      return { provider: 'PLATEGA', intentId: 'n/a', type: 'UNSUPPORTED', reason: 'Variant is XTR' };
+    if ((provider === 'PLATEGA' || provider === 'CRYPTOCLOUD') && String(variant.currency) === 'XTR') {
+      return { provider, intentId: 'n/a', type: 'UNSUPPORTED', reason: 'Variant is XTR' };
+    }
+    const currency = normalizeCurrency(variant.currency);
+    if (!isCurrencySupportedByProvider({ provider, currency })) {
+      return { provider, intentId: 'n/a', type: 'UNSUPPORTED', reason: `Provider does not support currency ${currency}` };
     }
 
     const created = await (this.prisma as any).paymentIntent.create({
@@ -110,6 +233,50 @@ export class PaymentIntentsService {
         status: 'PENDING',
       },
     });
+
+    // CryptoCloud
+    if (provider === 'CRYPTOCLOUD') {
+      const shopId = (this.config.get<string>('CRYPTOCLOUD_SHOP_ID') || '').trim();
+      if (!shopId) return { provider: 'CRYPTOCLOUD', intentId: created.id, type: 'UNSUPPORTED', reason: 'CRYPTOCLOUD_SHOP_ID is not configured' };
+
+      const locale = this.normalizeLang((user as any).telegramLanguageCode ?? null) === 'en' ? 'en' : 'ru';
+      let resp: Awaited<ReturnType<typeof cryptocloudCreateInvoice>>;
+      try {
+        resp = await cryptocloudCreateInvoice({
+          config: this.config,
+          locale,
+          body: {
+            shop_id: shopId,
+            amount: Number(variant.price),
+            currency: currency || undefined,
+            order_id: String(created.id),
+          },
+        });
+      } catch (e: unknown) {
+        await (this.prisma as any).paymentIntent.update({ where: { id: created.id }, data: { status: 'CANCELED' } });
+        const msg = e instanceof Error ? e.message : String(e);
+        return { provider: 'CRYPTOCLOUD', intentId: created.id, type: 'UNSUPPORTED', reason: msg };
+      }
+
+      if (!resp || resp.status !== 'success' || !resp.result?.link) {
+        await (this.prisma as any).paymentIntent.update({ where: { id: created.id }, data: { status: 'CANCELED' } });
+        return { provider: 'CRYPTOCLOUD', intentId: created.id, type: 'UNSUPPORTED', reason: 'CryptoCloud invoice creation failed' };
+      }
+
+      const externalId = String(resp.result.uuid || resp.result.invoice_id || '').trim() || null;
+      const expiresAt = parseCryptoCloudDateUtc(resp.result.expiry_date) ?? new Date(Date.now() + 24 * 60 * 60_000);
+
+      await (this.prisma as any).paymentIntent.update({
+        where: { id: created.id },
+        data: {
+          externalId,
+          checkoutUrl: String(resp.result.link),
+          expiresAt,
+        },
+      });
+
+      return { provider: 'CRYPTOCLOUD', intentId: created.id, paymentUrl: String(resp.result.link) };
+    }
 
     // Platega
     if (provider === 'PLATEGA') {
@@ -339,6 +506,96 @@ export class PaymentIntentsService {
       await this.prisma.vpnUser.update({ where: { id: intent.vpnUserId }, data: { firstPaidAt: payment.createdAt } });
     }
 
+    const telegramId = u?.telegramId ? String(u.telegramId) : undefined;
+    return { ok: true, telegramId };
+  }
+
+  async handleCryptoCloudPostback(args: { body: CryptoCloudPostbackBody }) {
+    const invoiceId = String(args.body?.invoice_id ?? '').trim();
+    const orderId = String(args.body?.order_id ?? '').trim();
+    const invoiceUuid = String((args.body as any)?.invoice_info?.uuid ?? '').trim();
+
+    // Prefer mapping by our own order_id (we plan to set it to intent.id when creating invoice).
+    const intent =
+      (orderId
+        ? await (this.prisma as any).paymentIntent.findUnique({ where: { id: orderId } })
+        : null) ??
+      (invoiceId
+        ? await (this.prisma as any).paymentIntent.findFirst({ where: { externalId: invoiceId } })
+        : null) ??
+      (invoiceUuid
+        ? await (this.prisma as any).paymentIntent.findFirst({ where: { externalId: invoiceUuid } })
+        : null);
+
+    if (!intent) {
+      // unknown invoice — acknowledge to stop retries
+      return { ok: true, ignored: true as const };
+    }
+    if (String(intent.provider) !== 'CRYPTOCLOUD') {
+      return { ok: true, ignored: true as const };
+    }
+
+    // POSTBACK is sent after successful payment. Still, be defensive.
+    const status = String(args.body?.status ?? '').toLowerCase();
+    if (status && status !== 'success') {
+      return { ok: true, ignored: true as const };
+    }
+
+    if (intent.status === 'PAID') return { ok: true };
+
+    // idempotent paymentId: prefer UUID if present, else invoice_id, else intent.id
+    const paymentId = invoiceUuid || invoiceId || intent.id;
+
+    const payment = await this.prisma.payment.upsert({
+      where: { id: String(paymentId) },
+      update: { status: 'PAID', paymentIntentId: intent.id },
+      create: {
+        id: String(paymentId),
+        vpnUserId: intent.vpnUserId,
+        planId: intent.planId,
+        paymentIntentId: intent.id,
+        amount: intent.amount,
+        currency: intent.currency,
+        planPriceAtPurchase: intent.amount,
+        status: 'PAID',
+      },
+    });
+
+    await (this.prisma as any).paymentIntent.update({
+      where: { id: intent.id },
+      data: { status: 'PAID', externalId: invoiceId || invoiceUuid || intent.externalId || null },
+    });
+
+    // subscription idempotent by paymentId unique
+    const existingSubscription = await this.prisma.subscription.findUnique({ where: { paymentId: payment.id } });
+    if (!existingSubscription) {
+      const plan = await this.prisma.plan.findUnique({ where: { id: intent.planId } });
+      if (plan) {
+        const now = new Date();
+        let startsAt = now;
+        const activeSubscription = await this.prisma.subscription.findFirst({
+          where: { vpnUserId: intent.vpnUserId, active: true },
+          orderBy: { endsAt: 'desc' },
+        });
+        if (activeSubscription && activeSubscription.endsAt > now) startsAt = activeSubscription.endsAt;
+        try {
+          await this.subscriptions.create({
+            vpnUserId: intent.vpnUserId,
+            paymentId: payment.id,
+            planId: plan.id,
+            periodDays: plan.periodDays,
+            startsAt: startsAt.toISOString(),
+          });
+        } catch {
+          // ignore unique races
+        }
+      }
+    }
+
+    const u = await this.prisma.vpnUser.findUnique({ where: { id: intent.vpnUserId } });
+    if (u && !u.firstPaidAt) {
+      await this.prisma.vpnUser.update({ where: { id: intent.vpnUserId }, data: { firstPaidAt: payment.createdAt } });
+    }
     const telegramId = u?.telegramId ? String(u.telegramId) : undefined;
     return { ok: true, telegramId };
   }

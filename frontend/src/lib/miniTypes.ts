@@ -45,7 +45,7 @@ export type MiniPayResponse =
       invoiceLink: string;
     }
   | {
-      provider: 'PLATEGA';
+      provider: 'PLATEGA' | 'CRYPTOCLOUD';
       paymentUrl: string;
     }
   | {

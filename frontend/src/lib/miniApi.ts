@@ -34,7 +34,7 @@ export async function payMiniPlan(initData: string, variantId: string): Promise<
 export async function payMiniPlanWithProvider(
   initData: string,
   variantId: string,
-  provider: 'TELEGRAM_STARS' | 'PLATEGA',
+  provider: 'TELEGRAM_STARS' | 'PLATEGA' | 'CRYPTOCLOUD',
 ): Promise<MiniPayResponse> {
   const res = await api.post<MiniPayResponse>('/mini/pay', { initData, variantId, provider });
   return res.data;
