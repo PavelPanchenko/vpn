@@ -6,8 +6,14 @@ export function formatTraffic(bytes: number): string {
 }
 
 export function formatPrice(price: number, currency: string): string {
-  if (currency === 'RUB') return `${price} ₽`;
-  if (currency === 'XTR') return `${price} ⭐`;
-  return `${price} ${currency}`;
+  const c = String(currency ?? '').toUpperCase();
+  if (c === 'RUB') return `${price} ₽`;
+  if (c === 'UAH') return `${price} ₴`;
+  if (c === 'USD') return `${price} $`;
+  if (c === 'EUR') return `${price} €`;
+  if (c === 'GBP') return `${price} £`;
+  if (c === 'XTR') return `${price} ⭐`;
+  if (c === 'USDT') return `${price} USDT`;
+  return `${price} ${c}`;
 }
 

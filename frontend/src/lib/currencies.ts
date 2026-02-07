@@ -1,4 +1,63 @@
-export type CurrencyCode = 'RUB' | 'USD' | 'XTR';
+export const CURRENCY_CODES = [
+  // fiat (CryptoCloud invoice currency list, + запас)
+  'USD',
+  'UAH',
+  'EUR',
+  'GBP',
+  'RUB',
+  'KZT',
+  'UZS',
+  'KGS',
+  'AMD',
+  'AZN',
+  'BYN',
+  'AUD',
+  'TRY',
+  'AED',
+  'CAD',
+  'CNY',
+  'HKD',
+  'IDR',
+  'INR',
+  'JPY',
+  'PHP',
+  'SGD',
+  'THB',
+  'VND',
+  'MYR',
+  // internal Telegram currency
+  'XTR',
+] as const;
 
-export const CURRENCY_CODES: CurrencyCode[] = ['RUB', 'USD', 'XTR'];
+export type CurrencyCode = (typeof CURRENCY_CODES)[number];
+
+export const CURRENCY_META: Record<CurrencyCode, { symbol?: string; name: string }> = {
+  USD: { symbol: '$', name: 'US Dollar' },
+  UAH: { symbol: '₴', name: 'Ukrainian Hryvnia' },
+  EUR: { symbol: '€', name: 'Euro' },
+  GBP: { symbol: '£', name: 'British Pound' },
+  RUB: { symbol: '₽', name: 'Russian Ruble' },
+  KZT: { name: 'Kazakhstani Tenge' },
+  UZS: { name: 'Uzbekistani Som' },
+  KGS: { name: 'Kyrgyzstani Som' },
+  AMD: { name: 'Armenian Dram' },
+  AZN: { name: 'Azerbaijani Manat' },
+  BYN: { name: 'Belarusian Ruble' },
+  AUD: { symbol: 'A$', name: 'Australian Dollar' },
+  TRY: { symbol: '₺', name: 'Turkish Lira' },
+  AED: { name: 'UAE Dirham' },
+  CAD: { symbol: 'C$', name: 'Canadian Dollar' },
+  CNY: { symbol: '¥', name: 'Chinese Yuan' },
+  HKD: { symbol: 'HK$', name: 'Hong Kong Dollar' },
+  IDR: { name: 'Indonesian Rupiah' },
+  INR: { symbol: '₹', name: 'Indian Rupee' },
+  JPY: { symbol: '¥', name: 'Japanese Yen' },
+  PHP: { symbol: '₱', name: 'Philippine Peso' },
+  SGD: { symbol: 'S$', name: 'Singapore Dollar' },
+  THB: { symbol: '฿', name: 'Thai Baht' },
+  VND: { symbol: '₫', name: 'Vietnamese Dong' },
+  MYR: { symbol: 'RM', name: 'Malaysian Ringgit' },
+  XTR: { symbol: '⭐', name: 'Telegram Stars' },
+};
+
 

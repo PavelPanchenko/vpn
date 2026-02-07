@@ -18,6 +18,45 @@ function formatPriceShort(price: number, currency: string): string {
   return `${price} ${currency}`;
 }
 
+function pickByPriority<T extends { currency: string }>(variants: T[], priority: string[], exclude?: string[]): T | null {
+  const excluded = new Set((exclude ?? []).map((x) => String(x).toUpperCase()));
+  for (const code of priority) {
+    const v = variants.find((x) => String(x.currency).toUpperCase() === String(code).toUpperCase());
+    if (v) return v;
+  }
+  // fallback: any non-XTR
+  return (
+    variants.find((v) => {
+      const c = String(v.currency).toUpperCase();
+      return c !== 'XTR' && !excluded.has(c);
+    }) ?? null
+  );
+}
+
+export function pickVariantForPlatega<T extends { currency: string }>(variants: T[]): T | null {
+  // PLATEGA (карта/СБП) показываем только если есть RUB-вариант
+  return variants.find((v) => String(v.currency).toUpperCase() === 'RUB') ?? null;
+}
+
+export function pickVariantForCryptoCloud<T extends { currency: string }>(variants: T[]): T | null {
+  return pickVariantForCryptoCloudByLang(variants, null);
+}
+
+export function pickVariantForCryptoCloudByLang<T extends { currency: string }>(
+  variants: T[],
+  telegramLanguageCode: string | null | undefined,
+): T | null {
+  const lang = String(telegramLanguageCode ?? '').toLowerCase();
+  // uk -> prefer UAH, others -> prefer USD
+  const priority = lang.startsWith('uk') ? ['UAH', 'USD', 'EUR'] : ['USD', 'EUR', 'UAH'];
+  // Приоритет: приоритетные -> любой non-XTR, но не RUB (RUB оставляем для PLATEGA)
+  return pickByPriority(variants, priority, ['RUB']);
+}
+
+export function pickVariantForStars<T extends { currency: string }>(variants: T[]): T | null {
+  return variants.find((v) => v.currency === 'XTR') ?? null;
+}
+
 export function groupPlansByNameAndPeriod(plans: PlanLike[]): PlanGroup[] {
   const map = new Map<string, Omit<PlanGroup, 'representative'>>();
 
@@ -52,12 +91,23 @@ export function groupPlansByNameAndPeriod(plans: PlanLike[]): PlanGroup[] {
   return groups;
 }
 
-export function formatPlanGroupButtonLabel(group: PlanGroup): string {
+export function formatPlanGroupButtonLabel(
+  group: PlanGroup,
+  opts?: { showPlatega?: boolean; showCryptoCloud?: boolean; showStars?: boolean; cryptoTelegramLanguageCode?: string | null },
+): string {
+  const showPlatega = opts?.showPlatega ?? true;
+  const showCryptoCloud = opts?.showCryptoCloud ?? true;
+  const showStars = opts?.showStars ?? true;
   const plan = group.representative;
   const variants = plan.variants ?? [];
-  const nonXtr = variants.find((v) => v.currency !== 'XTR');
-  const stars = variants.find((v) => v.currency === 'XTR');
-  const prices = [nonXtr, stars]
+  const platega = showPlatega ? pickVariantForPlatega(variants as any) : null;
+  const crypto = showCryptoCloud ? pickVariantForCryptoCloudByLang(variants as any, opts?.cryptoTelegramLanguageCode ?? null) : null;
+  const stars = showStars ? pickVariantForStars(variants as any) : null;
+  // Для UX: если валюта USD — показываем как USDT
+  const cryptoDisplay = crypto
+    ? ({ ...(crypto as any), currency: String((crypto as any).currency).toUpperCase() === 'USD' ? 'USDT' : (crypto as any).currency } as any)
+    : null;
+  const prices = [platega, cryptoDisplay, stars]
     .filter(Boolean)
     .map((v) => formatPriceShort((v as any).price, (v as any).currency))
     .join(' | ');

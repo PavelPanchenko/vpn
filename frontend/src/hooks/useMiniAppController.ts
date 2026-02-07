@@ -17,6 +17,7 @@ import type { TelegramWebApp } from '../lib/telegramWebAppTypes';
 import { groupPlans, type MiniPlanGroup } from '../lib/planGrouping';
 import { extractMiniLanguageCode, miniLangFromTelegram, type MiniLang } from '../lib/miniLang';
 import { mm } from '../lib/miniMessages';
+import { pickCryptoCloudVariant, pickPlategaVariant } from '../lib/variantPicking';
 
 function getInitDataFromUrl(): string {
   try {
@@ -93,6 +94,7 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
     supportEmail?: string | null;
     supportTelegram?: string | null;
     siteUrl?: string | null;
+    paymentMethods?: Array<{ key: string; enabled: boolean; allowedLangs: string[] }>;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [fatalError, setFatalError] = useState<string | null>(null);
@@ -118,6 +120,20 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
     () => (selectedPlanGroupKey ? planGroups.find((g) => g.key === selectedPlanGroupKey) ?? null : null),
     [planGroups, selectedPlanGroupKey],
   );
+
+  const paymentProviders = useMemo(() => {
+    const methods = publicMeta?.paymentMethods ?? [];
+    const stars = methods.find((m) => m.key === 'TELEGRAM_STARS');
+    const platega = methods.find((m) => m.key === 'PLATEGA');
+    const cc = methods.find((m) => m.key === 'CRYPTOCLOUD');
+    const starsEnabled = stars ? Boolean(stars.enabled) : true;
+    const plategaEnabled = platega ? Boolean(platega.enabled) : true;
+    const ccEnabled = cc ? Boolean(cc.enabled) : false;
+    const allowed = platega?.allowedLangs ?? ['ru'];
+    const plategaAllowed = allowed.length === 0 ? true : allowed.includes(lang);
+    const ccAllowed = (cc?.allowedLangs ?? []).length === 0 ? true : (cc?.allowedLangs ?? []).includes(lang);
+    return { TELEGRAM_STARS: starsEnabled, PLATEGA: plategaEnabled && plategaAllowed, CRYPTOCLOUD: ccEnabled && ccAllowed };
+  }, [publicMeta, lang]);
 
   useEffect(() => {
     const code = extractMiniLanguageCode({ tg, initData });
@@ -222,6 +238,9 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
         supportEmail?: string | null;
         supportTelegram?: string | null;
         siteUrl?: string | null;
+        paymentsStarsEnabled?: boolean;
+        paymentsPlategaEnabled?: boolean;
+        paymentsPlategaAllowedLangs?: string[];
       }>('/public/meta')
       .then((r) => {
         setAppName(r.data?.botName ?? null);
@@ -413,7 +432,7 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
   }, [initData]);
 
   const handlePay = useCallback(
-    async (variantId: string, provider: 'TELEGRAM_STARS' | 'PLATEGA', payingKey: string) => {
+    async (variantId: string, provider: 'TELEGRAM_STARS' | 'PLATEGA' | 'CRYPTOCLOUD', payingKey: string) => {
       if (!initData) {
         setToast({ type: 'error', message: m.toasts.sessionExpired });
         return;
@@ -485,13 +504,15 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
   const closePaymentSheet = useCallback(() => setPaymentSheetOpen(false), []);
 
   const choosePaymentMethod = useCallback(
-    async (provider: 'TELEGRAM_STARS' | 'PLATEGA') => {
+    async (provider: 'TELEGRAM_STARS' | 'PLATEGA' | 'CRYPTOCLOUD') => {
       if (!selectedPlanGroup) return;
 
       const variant =
         provider === 'TELEGRAM_STARS'
           ? selectedPlanGroup.variants.find((v) => v.currency === 'XTR')
-          : selectedPlanGroup.variants.find((v) => v.currency !== 'XTR');
+          : provider === 'CRYPTOCLOUD'
+            ? pickCryptoCloudVariant(selectedPlanGroup.variants, lang)
+            : pickPlategaVariant(selectedPlanGroup.variants);
 
       if (!variant) {
         setToast({ type: 'error', message: m.toasts.paymentMethodUnavailable });
@@ -529,6 +550,7 @@ export function useMiniAppController(args: { tg: TelegramWebApp | undefined }) {
     // i18n
     lang,
     m,
+    paymentProviders,
 
     // ui state
     appName,

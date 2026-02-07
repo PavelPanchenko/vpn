@@ -44,7 +44,7 @@ export class MiniController {
    * Основано на официальной документации:
    * https://core.telegram.org/bots/webapps#validating-data-received-via-the-web-app
    */
-  private async validateInitData(initData: string): Promise<{ telegramId: string; name: string }> {
+  private async validateInitData(initData: string): Promise<{ telegramId: string; name: string; languageCode: string | null }> {
     if (!initData) {
       throw new UnauthorizedException('Missing initData');
     }
@@ -63,7 +63,7 @@ export class MiniController {
       if (!user) {
         throw new UnauthorizedException('User not found');
       }
-      return { telegramId, name: user.name || 'User' };
+      return { telegramId, name: user.name || 'User', languageCode: user.telegramLanguageCode ?? null };
     }
 
     const params = new URLSearchParams(initData);
@@ -125,7 +125,9 @@ export class MiniController {
       userObj.username ||
       (userObj.last_name ? `${userObj.first_name} ${userObj.last_name}` : 'User');
 
-    return { telegramId, name };
+    const languageCode = userObj.language_code ? String(userObj.language_code) : null;
+
+    return { telegramId, name, languageCode };
   }
 
   private signBrowserInitData(args: { telegramId: string; expiresAtMs: number }): string {
@@ -293,7 +295,8 @@ export class MiniController {
 
   @Post('auth')
   async auth(@Body() dto: MiniInitDataDto) {
-    const { telegramId, name } = await this.validateInitData(dto.initData);
+    const { telegramId, name, languageCode } = await this.validateInitData(dto.initData);
+    void this.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, languageCode);
 
     const user = await this.getOrCreateUser(telegramId, name);
 
@@ -308,7 +311,8 @@ export class MiniController {
 
   @Post('status')
   async status(@Body() dto: MiniInitDataDto) {
-    const { telegramId, name } = await this.validateInitData(dto.initData);
+    const { telegramId, name, languageCode } = await this.validateInitData(dto.initData);
+    void this.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, languageCode);
     const user = await this.getOrCreateUser(telegramId, name);
     // DRY: синхронизируем expiresAt по активной подписке перед расчётом daysLeft/прогресса
     const synced = await this.usersService.syncExpiresAtWithActiveSubscription(user.id);
@@ -326,7 +330,8 @@ export class MiniController {
 
   @Post('servers')
   async servers(@Body() dto: MiniInitDataDto) {
-    const { telegramId, name } = await this.validateInitData(dto.initData);
+    const { telegramId, name, languageCode } = await this.validateInitData(dto.initData);
+    void this.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, languageCode);
     await this.getOrCreateUser(telegramId, name);
 
     const all = await this.serversService.list();
@@ -349,7 +354,8 @@ export class MiniController {
 
   @Post('activate')
   async activate(@Body() dto: MiniActivateServerDto) {
-    const { telegramId, name } = await this.validateInitData(dto.initData);
+    const { telegramId, name, languageCode } = await this.validateInitData(dto.initData);
+    void this.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, languageCode);
     const user = await this.getOrCreateUser(telegramId, name);
 
     // 1) если сервер уже добавлен — просто активируем (без изменения подписки)
@@ -376,7 +382,8 @@ export class MiniController {
 
   @Post('config')
   async config(@Body() dto: MiniInitDataDto) {
-    const { telegramId } = await this.validateInitData(dto.initData);
+    const { telegramId, languageCode } = await this.validateInitData(dto.initData);
+    void this.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, languageCode);
     const user = await this.requireUserByTelegramId(telegramId);
 
     const configResult = await this.usersService.getConfig(user.id);
@@ -390,7 +397,8 @@ export class MiniController {
 
   @Post('plans')
   async plans(@Body() dto: MiniInitDataDto) {
-    const { telegramId, name } = await this.validateInitData(dto.initData);
+    const { telegramId, name, languageCode } = await this.validateInitData(dto.initData);
+    void this.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, languageCode);
     const user = await this.getOrCreateUser(telegramId, name);
     const plans = await this.plansService.list(user.id);
 
@@ -426,7 +434,8 @@ export class MiniController {
 
   @Post('pay')
   async pay(@Body() dto: MiniPayDto) {
-    const { telegramId } = await this.validateInitData(dto.initData);
+    const { telegramId, languageCode } = await this.validateInitData(dto.initData);
+    void this.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, languageCode);
     const user = await this.requireUserByTelegramId(telegramId);
 
     const botToken = dto.provider === 'TELEGRAM_STARS' ? await this.botService.getToken() : null;
@@ -444,7 +453,7 @@ export class MiniController {
       return { provider: 'TELEGRAM_STARS', invoiceLink: res.invoiceLink };
     }
     if ('paymentUrl' in res) {
-      return { provider: 'PLATEGA', paymentUrl: res.paymentUrl };
+      return { provider: (dto.provider ?? 'PLATEGA') as any, paymentUrl: res.paymentUrl };
     }
     throw new BadRequestException('Payment provider is not available');
   }

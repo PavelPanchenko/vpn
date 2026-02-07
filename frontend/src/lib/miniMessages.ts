@@ -160,6 +160,8 @@ export function mm(lang: MiniLang) {
       starsSubtitle: isEn ? 'Pay inside Telegram' : isUk ? 'Оплата всередині Telegram' : 'Оплата внутри Telegram',
       cardTitle: isEn ? 'Card / Instant' : isUk ? 'Картка / СБП' : 'Карта / СБП',
       cardSubtitle: isEn ? 'Open payment page' : isUk ? 'Перехід на сторінку оплати' : 'Переход на страницу оплаты',
+      cryptoTitle: isEn ? 'Crypto' : isUk ? 'Крипто' : 'Крипто',
+      cryptoSubtitle: isEn ? 'Pay via CryptoCloud' : isUk ? 'Оплата через CryptoCloud' : 'Оплата через CryptoCloud',
     },
     browserLogin: {
       intro: isEn

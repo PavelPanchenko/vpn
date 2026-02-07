@@ -52,6 +52,7 @@ enum PaymentIntentStatus {
 enum PaymentProvider {
   TELEGRAM_STARS
   PLATEGA
+  CRYPTOCLOUD
 }
 
 enum SupportMessageType {
@@ -318,7 +319,33 @@ model BotConfig {
   updatedAt DateTime @updatedAt
   useMiniApp Boolean @default(false)
 
+  // Payments visibility/availability (bot + mini app)
+  paymentsStarsEnabled  Boolean  @default(true)
+  paymentsPlategaEnabled Boolean @default(true)
+  // Allowed Telegram languages (e.g. ["ru"]) for showing/external payments.
+  paymentsPlategaAllowedLangs String[] @default(["ru"])
+
+  paymentMethods BotPaymentMethod[]
+
   @@map("bot_config")
+}
+
+model BotPaymentMethod {
+  id          String   @id @default(cuid())
+  botConfigId String
+  // Provider key (e.g. TELEGRAM_STARS, PLATEGA).
+  key         String
+  enabled     Boolean  @default(true)
+  // Allowed Telegram languages (['ru','en','uk']); empty => all languages.
+  allowedLangs String[] @default([])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  botConfig   BotConfig @relation(fields: [botConfigId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([botConfigId, key])
+  @@index([botConfigId])
+  @@map("bot_payment_methods")
 }
 
 model BrowserLoginSession {

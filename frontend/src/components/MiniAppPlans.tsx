@@ -1,6 +1,6 @@
 import type { TelegramTheme } from '../hooks/useTelegramWebAppUi';
 import type { MiniPlanGroup } from '../lib/planGrouping';
-import { formatPlanGroupPrice } from '../lib/planGrouping';
+import { formatPlanGroupPriceForProviders } from '../lib/planGrouping';
 import type { MiniLang } from '../lib/miniLang';
 import type { mm } from '../lib/miniMessages';
 
@@ -9,13 +9,14 @@ export function MiniAppPlans(props: {
   btnTapClass: string;
   lang: MiniLang;
   m: ReturnType<typeof mm>;
+  paymentProviders: { TELEGRAM_STARS: boolean; PLATEGA: boolean; CRYPTOCLOUD: boolean };
   planGroups: MiniPlanGroup[];
   payingPlanKey: string | null;
   onRefresh: () => void;
   onBack: () => void;
   onSelectPlan: (groupKey: string) => void;
 }) {
-  const { theme, btnTapClass, lang, m, planGroups, payingPlanKey, onRefresh, onBack, onSelectPlan } = props;
+  const { theme, btnTapClass, lang, m, paymentProviders, planGroups, payingPlanKey, onRefresh, onBack, onSelectPlan } = props;
 
   return (
     <section
@@ -42,8 +43,9 @@ export function MiniAppPlans(props: {
         <div className="space-y-4">
           {planGroups.map((g) => {
             const isTop = g.isTop ?? false;
-            const hasStars = g.variants.some((v) => v.currency === 'XTR');
-            const hasExternal = g.variants.some((v) => v.currency !== 'XTR');
+            const hasStars = paymentProviders.TELEGRAM_STARS && g.variants.some((v) => v.currency === 'XTR');
+            const hasExternal = paymentProviders.PLATEGA && g.variants.some((v) => v.currency !== 'XTR');
+            const hasCrypto = paymentProviders.CRYPTOCLOUD && g.variants.some((v) => v.currency !== 'XTR');
             return (
               <div
                 key={g.key}
@@ -82,13 +84,15 @@ export function MiniAppPlans(props: {
                     <div className="mt-2 text-xs" style={{ color: theme.hint }}>
                       {m.plans.paymentMethods}{' '}
                       {hasStars ? <span style={{ color: theme.text }}>Stars</span> : null}
-                      {hasStars && hasExternal ? ' · ' : null}
+                      {(hasStars && hasExternal) || (hasStars && hasCrypto) ? ' · ' : null}
                       {hasExternal ? <span style={{ color: theme.text }}>{m.plans.card}</span> : null}
+                      {(hasExternal && hasCrypto) ? ' · ' : null}
+                      {hasCrypto ? <span style={{ color: theme.text }}>Crypto</span> : null}
                     </div>
                   </div>
                   <div className="shrink-0 text-right">
                     <div className="text-lg font-bold" style={{ color: theme.text }}>
-                      {formatPlanGroupPrice(g)}
+                      {formatPlanGroupPriceForProviders(g, paymentProviders, { lang })}
                     </div>
                     <button
                       type="button"

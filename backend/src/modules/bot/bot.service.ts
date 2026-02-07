@@ -29,9 +29,33 @@ export class BotService {
     return rest;
   }
 
+  private buildDefaultPaymentMethods(): Array<{ key: string; enabled: boolean; allowedLangs: string[] }> {
+    return [
+      { key: 'TELEGRAM_STARS', enabled: true, allowedLangs: [] }, // for all languages
+      { key: 'PLATEGA', enabled: true, allowedLangs: ['ru'] }, // RUB only for ru by default
+      { key: 'CRYPTOCLOUD', enabled: false, allowedLangs: [] }, // off by default (can be enabled via admin)
+    ];
+  }
+
+  private mergePaymentMethods(args: {
+    defaults: Array<{ key: string; enabled: boolean; allowedLangs: string[] }>;
+    overrides?: Array<{ key: string; enabled?: boolean; allowedLangs?: string[] }> | null;
+  }) {
+    const map = new Map(args.defaults.map((m) => [m.key, { ...m }]));
+    for (const o of args.overrides ?? []) {
+      const prev = map.get(o.key);
+      if (!prev) continue;
+      if (o.enabled !== undefined) prev.enabled = o.enabled;
+      if (o.allowedLangs !== undefined) prev.allowedLangs = o.allowedLangs;
+      map.set(o.key, prev);
+    }
+    return Array.from(map.values());
+  }
+
   async get() {
     const config = await this.prisma.botConfig.findFirst({
       orderBy: { createdAt: 'desc' },
+      include: { paymentMethods: { orderBy: { key: 'asc' } } as any },
     });
     if (!config) {
       return null;
@@ -99,13 +123,29 @@ export class BotService {
         });
       }
 
-      return tx.botConfig.create({
+      const botConfig = await tx.botConfig.create({
         data: {
           tokenEnc,
           active: activate,
           useMiniApp: dto.useMiniApp ?? false,
         },
       });
+
+      const methods = this.mergePaymentMethods({
+        defaults: this.buildDefaultPaymentMethods(),
+        overrides: dto.paymentMethods ?? null,
+      });
+
+      await (tx as any).botPaymentMethod.createMany({
+        data: methods.map((m) => ({
+          botConfigId: botConfig.id,
+          key: m.key,
+          enabled: m.enabled,
+          allowedLangs: m.allowedLangs,
+        })),
+      });
+
+      return botConfig;
     });
 
     // Если бот активирован, запускаем его асинхронно (не блокируем ответ)
@@ -126,7 +166,11 @@ export class BotService {
       }
     }
 
-    return this.maskConfig(created);
+    const full = await this.prisma.botConfig.findUnique({
+      where: { id: created.id },
+      include: { paymentMethods: { orderBy: { key: 'asc' } } as any },
+    });
+    return this.maskConfig(full as any);
   }
 
   async update(id: string, dto: UpdateBotConfigDto) {
@@ -158,14 +202,32 @@ export class BotService {
     if (dto.useMiniApp !== undefined) {
       updateData.useMiniApp = dto.useMiniApp;
     }
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const botConfig = await tx.botConfig.update({ where: { id }, data: updateData });
 
-    const updated = await this.prisma.botConfig.update({
-      where: { id },
-      data: updateData,
+      if (dto.paymentMethods) {
+        for (const m of dto.paymentMethods) {
+          await (tx as any).botPaymentMethod.upsert({
+            where: { botConfigId_key: { botConfigId: botConfig.id, key: m.key } },
+            create: {
+              botConfigId: botConfig.id,
+              key: m.key,
+              enabled: m.enabled ?? true,
+              allowedLangs: m.allowedLangs ?? [],
+            },
+            update: {
+              ...(m.enabled !== undefined ? { enabled: m.enabled } : {}),
+              ...(m.allowedLangs !== undefined ? { allowedLangs: m.allowedLangs } : {}),
+            },
+          });
+        }
+      }
+
+      return botConfig;
     });
 
     // Если токен или статус изменился, перезапускаем бота асинхронно (не блокируем ответ)
-    if (isTokenChanging || dto.active !== undefined || dto.useMiniApp !== undefined) {
+    if (isTokenChanging || dto.active !== undefined || dto.useMiniApp !== undefined || dto.paymentMethods !== undefined) {
       this.telegramBotService.restartBot().catch((err) => {
         // Логируем ошибку, но не блокируем ответ
         this.logger.error('Failed to restart bot after update:', err);
@@ -182,7 +244,11 @@ export class BotService {
       }
     }
 
-    return this.maskConfig(updated);
+    const full = await this.prisma.botConfig.findUnique({
+      where: { id: updated.id },
+      include: { paymentMethods: { orderBy: { key: 'asc' } } as any },
+    });
+    return this.maskConfig(full as any);
   }
 
   async remove(id: string) {

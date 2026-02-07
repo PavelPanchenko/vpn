@@ -7,6 +7,7 @@ import { getApiErrorMessage } from '../lib/apiError';
 import { type Payment, type PaymentStatus, type VpnUser, type Plan, type PaymentIntent } from '../lib/types';
 import type { CurrencyCode } from '../lib/currencies';
 import { CURRENCY_CODES } from '../lib/currencies';
+import { pickExternalVariant } from '../lib/variantPicking';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
@@ -87,9 +88,7 @@ export function PaymentsPage() {
     if (!selectedPlan) return null;
     const byId = vars.find((v) => v.id === selectedVariantId) ?? null;
     if (byId) return byId;
-    const rub = vars.find((v) => v.currency === 'RUB') ?? null;
-    const nonXtr = vars.find((v) => v.currency !== 'XTR') ?? null;
-    return rub ?? nonXtr ?? vars[0] ?? null;
+    return pickExternalVariant(vars) ?? vars[0] ?? null;
   }, [selectedPlan, selectedVariantId]);
 
   // Автоматически заполняем сумму и валюту при выборе тарифа
@@ -97,9 +96,7 @@ export function PaymentsPage() {
     if (selectedPlan) {
       // при смене тарифа — выбираем дефолтный вариант
       const vars = selectedPlan.variants ?? [];
-      const rub = vars.find((v) => v.currency === 'RUB') ?? null;
-      const nonXtr = vars.find((v) => v.currency !== 'XTR') ?? null;
-      const def = rub ?? nonXtr ?? vars[0] ?? null;
+      const def = pickExternalVariant(vars) ?? vars[0] ?? null;
       createForm.setValue('variantId', def?.id ?? '');
       if (def) {
         createForm.setValue('amount', def.price);
