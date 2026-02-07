@@ -42,6 +42,7 @@ COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/proto ./proto
 
 # Запускаем миграции Prisma перед стартом приложения
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
