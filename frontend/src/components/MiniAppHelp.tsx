@@ -1,4 +1,6 @@
 import type { TelegramTheme } from '../hooks/useTelegramWebAppUi';
+import type { MiniLang } from '../lib/miniLang';
+import type { mm } from '../lib/miniMessages';
 
 function normalizeTgHandle(s: string): { label: string; url: string } {
   const raw = s.trim();
@@ -11,6 +13,8 @@ const V2RAYTUN_URL = 'https://v2raytun.com/';
 export function MiniAppHelp(props: {
   theme: TelegramTheme;
   btnTapClass: string;
+  lang: MiniLang;
+  m: ReturnType<typeof mm>;
   meta: {
     companyName?: string | null;
     supportEmail?: string | null;
@@ -20,7 +24,7 @@ export function MiniAppHelp(props: {
   } | null;
   onBack: () => void;
 }) {
-  const { theme, btnTapClass, meta, onBack } = props;
+  const { theme, btnTapClass, m, meta, onBack } = props;
 
   const tg = meta?.supportTelegram ? normalizeTgHandle(meta.supportTelegram) : null;
   const mail = meta?.supportEmail ? `mailto:${meta.supportEmail}` : null;
@@ -31,24 +35,24 @@ export function MiniAppHelp(props: {
       style={{ borderColor: 'rgba(255,255,255,0.12)', background: theme.secondaryBg }}
     >
       <div className="flex items-center justify-between">
-        <div className="text-sm font-semibold">Помощь</div>
+        <div className="text-sm font-semibold">{m.help.title}</div>
         <button onClick={onBack} className={`text-xs ${btnTapClass}`} style={{ color: theme.link }}>
-          Назад
+          {m.common.back}
         </button>
       </div>
 
       <div className="rounded-xl border p-4 space-y-2" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
-        <div className="text-sm font-semibold">Как пользоваться ключом</div>
+        <div className="text-sm font-semibold">{m.help.howToUseKey}</div>
         <ol className="text-sm space-y-1" style={{ color: theme.hint }}>
-          <li>1) Выберите локацию на главном экране.</li>
-          <li>2) Откройте «Конфигурация» и скопируйте ключ/ссылку или отсканируйте QR.</li>
-          <li>3) Импортируйте в приложение VPN и включите подключение.</li>
+          <li>{m.help.step1}</li>
+          <li>{m.help.step2}</li>
+          <li>{m.help.step3}</li>
         </ol>
         <div className="text-xs mt-2" style={{ color: theme.hint }}>
-          Поддерживаемые клиенты (пример): iOS — Shadowrocket, Android — v2rayNG, Windows — v2rayN, macOS — ClashX.
+          {m.help.clientsHint}
         </div>
         <div className="text-xs mt-2" style={{ color: theme.hint }}>
-          V2RayTun (инструкция):{' '}
+          {m.help.v2rayTunGuide}{' '}
           <a href={V2RAYTUN_URL} target="_blank" rel="noreferrer" style={{ color: theme.link }}>
             {V2RAYTUN_URL}
           </a>
@@ -56,9 +60,14 @@ export function MiniAppHelp(props: {
       </div>
 
       <div className="rounded-xl border p-4 space-y-2" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
-        <div className="text-sm font-semibold">Контакты</div>
+        <div className="text-sm font-semibold">{m.help.contacts}</div>
         <div className="text-sm" style={{ color: theme.hint }}>
-          {meta?.companyName ? <div>Сервис: <span style={{ color: theme.text }}>{meta.companyName}</span></div> : null}
+          {meta?.companyName ? (
+            <div>
+              {m.help.service}:{' '}
+              <span style={{ color: theme.text }}>{meta.companyName}</span>
+            </div>
+          ) : null}
           {tg ? (
             <div>
               Telegram:{' '}
@@ -77,19 +86,22 @@ export function MiniAppHelp(props: {
           ) : null}
           {meta?.siteUrl ? (
             <div>
-              Сайт:{' '}
+              {m.help.site}:{' '}
               <a href={meta.siteUrl} target="_blank" rel="noreferrer" style={{ color: theme.link }}>
                 {meta.siteUrl}
               </a>
             </div>
           ) : null}
-          {!tg && !meta?.supportEmail ? <div>Контакты не настроены</div> : null}
+          {!tg && !meta?.supportEmail ? <div>{m.help.contactsNotConfigured}</div> : null}
         </div>
       </div>
 
       {meta?.botUsername ? (
         <div className="text-xs" style={{ color: theme.hint }}>
-          Бот: <span className="font-mono" style={{ color: theme.text }}>@{meta.botUsername}</span>
+          {m.help.bot}:{' '}
+          <span className="font-mono" style={{ color: theme.text }}>
+            @{meta.botUsername}
+          </span>
         </div>
       ) : null}
     </section>

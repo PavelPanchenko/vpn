@@ -116,6 +116,8 @@ model VpnServer {
 model VpnUser {
   id         String       @id @default(cuid())
   telegramId String?      @unique
+  // Telegram client language_code (e.g. 'ru', 'en') captured from updates
+  telegramLanguageCode String?
   uuid       String       @unique
   status     VpnUserStatus @default(ACTIVE)
   expiresAt  DateTime?
@@ -146,6 +148,7 @@ model VpnUser {
   browserLoginSessions BrowserLoginSession[]
 
   @@index([serverId])
+  @@index([telegramLanguageCode])
   @@map("vpn_users")
 }
 

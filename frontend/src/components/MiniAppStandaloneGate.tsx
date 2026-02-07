@@ -1,13 +1,17 @@
 import { useMemo, useState } from 'react';
 import type { TelegramTheme } from '../hooks/useTelegramWebAppUi';
+import type { MiniLang } from '../lib/miniLang';
+import type { mm } from '../lib/miniMessages';
 
 export function MiniAppStandaloneGate(props: {
   theme: TelegramTheme;
+  lang: MiniLang;
+  m: ReturnType<typeof mm>;
   title: string;
   initialInitData?: string;
   onSubmit: (initData: string) => void;
 }) {
-  const { theme, title, initialInitData, onSubmit } = props;
+  const { theme, m, title, initialInitData, onSubmit } = props;
   const [value, setValue] = useState(initialInitData ?? '');
 
   const canSubmit = useMemo(() => value.trim().length > 0, [value]);
@@ -32,12 +36,12 @@ export function MiniAppStandaloneGate(props: {
         >
           <div className="text-lg font-semibold">{title}</div>
           <div className="text-sm mt-1" style={{ color: theme.hint }}>
-            Вы открыли Mini App в обычном браузере. Telegram WebApp API здесь недоступен, поэтому автоматическая авторизация не сработает.
+            {m.standalone.intro}
           </div>
 
           <div className="mt-4 rounded-xl border px-3 py-3 text-sm" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
             <div className="text-xs mb-2" style={{ color: theme.hint }}>
-              InitData (для standalone режима)
+              {m.standalone.initDataLabel}
             </div>
             <textarea
               value={value}
@@ -48,10 +52,10 @@ export function MiniAppStandaloneGate(props: {
                 borderColor: 'rgba(255,255,255,0.14)',
                 color: theme.text,
               }}
-              placeholder="Вставьте initData (tgWebAppData) сюда"
+              placeholder={m.standalone.initDataPlaceholder}
             />
             <div className="mt-2 text-xs" style={{ color: theme.hint }}>
-              Для обычных пользователей правильный путь — открыть мини‑приложение из Telegram‑бота. Этот экран нужен, чтобы можно было использовать UI как обычное web‑приложение (например, для тестов).
+              {m.standalone.hint}
             </div>
           </div>
 
@@ -62,14 +66,14 @@ export function MiniAppStandaloneGate(props: {
               className="flex-1 inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium disabled:opacity-50"
               style={{ background: theme.button, color: theme.buttonText }}
             >
-              Продолжить
+              {m.common.continue}
             </button>
             <button
               onClick={() => setValue('')}
               className="inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium border"
               style={{ borderColor: 'rgba(255,255,255,0.14)', color: theme.text }}
             >
-              Очистить
+              {m.common.clear}
             </button>
           </div>
         </div>

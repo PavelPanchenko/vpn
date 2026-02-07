@@ -1,13 +1,17 @@
 import type { TelegramTheme } from '../hooks/useTelegramWebAppUi';
+import type { MiniLang } from '../lib/miniLang';
+import type { mm } from '../lib/miniMessages';
 
 export function MiniAppFatalError(props: {
   theme: TelegramTheme;
+  lang: MiniLang;
+  m: ReturnType<typeof mm>;
   title: string;
   message: string;
   onRetry: () => void;
   onClose?: () => void;
 }) {
-  const { theme, title, message, onRetry, onClose } = props;
+  const { theme, m, title, message, onRetry, onClose } = props;
   return (
     <div
       className="min-h-screen flex items-center justify-center px-4"
@@ -40,20 +44,20 @@ export function MiniAppFatalError(props: {
             <div className="min-w-0 flex-1">
               <div className="text-lg font-semibold">{title}</div>
               <div className="text-sm mt-1" style={{ color: theme.hint }}>
-                Не удалось загрузить мини‑приложение.
+                {m.fatal.title}
               </div>
             </div>
           </div>
 
           <div className="mt-4 rounded-xl border px-3 py-2 text-sm whitespace-pre-wrap" style={{ borderColor: 'rgba(255,255,255,0.10)' }}>
             <div className="text-xs mb-1" style={{ color: theme.hint }}>
-              Детали
+              {m.fatal.details}
             </div>
             <div style={{ color: theme.destructive }}>{message}</div>
           </div>
 
           <div className="mt-4 text-sm" style={{ color: theme.hint }}>
-            Проверьте, что вы открыли приложение через кнопку в Telegram‑боте. Если открыто в браузере — авторизация не пройдёт.
+            {m.fatal.hint}
           </div>
 
           <div className="mt-5 flex gap-3">
@@ -62,7 +66,7 @@ export function MiniAppFatalError(props: {
               className="flex-1 inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium"
               style={{ background: theme.button, color: theme.buttonText }}
             >
-              Повторить
+              {m.fatal.retry}
             </button>
             {onClose ? (
               <button
@@ -70,7 +74,7 @@ export function MiniAppFatalError(props: {
                 className="inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium border"
                 style={{ borderColor: 'rgba(255,255,255,0.14)', color: theme.text }}
               >
-                Закрыть
+                {m.fatal.close}
               </button>
             ) : null}
           </div>

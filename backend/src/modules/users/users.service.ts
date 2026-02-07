@@ -497,7 +497,7 @@ export class UsersService {
     return { ok: true };
   }
 
-  async createFromTelegram(telegramId: string, name: string) {
+  async createFromTelegram(telegramId: string, name: string, telegramLanguageCode?: string | null) {
     const uuid = randomUUID();
     const panelEmail = `${uuid}@vpn`;
     try {
@@ -505,6 +505,7 @@ export class UsersService {
         data: {
           name,
           telegramId,
+          telegramLanguageCode: telegramLanguageCode || null,
           uuid,
           panelEmail,
           status: 'NEW',
@@ -517,6 +518,23 @@ export class UsersService {
         if (existing) return existing;
       }
       throw e;
+    }
+  }
+
+  /**
+   * Сохраняем язык Telegram-клиента (ctx.from.language_code) для локализации уведомлений,
+   * которые отправляются вне контекста сообщения (webhook/cron/admin).
+   */
+  async updateTelegramLanguageCodeByTelegramId(telegramId: string, telegramLanguageCode?: string | null) {
+    const code = String(telegramLanguageCode ?? '').trim();
+    if (!code) return;
+    try {
+      await this.prisma.vpnUser.updateMany({
+        where: { telegramId, telegramLanguageCode: { not: code } },
+        data: { telegramLanguageCode: code },
+      });
+    } catch {
+      // best-effort: язык не критичен для бизнес-логики
     }
   }
 

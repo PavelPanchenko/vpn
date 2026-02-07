@@ -10,6 +10,7 @@ import type { TelegramBot, TelegramCallbackCtx, TelegramMessageCtx, TelegramRepl
 import type { PlanLike } from '../bot-domain.types';
 import type { UserForConfigMessage } from '../bot-user.types';
 import type { ConfigDataResult, SendConfigQrPhotoResult } from '../messages/config.message';
+import type { BotLang } from '../i18n/bot-lang';
 
 export type TelegramRegistrarDeps = {
   bot: TelegramBot;
@@ -32,22 +33,28 @@ export type TelegramRegistrarDeps = {
   editHtml: (ctx: TelegramCallbackCtx, html: string, extra?: TelegramReplyOptions) => Promise<unknown>;
 
   // High-level bot helpers
-  sendConfigMessage: (ctx: TelegramMessageCtx, user: UserForConfigMessage, configMessageExtra?: TelegramReplyOptions) => Promise<unknown>;
-  getConfigData: (user: UserForConfigMessage) => Promise<ConfigDataResult>;
-  configLinkHtml: (url: string, serverName: string) => string;
+  sendConfigMessage: (
+    ctx: TelegramMessageCtx,
+    user: UserForConfigMessage,
+    lang: BotLang,
+    configMessageExtra?: TelegramReplyOptions,
+  ) => Promise<unknown>;
+  getConfigData: (user: UserForConfigMessage, lang: BotLang) => Promise<ConfigDataResult>;
+  configLinkHtml: (url: string, serverName: string, lang: BotLang) => string;
   sendConfigQrPhoto: (
     ctx: TelegramMessageCtx & { replyWithPhoto?: (photo: { source: Buffer }, extra?: TelegramReplyOptions) => Promise<unknown> },
     url: string,
     serverName: string,
+    lang: BotLang,
   ) => Promise<SendConfigQrPhotoResult>;
   enableSupportMode: (ctx: TelegramMessageCtx, telegramId: string) => Promise<unknown>;
   showMainMenu: (ctx: TelegramMessageCtx, user: { id: string } & Record<string, unknown>) => Promise<unknown>;
   showMainMenuEdit: (ctx: TelegramCallbackCtx, user: { id: string } & Record<string, unknown>) => Promise<unknown>;
-  buildMainMenuKeyboard: (user: { id?: string } | null) => Promise<TelegramReplyOptions>;
+  buildMainMenuKeyboard: (user: { id?: string } | null, lang: BotLang) => Promise<TelegramReplyOptions>;
 
   // UI formatting helpers
   esc: (s: unknown) => string;
-  fmtDate: (d: Date) => string;
+  fmtDate: (lang: BotLang, d: Date) => string;
   maskServerHost: (host: string) => string;
   planBtnLabel: (plan: PlanLike) => string;
 

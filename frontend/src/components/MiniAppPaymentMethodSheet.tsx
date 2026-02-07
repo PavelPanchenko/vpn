@@ -1,4 +1,5 @@
 import type { TelegramTheme } from '../hooks/useTelegramWebAppUi';
+import type { mm } from '../lib/miniMessages';
 
 export type PaymentMethodOption = {
   id: 'TELEGRAM_STARS' | 'PLATEGA';
@@ -12,11 +13,12 @@ export function MiniAppPaymentMethodSheet(props: {
   btnTapClass: string;
   open: boolean;
   title: string;
+  m: ReturnType<typeof mm>;
   options: PaymentMethodOption[];
   onClose: () => void;
   onSelect: (id: PaymentMethodOption['id']) => void;
 }) {
-  const { theme, btnTapClass, open, title, options, onClose, onSelect } = props;
+  const { theme, btnTapClass, open, title, m, options, onClose, onSelect } = props;
   if (!open) return null;
 
   return (
@@ -33,7 +35,7 @@ export function MiniAppPaymentMethodSheet(props: {
         <div className="flex items-center justify-between mb-3">
           <div className="text-sm font-semibold">{title}</div>
           <button className={`text-xs ${btnTapClass}`} style={{ color: theme.link }} onClick={onClose}>
-            Закрыть
+            {m.common.close}
           </button>
         </div>
 

@@ -1,16 +1,22 @@
 import type { TelegramRegistrarDeps } from './telegram-registrar.deps';
 import { getPaidPlansWithFallback } from '../plans/paid-plans.utils';
-import { BotMessages } from '../messages/common.messages';
+import { bm } from '../messages/common.messages';
 import { getMarkup } from '../telegram-markup.utils';
 import { cbThenReplyText } from '../telegram-callback.utils';
 import type { TelegramCallbackCtx, TelegramCallbackMatch, TelegramMessageCtx } from '../telegram-runtime.types';
 import type { PlanLike, ServerLike } from '../bot-domain.types';
 import { getTelegramMiniAppUrl } from '../mini-app/mini-app-url';
+import { botLangFromCtx, extractTelegramLanguageCode } from '../i18n/bot-lang';
+import { ui } from '../messages/ui.messages';
 
 export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
   // /start
   args.bot.command('start', async (ctx: TelegramMessageCtx) => {
     const telegramId = ctx.from.id.toString();
+    const lang = botLangFromCtx(ctx);
+    const languageCode = extractTelegramLanguageCode(ctx);
+    void args.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, languageCode);
+    args.logger.log(`Telegram /start lang: telegramId=${telegramId} language_code=${languageCode ?? 'null'} resolved=${lang}`);
     // Выходим из режима поддержки при /start
     args.supportModeUsers.delete(telegramId);
     const userName = ctx.from.first_name || ctx.from.username || 'User';
@@ -23,7 +29,7 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       });
 
       if (!user) {
-        await ctx.reply(BotMessages.userCreateFailedTryLaterText);
+        await ctx.reply(bm(lang).userCreateFailedTryLaterText);
         return;
       }
 
@@ -40,10 +46,20 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
               where: { id: session.id },
               data: { status: 'APPROVED', telegramId, vpnUserId: user.id, approvedAt: new Date() },
             });
-            await args.replyHtml(ctx, `✅ Вход в браузере подтверждён.\n\nВернитесь на страницу — вход выполнится автоматически.`);
+            await args.replyHtml(
+              ctx,
+              lang === 'en'
+                ? `✅ Browser login confirmed.\n\nReturn to the page — you’ll be logged in automatically.`
+                : `✅ Вход в браузере подтверждён.\n\nВернитесь на страницу — вход выполнится автоматически.`,
+            );
             return;
           }
-          await args.replyHtml(ctx, `⚠️ QR‑код истёк. Обновите страницу Mini App в браузере и отсканируйте новый QR.`);
+          await args.replyHtml(
+            ctx,
+            lang === 'en'
+              ? `⚠️ QR code expired. Refresh the Mini App page in the browser and scan the new QR.`
+              : `⚠️ QR‑код истёк. Обновите страницу Mini App в браузере и отсканируйте новый QR.`,
+          );
           return;
         }
       }
@@ -61,7 +77,7 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       });
 
       if (servers.length === 0) {
-        await ctx.reply(BotMessages.serversNoneText);
+        await ctx.reply(bm(lang).serversNoneText);
         return;
       }
 
@@ -72,8 +88,8 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       const miniAppUrl = getTelegramMiniAppUrl(args.config);
       if (miniAppUrl) {
         const btn = Markup?.button?.webApp
-          ? Markup.button.webApp('🚀 Открыть Mini App', miniAppUrl)
-          : Markup.button.url('🚀 Открыть Mini App', miniAppUrl);
+          ? Markup.button.webApp(lang === 'en' ? '🚀 Open Mini App' : '🚀 Открыть Mini App', miniAppUrl)
+          : Markup.button.url(lang === 'en' ? '🚀 Open Mini App' : '🚀 Открыть Mini App', miniAppUrl);
         buttons.push([btn]);
       }
 
@@ -81,16 +97,22 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
 
       await args.replyHtml(
         ctx,
-        `👋 Привет, <b>${args.esc(userName)}</b>!\n\n` +
-          `1) Выберите локацию\n` +
-          `2) Получите конфиг и импортируйте в приложение\n` +
-          `3) Включите VPN\n\n` +
-          `🎁 После первого подключения — пробный период <b>${args.esc(trialDays)} дн.</b>`,
+        lang === 'en'
+          ? `👋 Hi, <b>${args.esc(userName)}</b>!\n\n` +
+              `1) Choose a location\n` +
+              `2) Get config and import into the app\n` +
+              `3) Enable VPN\n\n` +
+              `🎁 After first connection — trial period <b>${args.esc(trialDays)} day(s)</b>`
+          : `👋 Привет, <b>${args.esc(userName)}</b>!\n\n` +
+              `1) Выберите локацию\n` +
+              `2) Получите конфиг и импортируйте в приложение\n` +
+              `3) Включите VPN\n\n` +
+              `🎁 После первого подключения — пробный период <b>${args.esc(trialDays)} дн.</b>`,
         Markup.inlineKeyboard(buttons),
       );
     } catch (error: unknown) {
       args.logger.error('Error handling /start command:', error);
-      await ctx.reply(BotMessages.errorTryLaterText);
+      await ctx.reply(bm(lang).errorTryLaterText);
     }
   });
 
@@ -99,6 +121,8 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
     const serverId = ctx.match[1];
     const telegramId = ctx.from.id.toString();
     const userName = ctx.from.first_name || ctx.from.username || 'User';
+    const lang = botLangFromCtx(ctx);
+    void args.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
 
     try {
       const user = await args.usersService.getOrCreateByTelegramId(telegramId, userName);
@@ -109,7 +133,7 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       });
 
       if (existingUserServer) {
-        await ctx.answerCbQuery('Эта локация уже добавлена!');
+        await ctx.answerCbQuery(lang === 'en' ? 'This location is already added!' : 'Эта локация уже добавлена!');
         await args.showMainMenuEdit(ctx, user);
         return;
       }
@@ -118,7 +142,7 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       const server = await args.prisma.vpnServer.findUnique({ where: { id: serverId } });
 
       if (!server || !server.active) {
-        await ctx.answerCbQuery(BotMessages.serverUnavailableCbText);
+        await ctx.answerCbQuery(bm(lang).serverUnavailableCbText);
         return;
       }
 
@@ -138,9 +162,13 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       const trialDays = args.getTrialDaysFromPlans(plans);
 
       let message =
-        `📍 <b>${args.esc(server.name)}</b>\n` +
-        `<i>${args.esc(maskedHost)}:${args.esc(server.port)} · ${args.esc(sec)}</i>\n\n` +
-        `🎁 Пробный доступ: <b>${args.esc(trialDays)} дн.</b>\n`;
+        (lang === 'en'
+          ? `📍 <b>${args.esc(server.name)}</b>\n` +
+            `<i>${args.esc(maskedHost)}:${args.esc(server.port)} · ${args.esc(sec)}</i>\n\n` +
+            `🎁 Trial access: <b>${args.esc(trialDays)} day(s)</b>\n`
+          : `📍 <b>${args.esc(server.name)}</b>\n` +
+            `<i>${args.esc(maskedHost)}:${args.esc(server.port)} · ${args.esc(sec)}</i>\n\n` +
+            `🎁 Пробный доступ: <b>${args.esc(trialDays)} дн.</b>\n`);
 
       if (displayedPlans.length > 0) {
         const middleIndex = Math.floor(displayedPlans.length / 2);
@@ -152,34 +180,48 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
           (p.variants ?? []).some((v) => v.price === minPrice),
         );
 
-        message += `\n<b>Тарифы после пробного периода</b>\n`;
+        message += lang === 'en' ? `\n<b>Plans after trial</b>\n` : `\n<b>Тарифы после пробного периода</b>\n`;
         displayedPlans.forEach((plan: PlanLike) => {
           const tag = plan.id === recommendedPlan?.id ? ' ⭐' : '';
           const prices = (plan.variants ?? [])
             .map((v) => `${args.esc(v.price)} ${args.esc(v.currency)}`)
             .join(' | ');
-          message += `• <b>${args.esc(plan.name)}</b>${tag} — ${prices} / ${args.esc(plan.periodDays)} дн.\n`;
+          message +=
+            lang === 'en'
+              ? `• <b>${args.esc(plan.name)}</b>${tag} — ${prices} / ${args.esc(plan.periodDays)} day(s)\n`
+              : `• <b>${args.esc(plan.name)}</b>${tag} — ${prices} / ${args.esc(plan.periodDays)} дн.\n`;
         });
         if (paidPlans.length > displayedPlans.length) {
-          message += `• …ещё ${args.esc(paidPlans.length - displayedPlans.length)} тарифов\n`;
+          message +=
+            lang === 'en'
+              ? `• …${args.esc(paidPlans.length - displayedPlans.length)} more plans\n`
+              : `• …ещё ${args.esc(paidPlans.length - displayedPlans.length)} тарифов\n`;
         }
         const minPriceCurrency =
           (minPricePlan?.variants ?? []).find((v) => v.price === minPrice)?.currency ?? 'RUB';
-        message += `\n💰 От <b>${args.esc(minPrice)} ${args.esc(minPriceCurrency)}</b>\n`;
+        message +=
+          lang === 'en'
+            ? `\n💰 From <b>${args.esc(minPrice)} ${args.esc(minPriceCurrency)}</b>\n`
+            : `\n💰 От <b>${args.esc(minPrice)} ${args.esc(minPriceCurrency)}</b>\n`;
       }
 
-      message += `\nНажмите «Подтвердить», чтобы подключиться.`;
+      message += lang === 'en' ? `\nTap “Confirm” to connect.` : `\nНажмите «Подтвердить», чтобы подключиться.`;
 
       const Markup = await getMarkup();
       const buttons = [
-        [Markup.button.callback('✅ Подтвердить и подключить', `confirm_server_${serverId}`)],
-        [Markup.button.callback('🔙 Выбрать другую локацию', 'back_to_servers')],
+        [
+          Markup.button.callback(
+            lang === 'en' ? '✅ Confirm & connect' : '✅ Подтвердить и подключить',
+            `confirm_server_${serverId}`,
+          ),
+        ],
+        [Markup.button.callback(lang === 'en' ? '🔙 Choose another location' : '🔙 Выбрать другую локацию', 'back_to_servers')],
       ];
 
       await args.editHtml(ctx, message, Markup.inlineKeyboard(buttons));
     } catch (error: unknown) {
       args.logger.error('Error handling server selection:', error);
-      await cbThenReplyText({ ctx, cbText: BotMessages.loadInfoCbText, replyText: BotMessages.errorTryLaterText });
+      await cbThenReplyText({ ctx, cbText: bm(lang).loadInfoCbText, replyText: bm(lang).errorTryLaterText });
     }
   });
 
@@ -187,24 +229,25 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
   args.bot.action(/^confirm_server_(.+)$/, async (ctx: TelegramCallbackCtx<TelegramCallbackMatch>) => {
     const serverId = ctx.match[1];
     const telegramId = ctx.from.id.toString();
+    const lang = botLangFromCtx(ctx);
+    void args.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
 
     try {
       const user = await args.usersService.findByTelegramId(telegramId);
 
       if (!user) {
-        await ctx.answerCbQuery(BotMessages.userNotFoundCbText);
+        await ctx.answerCbQuery(bm(lang).userNotFoundCbText);
         return;
       }
 
       const server = await args.prisma.vpnServer.findUnique({ where: { id: serverId } });
 
       if (!server || !server.active) {
-        await ctx.answerCbQuery(BotMessages.serverUnavailableCbText);
+        await ctx.answerCbQuery(bm(lang).serverUnavailableCbText);
         return;
       }
 
-      await ctx.answerCbQuery(BotMessages.cbConnectingLocationText);
-      // (сообщение вынесено в BotMessages для DRY)
+      await ctx.answerCbQuery(bm(lang).cbConnectingLocationText);
 
       const trialDays = await args.getTrialDaysForUser(user.id);
       const result = await args.usersService.addServerAndTrialWithUsername(user.id, serverId, trialDays, ctx.from.username ?? null);
@@ -212,7 +255,7 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       if (!updatedUser) return;
 
       const expiresAtStr = updatedUser.expiresAt
-        ? new Date(updatedUser.expiresAt).toLocaleString('ru-RU', {
+        ? new Date(updatedUser.expiresAt).toLocaleString(lang === 'en' ? 'en-GB' : 'ru-RU', {
             year: 'numeric',
             month: '2-digit',
             day: '2-digit',
@@ -221,16 +264,20 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
           })
         : null;
       const periodLine = result.trialCreated
-        ? `🎁 Пробный период: ${args.esc(trialDays)} дн.\n\n`
+        ? lang === 'en'
+          ? `🎁 Trial period: ${args.esc(trialDays)} day(s)\n\n`
+          : `🎁 Пробный период: ${args.esc(trialDays)} дн.\n\n`
         : expiresAtStr
-          ? `📅 Подписка активна до: ${expiresAtStr}\n\n`
+          ? lang === 'en'
+            ? `📅 Active until: ${expiresAtStr}\n\n`
+            : `📅 Подписка активна до: ${expiresAtStr}\n\n`
           : '\n';
 
       await ctx.editMessageText(
-        `${BotMessages.locationConnectedHeaderText}\n\n` +
-          `📍 Локация: ${server.name}\n` +
+        `${bm(lang).locationConnectedHeaderText}\n\n` +
+          `${lang === 'en' ? '📍 Location' : '📍 Локация'}: ${server.name}\n` +
           periodLine +
-          BotMessages.afterConnectHintText,
+          bm(lang).afterConnectHintText,
       );
 
       await args.showMainMenuEdit(ctx, updatedUser);
@@ -238,8 +285,8 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       args.logger.error('Error confirming server selection:', error);
       await cbThenReplyText({
         ctx,
-        cbText: BotMessages.connectLocationCbErrorText,
-        replyText: BotMessages.errorTryLaterOrAdminText,
+        cbText: bm(lang).connectLocationCbErrorText,
+        replyText: bm(lang).errorTryLaterOrAdminText,
       });
     }
   });
@@ -247,6 +294,8 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
   // Назад к списку серверов
   args.bot.action('back_to_servers', async (ctx: TelegramCallbackCtx) => {
     const telegramId = ctx.from.id.toString();
+    const lang = botLangFromCtx(ctx);
+    void args.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
 
     try {
       await ctx.answerCbQuery();
@@ -263,7 +312,7 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       });
 
       if (allServers.length === 0) {
-        await ctx.editMessageText(BotMessages.serversNoneText);
+        await ctx.editMessageText(bm(lang).serversNoneText);
         return;
       }
 
@@ -271,18 +320,22 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       const buttons = allServers.map((server: ServerLike) => [
         Markup.button.callback(server.name, `select_server_${server.id}`),
       ]);
-      buttons.push([Markup.button.callback('🏠 В меню', 'back_to_main')]);
+      buttons.push([Markup.button.callback(ui(lang).backToMenuBtn, 'back_to_main')]);
 
       const trialDays = user ? await args.getTrialDaysForUser(user.id) : 3;
       const messageText =
         user && user.userServers && user.userServers.length > 0
-          ? `📍 <b>Выбор локации</b>\n\nВыберите сервер для переключения или получения нового конфига.`
-          : `📍 <b>Выбор локации</b>\n\nПосле подключения будет пробный период <b>${args.esc(trialDays)} дн.</b>`;
+          ? lang === 'en'
+            ? `📍 <b>Choose location</b>\n\nSelect a server to switch or get a new config.`
+            : `📍 <b>Выбор локации</b>\n\nВыберите сервер для переключения или получения нового конфига.`
+          : lang === 'en'
+            ? `📍 <b>Choose location</b>\n\nAfter connecting you’ll get a trial period of <b>${args.esc(trialDays)} day(s)</b>.`
+            : `📍 <b>Выбор локации</b>\n\nПосле подключения будет пробный период <b>${args.esc(trialDays)} дн.</b>`;
 
       await args.editHtml(ctx, messageText, Markup.inlineKeyboard(buttons));
     } catch (error: unknown) {
       args.logger.error('Error handling back to servers:', error);
-      await ctx.reply(BotMessages.errorTryLaterText);
+      await ctx.reply(bm(lang).errorTryLaterText);
     }
   });
 }

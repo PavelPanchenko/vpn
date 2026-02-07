@@ -5,9 +5,10 @@ export function escHtml(s: unknown): string {
     .replace(/>/g, '&gt;');
 }
 
-export function fmtDateRu(d: Date): string {
+export function fmtDateByLang(lang: 'ru' | 'en' | 'uk', d: Date): string {
   try {
-    return d.toLocaleDateString('ru-RU');
+    const locale = lang === 'en' ? 'en-GB' : lang === 'uk' ? 'uk-UA' : 'ru-RU';
+    return d.toLocaleDateString(locale);
   } catch {
     return String(d);
   }

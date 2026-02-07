@@ -23,7 +23,7 @@ export function MiniAppPage() {
   useTelegramBackButton({ tg, visible: controller.screen !== 'home', onClick: controller.goHome });
 
   if (controller.loading) {
-    return <MiniAppLoading theme={theme} />;
+    return <MiniAppLoading theme={theme} lang={controller.lang} m={controller.m} />;
   }
 
   if (controller.fatalError) {
@@ -31,6 +31,8 @@ export function MiniAppPage() {
     return (
       <MiniAppFatalError
         theme={theme}
+        lang={controller.lang}
+        m={controller.m}
         title={controller.appName || FALLBACK_APP_TITLE}
         message={controller.fatalError}
         onRetry={() => window.location.reload()}
@@ -46,6 +48,8 @@ export function MiniAppPage() {
       return (
         <MiniAppBrowserLoginGate
           theme={theme}
+          lang={controller.lang}
+          m={controller.m}
           title={controller.appName || FALLBACK_APP_TITLE}
           expiresAt={new Date(Date.now() + 5 * 60_000).toISOString()}
           status="EXPIRED"
@@ -58,6 +62,8 @@ export function MiniAppPage() {
     return (
       <MiniAppBrowserLoginGate
         theme={theme}
+        lang={controller.lang}
+        m={controller.m}
         title={controller.appName || FALLBACK_APP_TITLE}
         expiresAt={b.expiresAt}
         status={b.status}
@@ -78,7 +84,7 @@ export function MiniAppPage() {
         ...containerSafeStyle,
       }}
     >
-      <MiniAppHeader theme={theme} title={controller.status?.botName || controller.appName || FALLBACK_APP_TITLE} />
+      <MiniAppHeader theme={theme} lang={controller.lang} m={controller.m} title={controller.status?.botName || controller.appName || FALLBACK_APP_TITLE} />
 
       <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
         <div
@@ -95,6 +101,8 @@ export function MiniAppPage() {
           <MiniAppHome
             theme={theme}
             btnTapClass={BTN_TAP}
+            lang={controller.lang}
+            m={controller.m}
             status={controller.status}
             servers={controller.servers}
             refreshingServers={controller.refreshingServers}
@@ -115,6 +123,8 @@ export function MiniAppPage() {
           <MiniAppConfig
             theme={theme}
             btnTapClass={BTN_TAP}
+            lang={controller.lang}
+            m={controller.m}
             configUrl={controller.configUrl}
             configCopied={controller.configCopied}
             onCopy={controller.handleCopyConfig}
@@ -127,6 +137,8 @@ export function MiniAppPage() {
           <MiniAppPlans
             theme={theme}
             btnTapClass={BTN_TAP}
+            lang={controller.lang}
+            m={controller.m}
             planGroups={controller.planGroups}
             payingPlanKey={controller.payingPlanKey}
             onRefresh={controller.handleLoadPlans}
@@ -137,29 +149,34 @@ export function MiniAppPage() {
 
         {/* HELP */}
         {controller.screen === 'help' && (
-          <MiniAppHelp theme={theme} btnTapClass={BTN_TAP} meta={controller.publicMeta} onBack={controller.goHome} />
+          <MiniAppHelp theme={theme} btnTapClass={BTN_TAP} lang={controller.lang} m={controller.m} meta={controller.publicMeta} onBack={controller.goHome} />
         )}
         </div>
       </div>
 
-      <MiniAppFooter theme={theme} onHelp={controller.goHelp} />
+      <MiniAppFooter theme={theme} lang={controller.lang} m={controller.m} onHelp={controller.goHelp} />
 
       <MiniAppPaymentMethodSheet
         theme={theme}
         btnTapClass={BTN_TAP}
         open={controller.paymentSheetOpen}
-        title={controller.selectedPlanGroup ? `Оплата: ${controller.selectedPlanGroup.name}` : 'Выберите способ оплаты'}
+        title={
+          controller.selectedPlanGroup
+            ? `${controller.m.paymentSheet.titlePayPrefix} ${controller.selectedPlanGroup.name}`
+            : controller.m.paymentSheet.titleChoose
+        }
+        m={controller.m}
         options={[
           {
             id: 'TELEGRAM_STARS',
-            title: 'Telegram Stars',
-            subtitle: 'Оплата внутри Telegram',
+            title: controller.m.paymentSheet.starsTitle,
+            subtitle: controller.m.paymentSheet.starsSubtitle,
             badge: 'XTR',
           },
           {
             id: 'PLATEGA',
-            title: 'Карта / СБП',
-            subtitle: 'Переход на страницу оплаты',
+            title: controller.m.paymentSheet.cardTitle,
+            subtitle: controller.m.paymentSheet.cardSubtitle,
             badge: 'RUB',
           },
         ]}

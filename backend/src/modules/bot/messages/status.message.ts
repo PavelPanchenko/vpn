@@ -1,28 +1,45 @@
 import { buildSubscriptionMetrics } from '../../../common/subscription/subscription-metrics';
 import { toDateLike, type UserLikeBase, type UserLikeWithServers } from '../../../common/subscription/user-like';
+import type { BotLang } from '../i18n/bot-lang';
 
 const STATUS_EMOJI: Record<string, string> = { NEW: '🆕', ACTIVE: '✅', BLOCKED: '🚫', EXPIRED: '⏰' };
-const STATUS_LABEL: Record<string, string> = {
-  NEW: 'Без подписки',
-  ACTIVE: 'Активен',
-  BLOCKED: 'Заблокирован',
-  EXPIRED: 'Истёк',
+const STATUS_LABEL: Record<BotLang, Record<string, string>> = {
+  ru: {
+    NEW: 'Без подписки',
+    ACTIVE: 'Активен',
+    BLOCKED: 'Заблокирован',
+    EXPIRED: 'Истёк',
+  },
+  en: {
+    NEW: 'No subscription',
+    ACTIVE: 'Active',
+    BLOCKED: 'Blocked',
+    EXPIRED: 'Expired',
+  },
+  uk: {
+    NEW: 'Без підписки',
+    ACTIVE: 'Активний',
+    BLOCKED: 'Заблоковано',
+    EXPIRED: 'Закінчився',
+  },
 };
 
-function fmtTimeRu(d: Date): string {
+function fmtTime(d: Date, lang: BotLang): string {
   try {
-    return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    const locale = lang === 'en' ? 'en-GB' : lang === 'uk' ? 'uk-UA' : 'ru-RU';
+    return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
   } catch {
     return '';
   }
 }
 
 export function buildStatusHtmlMessage(args: {
+  lang: BotLang;
   user: UserLikeWithServers;
   esc: (s: unknown) => string;
   fmtDate: (d: Date) => string;
 }): string {
-  const { user, esc, fmtDate } = args;
+  const { lang, user, esc, fmtDate } = args;
   const lastSub = user.subscriptions?.[0] ?? null;
 
   const metrics = buildSubscriptionMetrics({
@@ -33,23 +50,39 @@ export function buildStatusHtmlMessage(args: {
     periodDays: lastSub?.periodDays ?? null,
   });
 
-  let message = `${STATUS_EMOJI[metrics.status] || 'ℹ️'} <b>Статус</b>: ${esc(STATUS_LABEL[metrics.status] || metrics.status)}\n`;
+  const statusLabel = (STATUS_LABEL[lang] ?? STATUS_LABEL.ru)[metrics.status] || metrics.status;
+  let message = `${STATUS_EMOJI[metrics.status] || 'ℹ️'} <b>${
+    lang === 'en' ? 'Status' : lang === 'uk' ? 'Статус' : 'Статус'
+  }</b>: ${esc(statusLabel)}\n`;
 
   // Информация о подписке
   if (metrics.expiresAtIso) {
     const expiresAt = new Date(metrics.expiresAtIso);
     const daysLeft = metrics.daysLeft ?? 0;
     if (daysLeft > 0) {
-      const time = fmtTimeRu(expiresAt);
-      message += `\n📅 До: <b>${esc(fmtDate(expiresAt))}${time ? `, ${esc(time)}` : ''}</b>\n`;
-      message += `⏳ Осталось: <b>${esc(daysLeft)}</b> дн.\n`;
+      const time = fmtTime(expiresAt, lang);
+      message += `\n📅 ${lang === 'en' ? 'Until' : lang === 'uk' ? 'До' : 'До'}: <b>${esc(fmtDate(expiresAt))}${time ? `, ${esc(time)}` : ''}</b>\n`;
+      message += `⏳ ${lang === 'en' ? 'Left' : lang === 'uk' ? 'Залишилось' : 'Осталось'}: <b>${esc(daysLeft)}</b> ${
+        lang === 'en' ? 'day(s)' : 'дн.'
+      }\n`;
     } else {
-      message += `\n⏰ Подписка истекла\n💳 Продлить: <code>/pay</code>\n`;
+      message +=
+        lang === 'en'
+          ? `\n⏰ Subscription expired\n💳 Extend: <code>/pay</code>\n`
+          : lang === 'uk'
+            ? `\n⏰ Підписка закінчилась\n💳 Подовжити: <code>/pay</code>\n`
+          : `\n⏰ Подписка истекла\n💳 Продлить: <code>/pay</code>\n`;
     }
   } else {
-    message += `\n📅 Подписка не активирована\n`;
+    message +=
+      lang === 'en' ? `\n📅 Subscription not activated\n` : lang === 'uk' ? `\n📅 Підписку не активовано\n` : `\n📅 Подписка не активирована\n`;
     if (!user.userServers || user.userServers.length === 0) {
-      message += `📍 Выберите локацию: <code>/start</code>\n`;
+      message +=
+        lang === 'en'
+          ? `📍 Choose location: <code>/start</code>\n`
+          : lang === 'uk'
+            ? `📍 Виберіть локацію: <code>/start</code>\n`
+            : `📍 Выберите локацию: <code>/start</code>\n`;
     }
   }
 
@@ -57,22 +90,42 @@ export function buildStatusHtmlMessage(args: {
   const activeServerName =
     user.userServers && user.userServers.length > 0 ? (user.userServers[0]?.server as any)?.name : null;
   if (activeServerName) {
-    message += `\n📍 <b>Локация</b>: ${esc(activeServerName)}\n`;
+    message += `\n📍 <b>${lang === 'en' ? 'Location' : lang === 'uk' ? 'Локація' : 'Локация'}</b>: ${esc(activeServerName)}\n`;
   } else {
-    message += `\n📍 Локация не выбрана\n📍 Выбрать: <code>/start</code>\n`;
+    message +=
+      lang === 'en'
+        ? `\n📍 Location not selected\n📍 Choose: <code>/start</code>\n`
+        : lang === 'uk'
+          ? `\n📍 Локацію не вибрано\n📍 Вибрати: <code>/start</code>\n`
+        : `\n📍 Локация не выбрана\n📍 Выбрать: <code>/start</code>\n`;
   }
 
   // Что дальше (короткий CTA)
   if (metrics.status === 'ACTIVE') {
     if (activeServerName) {
-      message += `\n📥 Получить конфиг: <code>/config</code>\n`;
+      message +=
+        lang === 'en'
+          ? `\n📥 Get config: <code>/config</code>\n`
+          : lang === 'uk'
+            ? `\n📥 Отримати конфіг: <code>/config</code>\n`
+            : `\n📥 Получить конфиг: <code>/config</code>\n`;
     }
   } else if (metrics.status === 'NEW') {
-    message += `\n💳 Купить подписку: <code>/pay</code>\n`;
+    message +=
+      lang === 'en'
+        ? `\n💳 Buy subscription: <code>/pay</code>\n`
+        : lang === 'uk'
+          ? `\n💳 Купити підписку: <code>/pay</code>\n`
+          : `\n💳 Купить подписку: <code>/pay</code>\n`;
   } else if (metrics.status === 'EXPIRED') {
     // строка продления уже есть выше, не дублируем
   } else {
-    message += `\n💬 Если есть вопросы — <code>/support</code>\n`;
+    message +=
+      lang === 'en'
+        ? `\n💬 Questions? <code>/support</code>\n`
+        : lang === 'uk'
+          ? `\n💬 Є питання? <code>/support</code>\n`
+          : `\n💬 Если есть вопросы — <code>/support</code>\n`;
   }
 
   // Детали последней подписки (одна запись; общий срок уже выше — «Осталось дней»)
@@ -80,15 +133,19 @@ export function buildStatusHtmlMessage(args: {
     const starts = toDateLike(lastSub.startsAt);
     const ends = toDateLike(lastSub.endsAt);
     message +=
-      `\n📦 Последний период: <b>${esc(lastSub.periodDays)}</b> дн.\n` +
+      (lang === 'en'
+        ? `\n📦 Last period: <b>${esc(lastSub.periodDays)}</b> day(s)\n`
+        : lang === 'uk'
+          ? `\n📦 Останній період: <b>${esc(lastSub.periodDays)}</b> дн.\n`
+        : `\n📦 Последний период: <b>${esc(lastSub.periodDays)}</b> дн.\n`) +
       (starts && ends ? `(${esc(fmtDate(starts))} – ${esc(fmtDate(ends))})\n` : '');
   }
 
   return message;
 }
 
-export function buildStatusMenuSnippet(args: { user: UserLikeWithServers; fmtDate: (d: Date) => string }): string {
-  const { user, fmtDate } = args;
+export function buildStatusMenuSnippet(args: { lang: BotLang; user: UserLikeWithServers; fmtDate: (d: Date) => string }): string {
+  const { lang, user, fmtDate } = args;
   const lastSub = user.subscriptions?.[0] ?? null;
 
   const metrics = buildSubscriptionMetrics({
@@ -99,27 +156,28 @@ export function buildStatusMenuSnippet(args: { user: UserLikeWithServers; fmtDat
     periodDays: lastSub?.periodDays ?? null,
   });
 
-  const statusLabel = STATUS_LABEL[metrics.status] || metrics.status;
-  let text = `\n\n${STATUS_EMOJI[metrics.status] || '❓'} Статус: ${statusLabel}`;
+  const statusLabel = (STATUS_LABEL[lang] ?? STATUS_LABEL.ru)[metrics.status] || metrics.status;
+  let text = `\n\n${STATUS_EMOJI[metrics.status] || '❓'} ${lang === 'en' ? 'Status' : lang === 'uk' ? 'Статус' : 'Статус'}: ${statusLabel}`;
 
   if (metrics.expiresAtIso) {
     const expiresAt = new Date(metrics.expiresAtIso);
     const daysLeft = metrics.daysLeft ?? 0;
     if (daysLeft > 0) {
-      const time = fmtTimeRu(expiresAt);
-      text += `\n📅 До: ${fmtDate(expiresAt)}${time ? `, ${time}` : ''}`;
-      text += `\n⏳ Осталось: ${daysLeft} дн.`;
+      const time = fmtTime(expiresAt, lang);
+      text += `\n📅 ${lang === 'en' ? 'Until' : lang === 'uk' ? 'До' : 'До'}: ${fmtDate(expiresAt)}${time ? `, ${time}` : ''}`;
+      text += `\n⏳ ${lang === 'en' ? 'Left' : lang === 'uk' ? 'Залишилось' : 'Осталось'}: ${daysLeft} ${lang === 'en' ? 'day(s)' : 'дн.'}`;
     } else {
-      text += `\n⏰ Подписка истекла`;
+      text += lang === 'en' ? `\n⏰ Subscription expired` : lang === 'uk' ? `\n⏰ Підписка закінчилась` : `\n⏰ Подписка истекла`;
     }
   } else {
-    text += `\n📅 Подписка не установлена`;
+    text +=
+      lang === 'en' ? `\n📅 Subscription not set` : lang === 'uk' ? `\n📅 Підписку не встановлено` : `\n📅 Подписка не установлена`;
   }
 
   const activeServerName =
     user.userServers && user.userServers.length > 0 ? (user.userServers[0]?.server as any)?.name : null;
   if (activeServerName) {
-    text += `\n📍 Локация: ${String(activeServerName)}`;
+    text += `\n📍 ${lang === 'en' ? 'Location' : lang === 'uk' ? 'Локація' : 'Локация'}: ${String(activeServerName)}`;
   }
 
   return text;
