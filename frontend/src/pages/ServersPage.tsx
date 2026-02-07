@@ -511,7 +511,7 @@ export function ServersPage() {
                       isRecommended: Boolean(v.isRecommended),
                       active: Boolean(v.active),
                       xrayStatsHost: v.xrayStatsHost ?? undefined,
-                      xrayStatsPort: v.xrayStatsPort != null && v.xrayStatsPort !== '' ? Number(v.xrayStatsPort) : undefined,
+                      xrayStatsPort: v.xrayStatsPort != null && !Number.isNaN(Number(v.xrayStatsPort)) ? Number(v.xrayStatsPort) : undefined,
                     },
                   });
                 })}
