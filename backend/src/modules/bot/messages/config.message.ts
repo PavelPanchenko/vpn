@@ -4,18 +4,36 @@ import type { TelegramMessageCtx, TelegramReplyOptions } from '../telegram-runti
 import type { UserForConfigMessage } from '../bot-user.types';
 import type { BotLang } from '../i18n/bot-lang';
 
-const V2RAYTUN_URL = 'https://v2raytun.com';
+const V2RAYTUN_ANDROID = 'https://play.google.com/store/apps/details?id=com.v2raytun.android';
+const V2RAYTUN_IOS = 'https://apps.apple.com/en/app/v2raytun/id6476628951';
+const V2RAYTUN_WINDOWS = 'https://storage.v2raytun.com/v2RayTun_Setup.exe';
+const V2RAYTUN_MAC = 'https://apps.apple.com/us/app/v2raytun/id6476628951';
+const V2RAYTUN_ANDROID_TV = V2RAYTUN_ANDROID;
 
 function v2rayTunHintHtml(lang: BotLang): string {
-  if (lang === 'en') return `📱 <b>Recommended app:</b> V2RayTun\n${V2RAYTUN_URL}`;
-  if (lang === 'uk') return `📱 <b>Рекомендований застосунок:</b> V2RayTun\n${V2RAYTUN_URL}`;
-  return `📱 <b>Рекомендуемое приложение:</b> V2RayTun\n${V2RAYTUN_URL}`;
+  const links =
+    `<a href="${V2RAYTUN_ANDROID}">Android</a> | ` +
+    `<a href="${V2RAYTUN_IOS}">iOS</a> | ` +
+    `<a href="${V2RAYTUN_WINDOWS}">Windows</a> | ` +
+    `<a href="${V2RAYTUN_MAC}">macOS</a> | ` +
+    `<a href="${V2RAYTUN_ANDROID_TV}">Android TV</a>`;
+  if (lang === 'en') return `📱 <b>Recommended app:</b> V2RayTun\n${links}`;
+  if (lang === 'uk') return `📱 <b>Рекомендований застосунок:</b> V2RayTun\n${links}`;
+  return `📱 <b>Рекомендуемое приложение:</b> V2RayTun\n${links}`;
 }
 
 export function configChoiceHtml(lang: BotLang): string {
-  if (lang === 'en') return `📥 <b>How to show the config?</b>`;
-  if (lang === 'uk') return `📥 <b>Як показати конфіг?</b>`;
-  return `📥 <b>Как показать конфиг?</b>`;
+  if (lang === 'en')
+    return `📥 <b>How to show the config?</b>\n\n` +
+      `📱 <b>QR code</b> — scan from another device\n` +
+      `🔗 <b>Link</b> — import on this device`;
+  if (lang === 'uk')
+    return `📥 <b>Як показати конфіг?</b>\n\n` +
+      `📱 <b>QR-код</b> — сканувати з іншого пристрою\n` +
+      `🔗 <b>Посилання</b> — імпортувати на цьому пристрої`;
+  return `📥 <b>Как показать конфиг?</b>\n\n` +
+    `📱 <b>QR-код</b> — сканировать с другого устройства\n` +
+    `🔗 <b>Ссылка</b> — импортировать на этом устройстве`;
 }
 
 export type ConfigDataResult =
@@ -163,16 +181,16 @@ export async function sendConfigMessage(args: {
     lang === 'en'
       ? `📥 <b>Configuration</b> <i>(${esc(serverName)})</i>\n\n` +
           `<pre>${esc(configUrl)}</pre>\n` +
-          `Copy the link and import it into the app.\n\n` +
+          `Tap the link to copy, then import it into the app.\n\n` +
           v2rayTunHintHtml(lang)
       : lang === 'uk'
         ? `📥 <b>Конфігурація</b> <i>(${esc(serverName)})</i>\n\n` +
             `<pre>${esc(configUrl)}</pre>\n` +
-            `Скопіюйте посилання та імпортуйте в застосунок.\n\n` +
+            `Натисніть на посилання, щоб скопіювати, та імпортуйте в застосунок.\n\n` +
             v2rayTunHintHtml(lang)
       : `📥 <b>Конфигурация</b> <i>(${esc(serverName)})</i>\n\n` +
           `<pre>${esc(configUrl)}</pre>\n` +
-          `Скопируйте ссылку и импортируйте в приложение.\n\n` +
+          `Нажмите на ссылку, чтобы скопировать, и импортируйте в приложение.\n\n` +
           v2rayTunHintHtml(lang),
     configMessageExtra,
   );
@@ -185,16 +203,16 @@ export function configLinkHtml(args: { lang: BotLang; url: string; serverName: s
     (lang === 'en'
       ? `📥 <b>Configuration</b> <i>(${esc(serverName)})</i>\n\n` +
         `<pre>${esc(url)}</pre>\n` +
-        `Copy the link and import it into the app.\n\n` +
+        `Tap the link to copy, then import it into the app.\n\n` +
         v2rayTunHintHtml(lang)
       : lang === 'uk'
         ? `📥 <b>Конфігурація</b> <i>(${esc(serverName)})</i>\n\n` +
           `<pre>${esc(url)}</pre>\n` +
-          `Скопіюйте посилання та імпортуйте в застосунок.\n\n` +
+          `Натисніть на посилання, щоб скопіювати, та імпортуйте в застосунок.\n\n` +
           v2rayTunHintHtml(lang)
       : `📥 <b>Конфигурация</b> <i>(${esc(serverName)})</i>\n\n` +
         `<pre>${esc(url)}</pre>\n` +
-        `Скопируйте ссылку и импортируйте в приложение.\n\n` +
+        `Нажмите на ссылку, чтобы скопировать, и импортируйте в приложение.\n\n` +
         v2rayTunHintHtml(lang))
   );
 }
@@ -225,6 +243,7 @@ export async function sendConfigQrPhoto(args: {
       width: 400,
       margin: 2,
     });
+    const menuBtnText = lang === 'en' ? '🏠 Menu' : lang === 'uk' ? '🏠 Меню' : '🏠 В меню';
     const result = (await ctx.replyWithPhoto?.(
       { source: qrBuffer },
       {
@@ -235,6 +254,9 @@ export async function sendConfigQrPhoto(args: {
               ? `📱 <b>QR для підключення</b>\n` + `<i>${esc(serverName)}</i>\n\n` + `Відскануйте QR у вашому VPN‑клієнті.\n\n` + v2rayTunHintHtml(lang)
               : `📱 <b>QR для подключения</b>\n` + `<i>${esc(serverName)}</i>\n\n` + `Отсканируйте QR в вашем VPN‑клиенте.\n\n` + v2rayTunHintHtml(lang),
         parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [[{ text: menuBtnText, callback_data: 'dismiss_qr' }]],
+        },
       },
     )) as { chat?: { id: string | number }; message_id?: number } | undefined;
     if (result?.chat?.id != null && result?.message_id != null) {

@@ -1,4 +1,3 @@
-import { scheduleDeleteMessage, scheduleDeleteMessageFromReply } from '../delete-after.utils';
 import { buildHelpMessageHtml } from '../messages/help.message';
 import { buildInfoMessageHtml } from '../messages/info.message';
 import { buildStatusHtmlMessage } from '../messages/status.message';
@@ -10,13 +9,23 @@ import { getMarkup } from '../telegram-markup.utils';
 import type { TelegramMessageCtx } from '../telegram-runtime.types';
 import { botLangFromCtx, extractTelegramLanguageCode } from '../i18n/bot-lang';
 
+/** Мгновенно удаляет сообщение-команду пользователя (best-effort). */
+function deleteCommandMessage(args: TelegramRegistrarDeps, ctx: TelegramMessageCtx): void {
+  const chatId = ctx.chat?.id;
+  const msgId = ctx.message?.message_id;
+  if (chatId != null && msgId != null) {
+    args.bot.telegram.deleteMessage(chatId, msgId).catch(() => {});
+  }
+}
+
 export function registerTelegramCommands(args: TelegramRegistrarDeps) {
-  // /config — тот же выбор «QR / Ссылка», что и при нажатии «Получить конфиг»
+  // /config — выбор «QR / Ссылка»
   args.bot.command('config', async (ctx: TelegramMessageCtx) => {
     args.logger.log('Command /config received');
     const telegramId = ctx.from.id.toString();
     const lang = botLangFromCtx(ctx);
     void args.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
+    deleteCommandMessage(args, ctx);
 
     try {
       const user = await args.usersService.findByTelegramId(telegramId);
@@ -29,8 +38,7 @@ export function registerTelegramCommands(args: TelegramRegistrarDeps) {
         [Markup.button.callback(ui(lang).qrBtn, 'config_show_qr'), Markup.button.callback(ui(lang).linkBtn, 'config_show_link')],
         [Markup.button.callback(ui(lang).backToMenuBtn, 'back_to_main')],
       ]);
-      const sent = await args.replyHtml(ctx, configChoiceHtml(lang), keyboard);
-      scheduleDeleteMessageFromReply(args.bot.telegram, sent);
+      await args.editLastOrReply(ctx, configChoiceHtml(lang), keyboard);
     } catch (error: unknown) {
       args.logger.error('Error handling /config command:', error);
       await args.replyHtml(
@@ -43,12 +51,13 @@ export function registerTelegramCommands(args: TelegramRegistrarDeps) {
     }
   });
 
-  // /support
+  // /support — своя логика (режим поддержки), не трогаем
   args.bot.command('support', async (ctx: TelegramMessageCtx) => {
     args.logger.log('Command /support received');
     const telegramId = ctx.from.id.toString();
     const lang = botLangFromCtx(ctx);
     void args.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
+    deleteCommandMessage(args, ctx);
 
     try {
       const user = await args.usersService.findByTelegramId(telegramId);
@@ -67,28 +76,30 @@ export function registerTelegramCommands(args: TelegramRegistrarDeps) {
     }
   });
 
-  // /help — тот же контент, что и по кнопке «Помощь» (по кнопке редактируется одно сообщение)
+  // /help — помощь с полным меню
   args.bot.command('help', async (ctx: TelegramMessageCtx) => {
+    const telegramId = ctx.from.id.toString();
     const lang = botLangFromCtx(ctx);
-    void args.usersService.updateTelegramLanguageCodeByTelegramId(ctx.from.id.toString(), extractTelegramLanguageCode(ctx));
-    if (ctx.chat?.id != null && ctx.message?.message_id != null) {
-      scheduleDeleteMessage(args.bot.telegram, ctx.chat.id, ctx.message.message_id);
-    }
+    void args.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
+    deleteCommandMessage(args, ctx);
+
     try {
-      const sent = await args.replyHtml(ctx, buildHelpMessageHtml(lang));
-      scheduleDeleteMessageFromReply(args.bot.telegram, sent);
+      const user = await args.usersService.findByTelegramId(telegramId);
+      const menuKeyboard = await args.buildMainMenuKeyboard(user, lang);
+      await args.editLastOrReply(ctx, buildHelpMessageHtml(lang), menuKeyboard);
     } catch (error: unknown) {
       args.logger.error('Error handling /help command:', error);
       await ctx.reply(bm(lang).errorTryLaterText);
     }
   });
 
-  // /status
+  // /status — статус подписки с полным меню
   args.bot.command('status', async (ctx: TelegramMessageCtx) => {
     args.logger.log('Command /status received');
     const telegramId = ctx.from.id.toString();
     const lang = botLangFromCtx(ctx);
     void args.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
+    deleteCommandMessage(args, ctx);
 
     try {
       const user = await args.usersService.findByTelegramId(telegramId, {
@@ -108,43 +119,36 @@ export function registerTelegramCommands(args: TelegramRegistrarDeps) {
         return;
       }
 
-      const sent = await args.replyHtml(
+      const menuKeyboard = await args.buildMainMenuKeyboard(user, lang);
+      await args.editLastOrReply(
         ctx,
         buildStatusHtmlMessage({ lang, user, esc: args.esc, fmtDate: (d) => args.fmtDate(lang, d) }),
+        menuKeyboard,
       );
-      scheduleDeleteMessageFromReply(args.bot.telegram, sent);
     } catch (error: unknown) {
       args.logger.error('Error handling /status command:', error);
       await ctx.reply(
         lang === 'en'
-          ? '❌ Failed to get status.\n\n' +
-              'Possible reasons:\n' +
-              '• Database connectivity issues\n' +
-              '• Temporary service outage\n\n' +
-              'Try again later or contact support via /support.'
-          : '❌ Произошла ошибка при получении статуса.\n\n' +
-              'Возможные причины:\n' +
-              '• Проблемы с подключением к базе данных\n' +
-              '• Временная недоступность сервиса\n\n' +
-              'Попробуйте позже или обратитесь в поддержку через /support.',
+          ? '❌ Failed to get status.\n\nTry again later or contact support via /support.'
+          : '❌ Произошла ошибка при получении статуса.\n\nПопробуйте позже или обратитесь в поддержку через /support.',
       );
     }
   });
 
-  // /info — тот же контент, что и по кнопке «Информация» (по кнопке редактируется одно сообщение)
+  // /info — информация с полным меню
   args.bot.command('info', async (ctx: TelegramMessageCtx) => {
+    const telegramId = ctx.from.id.toString();
     const lang = botLangFromCtx(ctx);
-    void args.usersService.updateTelegramLanguageCodeByTelegramId(ctx.from.id.toString(), extractTelegramLanguageCode(ctx));
-    if (ctx.chat?.id != null && ctx.message?.message_id != null) {
-      scheduleDeleteMessage(args.bot.telegram, ctx.chat.id, ctx.message.message_id);
-    }
+    void args.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
+    deleteCommandMessage(args, ctx);
+
     try {
-      const sent = await args.replyHtml(ctx, buildInfoMessageHtml(lang, args.config));
-      scheduleDeleteMessageFromReply(args.bot.telegram, sent);
+      const user = await args.usersService.findByTelegramId(telegramId);
+      const menuKeyboard = await args.buildMainMenuKeyboard(user, lang);
+      await args.editLastOrReply(ctx, buildInfoMessageHtml(lang, args.config), menuKeyboard);
     } catch (error: unknown) {
       args.logger.error('Error handling /info command:', error);
       await ctx.reply(bm(lang).infoLoadFailedText);
     }
   });
 }
-

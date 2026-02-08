@@ -26,7 +26,7 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
     const lang = botLangFromCtx(args2.ctx);
     const user = await args.usersService.findByTelegramId(args2.telegramId);
     if (!user) {
-      await args.replyHtml(args2.ctx, bm(lang).userNotFoundUseStartText);
+      await args.editLastOrReply(args2.ctx, bm(lang).userNotFoundUseStartText);
       return;
     }
 
@@ -45,7 +45,7 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
     args.logger.debug(`Found ${paidPlans.length} paid plans after filtering`);
 
     if (paidPlans.length === 0) {
-      if (args2.mode === 'reply') await args.replyHtml(args2.ctx, bm(lang).noPaidPlansHtml);
+      if (args2.mode === 'reply') await args.editLastOrReply(args2.ctx, bm(lang).noPaidPlansHtml);
       else await editOrReplyHtml(args2.ctx as any, bm(lang).noPaidPlansHtml);
       return;
     }
@@ -77,11 +77,9 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
           `После оплаты подписка активируется автоматически.`;
 
     if (args2.mode === 'reply') {
-      const sent = await args.replyHtml(args2.ctx, text, Markup.inlineKeyboard(buttons));
-      scheduleDeleteMessageFromReply(args.bot.telegram, sent);
+      await args.editLastOrReply(args2.ctx, text, Markup.inlineKeyboard(buttons));
     } else {
-      const sent = await editOrReplyHtml(args2.ctx as any, text, Markup.inlineKeyboard(buttons));
-      scheduleDeleteMessageFromReply(args.bot.telegram, sent, args2.ctx);
+      await editOrReplyHtml(args2.ctx as any, text, Markup.inlineKeyboard(buttons));
     }
   }
 
@@ -90,6 +88,13 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
     const telegramId = ctx.from.id.toString();
     const lang = botLangFromCtx(ctx);
     void args.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
+
+    // Удаляем команду пользователя для чистоты чата
+    const chatId = ctx.chat?.id;
+    const msgId = ctx.message?.message_id;
+    if (chatId != null && msgId != null) {
+      args.bot.telegram.deleteMessage(chatId, msgId).catch(() => {});
+    }
 
     try {
       await renderPayPlans({ ctx, telegramId, mode: 'reply' });
