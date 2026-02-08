@@ -182,7 +182,7 @@ function StatsChart({
             const [y, m, d] = String(label).split('-');
             return `${d}.${m}.${y}`;
           }}
-          formatter={(value: number) => [value, 'Кол-во']}
+          formatter={(value) => [value ?? 0, 'Кол-во']}
           contentStyle={{
             borderRadius: '8px',
             border: '1px solid #e2e8f0',
