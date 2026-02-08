@@ -373,31 +373,31 @@ export function PaymentsPage() {
                 <table className="w-full text-sm table-fixed">
                   <thead className="text-left text-slate-500">
                     <tr>
-                      <th className="py-2">User</th>
-                      <th className="py-2">Plan</th>
-                      <th className="py-2">Created</th>
-                      <th className="py-2">Amount</th>
-                      <th className="py-2">Currency</th>
-                      <th className="py-2">Provider</th>
-                      <th className="py-2">Status</th>
-                      <th className="py-2 w-[180px]">External ID</th>
-                      <th className="py-2"></th>
+                      <th className="py-2 w-[16%]">User</th>
+                      <th className="py-2 w-[8%]">Plan</th>
+                      <th className="py-2 w-[13%]">Created</th>
+                      <th className="py-2 w-[7%]">Amount</th>
+                      <th className="py-2 w-[7%]">Currency</th>
+                      <th className="py-2 w-[12%]">Provider</th>
+                      <th className="py-2 w-[10%]">Status</th>
+                      <th className="py-2 w-[18%]">External ID</th>
+                      <th className="py-2 w-[9%]"></th>
                     </tr>
                   </thead>
                   <tbody className="text-slate-800">
                     {intents.map((it) => (
                       <tr key={it.id} className="border-t border-slate-100">
-                        <td className="py-2 text-sm">
-                          <div className="font-medium text-slate-900">{it.vpnUser?.name ?? it.vpnUser?.uuid ?? it.vpnUserId}</div>
-                          <div className="font-mono text-xs text-slate-500">{it.vpnUser?.uuid ?? ''}</div>
+                        <td className="py-2 text-sm overflow-hidden text-ellipsis whitespace-nowrap" title={it.vpnUser?.uuid ?? it.vpnUserId}>
+                          <div className="font-medium text-slate-900 truncate">{it.vpnUser?.name ?? it.vpnUser?.uuid ?? it.vpnUserId}</div>
+                          <div className="font-mono text-xs text-slate-500 truncate">{it.vpnUser?.uuid ?? ''}</div>
                         </td>
-                        <td className="py-2">{it.plan?.name ?? it.planId}</td>
-                        <td className="py-2">{new Date(it.createdAt).toLocaleString()}</td>
+                        <td className="py-2 truncate">{it.plan?.name ?? it.planId}</td>
+                        <td className="py-2 truncate">{new Date(it.createdAt).toLocaleString()}</td>
                         <td className="py-2">{it.amount}</td>
                         <td className="py-2">{it.currency}</td>
-                        <td className="py-2">{it.provider}</td>
-                        <td className="py-2">{it.status}</td>
-                        <td className="py-2 font-mono text-xs max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" title={it.externalId ?? undefined}>
+                        <td className="py-2 truncate">{it.provider}</td>
+                        <td className="py-2 truncate">{it.status}</td>
+                        <td className="py-2 font-mono text-xs overflow-hidden text-ellipsis whitespace-nowrap" title={it.externalId ?? undefined}>
                           {it.externalId ?? ''}
                         </td>
                         <td className="py-2 text-right">
