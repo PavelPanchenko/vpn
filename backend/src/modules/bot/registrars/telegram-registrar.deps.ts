@@ -27,10 +27,13 @@ export type TelegramRegistrarDeps = {
   supportService: SupportService;
 
   supportModeUsers: Map<string, boolean>;
+  lastBotMessageId: Map<string | number, number>;
 
   // Telegram message helpers
   replyHtml: (ctx: TelegramMessageCtx, html: string, extra?: TelegramReplyOptions) => Promise<unknown>;
   editHtml: (ctx: TelegramCallbackCtx, html: string, extra?: TelegramReplyOptions) => Promise<unknown>;
+  /** Редактирует последнее сообщение бота в чате или шлёт новое (fallback). */
+  editLastOrReply: (ctx: TelegramMessageCtx, html: string, extra?: TelegramReplyOptions) => Promise<unknown>;
 
   // High-level bot helpers
   sendConfigMessage: (

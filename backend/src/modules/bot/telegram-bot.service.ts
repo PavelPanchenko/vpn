@@ -48,6 +48,8 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   private readonly pollingLockKey = 987654321;
   // Храним пользователей, которые находятся в режиме поддержки
   private supportModeUsers = new Map<string, boolean>();
+  // Последнее сообщение бота в каждом чате (chatId → messageId) для редактирования вместо нового сообщения
+  private lastBotMessageId = new Map<string | number, number>();
   // Флаг для предотвращения одновременных запусков
   private isStarting = false;
 
@@ -158,6 +160,7 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         this.tokenInUse = token;
         // При пересоздании бота очищаем локальные runtime-состояния
         this.supportModeUsers.clear();
+        this.lastBotMessageId.clear();
       }
 
       // Обработка команды /cancel - выход из режима поддержки
@@ -165,11 +168,18 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         const telegramId = ctx.from.id.toString();
         const lang = botLangFromCtx(ctx);
         void this.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
-        this.supportModeUsers.delete(telegramId);
-        await this.replyHtml(
-          ctx,
-          bm(lang).supportModeCancelledHtml,
-        );
+
+        if (this.supportModeUsers.get(telegramId)) {
+          // Пользователь в режиме поддержки — выходим
+          this.supportModeUsers.delete(telegramId);
+          await replyHtml(ctx, bm(lang).supportModeCancelledHtml);
+        } else {
+          // Не в режиме поддержки — показываем главное меню
+          const user = await this.usersService.findByTelegramId(telegramId, { userServers: true });
+          if (user) {
+            await this.showMainMenu(ctx, user);
+          }
+        }
       });
 
       const registrarDeps: TelegramRegistrarDeps = {
@@ -184,8 +194,10 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         paymentIntentsService: this.paymentIntentsService,
         supportService: this.supportService,
         supportModeUsers: this.supportModeUsers,
+        lastBotMessageId: this.lastBotMessageId,
         replyHtml: (ctx, html, extra) => this.replyHtml(ctx, html, extra),
         editHtml: (ctx, html, extra) => this.editHtml(ctx, html, extra),
+        editLastOrReply: (ctx, html, extra) => this.editLastOrReply(ctx, html, extra),
         sendConfigMessage: (ctx, user, lang, extra) => this.sendConfigMessage(ctx, user, lang, extra),
         getConfigData: (user, lang) =>
           getConfigDataFn({ user, lang, usersService: this.usersService, logger: this.logger, esc: (s) => this.esc(s) }),
@@ -266,11 +278,43 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async replyHtml(ctx: TelegramMessageCtx, html: string, extra?: Record<string, unknown>) {
-    return replyHtml(ctx, html, extra);
+    const result = await replyHtml(ctx, html, extra);
+    this.trackBotMessage(ctx, result);
+    return result;
   }
 
   private async editHtml(ctx: TelegramCallbackCtx, html: string, extra?: Record<string, unknown>) {
-    return editHtml(ctx, html, extra);
+    const result = await editHtml(ctx, html, extra);
+    this.trackBotMessage(ctx, result);
+    return result;
+  }
+
+  /** Сохраняет ID последнего сообщения бота в чате для последующего редактирования. */
+  private trackBotMessage(ctx: TelegramMessageCtx, result: unknown): void {
+    const chatId = ctx.chat?.id ?? ctx.from.id;
+    const msg = result as { chat?: { id: string | number }; message_id?: number } | null | undefined;
+    if (msg && typeof msg === 'object' && msg.message_id) {
+      this.lastBotMessageId.set(chatId, msg.message_id);
+    }
+  }
+
+  /**
+   * Редактирует последнее сообщение бота в чате или отправляет новое (fallback).
+   * Используется командами (/help, /status и т.д.) для чистого чата.
+   */
+  /**
+   * Удаляет предыдущее сообщение бота в чате и отправляет новое (всегда внизу).
+   * Если удалить не удалось (уже удалено пользователем) — просто отправляем новое.
+   */
+  private async editLastOrReply(ctx: TelegramMessageCtx, html: string, extra?: Record<string, unknown>) {
+    const chatId = ctx.chat?.id ?? ctx.from.id;
+    const msgId = this.lastBotMessageId.get(chatId);
+    if (msgId && this.bot) {
+      // Удаляем старое сообщение (best-effort)
+      await this.bot.telegram.deleteMessage(chatId, msgId).catch(() => {});
+      this.lastBotMessageId.delete(chatId);
+    }
+    return this.replyHtml(ctx, html, extra);
   }
 
   private planBtnLabel(plan: PlanLike): string {
@@ -299,20 +343,18 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     const lang = botLangFromCtx(ctx);
     void this.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
     this.supportModeUsers.set(telegramId, true);
-    await this.replyHtml(
-      ctx,
-      bm(lang).supportModeIntroHtml,
-    );
+    // Используем replyHtml напрямую (без трекинга), чтобы не сбивать lastBotMessageId
+    await replyHtml(ctx, bm(lang).supportModeIntroHtml);
   }
 
   private mainMenuHtml(lang: BotLang): string {
     if (lang === 'en') {
-      return `🏠 <b>Main menu</b>\n<i>Choose an action using the buttons below</i>\n\n` + `Info: /info\n` + `Help: /help`;
+      return `🏠 <b>Main menu</b>\n\n` + `👉 Tap <b>«📥 Get config»</b> to get your VPN key\n\n` + `Info: /info\n` + `Help: /help`;
     }
     if (lang === 'uk') {
-      return `🏠 <b>Головне меню</b>\n<i>Оберіть дію кнопками нижче</i>\n\n` + `Інформація: /info\n` + `Допомога: /help`;
+      return `🏠 <b>Головне меню</b>\n\n` + `👉 Натисніть <b>«📥 Отримати конфіг»</b>, щоб отримати ключ VPN\n\n` + `Інформація: /info\n` + `Допомога: /help`;
     }
-    return `🏠 <b>Главное меню</b>\n<i>Выберите нужное действие кнопками ниже</i>\n\n` + `Информация: /info\n` + `Помощь: /help`;
+    return `🏠 <b>Главное меню</b>\n\n` + `👉 Нажмите <b>«📥 Получить конфиг»</b>, чтобы получить ключ VPN\n\n` + `Информация: /info\n` + `Помощь: /help`;
   }
 
   private async langForTelegramId(telegramId: string): Promise<BotLang> {

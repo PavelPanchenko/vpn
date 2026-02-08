@@ -33,16 +33,16 @@ const BotMessagesByLang = {
     supportSendFailedText: '❌ Произошла ошибка при отправке сообщения. Попробуйте позже.',
     infoLoadFailedText: '❌ Не удалось загрузить информацию. Попробуйте позже.',
     supportModeCancelledHtml:
-      `✅ <b>Режим поддержки выключен</b>\n\n` + `Вернуться в меню: <code>/start</code>`,
+      `✅ <b>Режим поддержки выключен</b>\n\n` + `Вернуться в меню: /start`,
     supportModeIntroHtml:
       `💬 <b>Поддержка</b>\n\n` +
       `Напишите ваш вопрос одним сообщением — мы ответим как можно скорее.\n\n` +
-      `Выйти из режима: <code>/cancel</code> или <code>/start</code>`,
+      `Выйти из режима: /cancel или /start`,
     supportReplyHeaderTemplate: '💬 <b>Ответ поддержки</b>\n\n{message}',
     supportMessageSentHtml:
       `✅ <b>Сообщение отправлено</b>\n\n` +
       `Если хотите добавить детали — отправьте ещё одно сообщение.\n` +
-      `Выйти: <code>/cancel</code> или <code>/start</code>`,
+      `Выйти: /cancel или /start`,
     /** Напоминание об истечении за сутки. {date} — дата/время окончания. */
     expiryReminderTemplate: '⏰ <b>Напоминание</b>: подписка истекает через сутки (до {date}).\n\nПродлить: /pay',
     /** Уведомление при изменении срока доступа админом. {date} — новая дата окончания. */
@@ -80,16 +80,16 @@ const BotMessagesByLang = {
     noPaidPlansHtml: `❌ <b>No available plans</b>\n\n` + `Try again later or contact support: <code>/support</code>`,
     supportSendFailedText: '❌ Failed to send message. Please try again later.',
     infoLoadFailedText: '❌ Failed to load info. Please try again later.',
-    supportModeCancelledHtml: `✅ <b>Support mode disabled</b>\n\n` + `Back to menu: <code>/start</code>`,
+    supportModeCancelledHtml: `✅ <b>Support mode disabled</b>\n\n` + `Back to menu: /start`,
     supportModeIntroHtml:
       `💬 <b>Support</b>\n\n` +
       `Send your question in a single message — we’ll reply as soon as possible.\n\n` +
-      `Exit: <code>/cancel</code> or <code>/start</code>`,
+      `Exit: /cancel or /start`,
     supportReplyHeaderTemplate: '💬 <b>Support reply</b>\n\n{message}',
     supportMessageSentHtml:
       `✅ <b>Message sent</b>\n\n` +
       `If you want to add details — send another message.\n` +
-      `Exit: <code>/cancel</code> or <code>/start</code>`,
+      `Exit: /cancel or /start`,
     expiryReminderTemplate: '⏰ <b>Reminder</b>: your subscription expires in 24 hours (until {date}).\n\nExtend: /pay',
     accessDaysChangedTemplate: '📅 <b>Access period changed</b>\n\nNew expiry: {date}\n\nCheck: /status',
     accessDaysRemovedText: '📅 <b>Access period removed</b> by admin.\n\nCheck status: /status',
@@ -124,16 +124,16 @@ const BotMessagesByLang = {
     noPaidPlansHtml: `❌ <b>Немає доступних тарифів</b>\n\n` + `Спробуйте пізніше або напишіть у підтримку: <code>/support</code>`,
     supportSendFailedText: '❌ Помилка надсилання повідомлення. Спробуйте пізніше.',
     infoLoadFailedText: '❌ Не вдалося завантажити інформацію. Спробуйте пізніше.',
-    supportModeCancelledHtml: `✅ <b>Режим підтримки вимкнено</b>\n\n` + `Повернутися в меню: <code>/start</code>`,
+    supportModeCancelledHtml: `✅ <b>Режим підтримки вимкнено</b>\n\n` + `Повернутися в меню: /start`,
     supportModeIntroHtml:
       `💬 <b>Підтримка</b>\n\n` +
       `Напишіть ваше питання одним повідомленням — ми відповімо якнайшвидше.\n\n` +
-      `Вийти: <code>/cancel</code> або <code>/start</code>`,
+      `Вийти: /cancel або /start`,
     supportReplyHeaderTemplate: '💬 <b>Відповідь підтримки</b>\n\n{message}',
     supportMessageSentHtml:
       `✅ <b>Повідомлення надіслано</b>\n\n` +
       `Якщо хочете додати деталі — надішліть ще одне повідомлення.\n` +
-      `Вийти: <code>/cancel</code> або <code>/start</code>`,
+      `Вийти: /cancel або /start`,
     expiryReminderTemplate: '⏰ <b>Нагадування</b>: підписка закінчується через добу (до {date}).\n\nПодовжити: /pay',
     accessDaysChangedTemplate: '📅 <b>Термін доступу змінено</b>\n\nНовий термін: до {date}\n\nПеревірити: /status',
     accessDaysRemovedText: '📅 <b>Термін доступу знято</b> адміністратором.\n\nПеревірити статус: /status',

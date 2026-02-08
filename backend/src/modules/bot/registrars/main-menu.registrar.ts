@@ -45,11 +45,12 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
     await ctx.answerCbQuery();
     const data = await args.getConfigData(user, lang);
     const Markup = await getMarkup();
-    const keyboard = Markup.inlineKeyboard([[Markup.button.callback(ui(lang).backToMenuBtn, 'back_to_main')]]);
     if (!data.ok) {
+      const keyboard = Markup.inlineKeyboard([[Markup.button.callback(ui(lang).backToMenuBtn, 'back_to_main')]]);
       await args.editHtml(ctx, data.htmlMessage, keyboard);
       return;
     }
+    const keyboard = Markup.inlineKeyboard([[Markup.button.callback(ui(lang).backToMenuBtn, 'back_to_main')]]);
     await args.editHtml(ctx, args.configLinkHtml(data.url, data.serverName, lang), keyboard);
   });
 
@@ -72,15 +73,22 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
     }
     await args.editHtml(ctx, ui(lang).preparingQrText, keyboard);
     try {
-      const qrSent = await args.sendConfigQrPhoto(ctx, data.url, data.serverName, lang);
-      if (qrSent) {
-        scheduleDeleteMessage(args.bot.telegram, qrSent.chatId, qrSent.messageId);
-      }
+      await args.sendConfigQrPhoto(ctx, data.url, data.serverName, lang);
     } catch {
       await args.editHtml(ctx, ui(lang).qrFailedText, keyboard);
       return;
     }
-    await args.showMainMenuEdit(ctx, user);
+    // Удаляем текстовое сообщение — остаётся только QR с кнопкой «В меню»
+    try {
+      const chatId = ctx.chat?.id ?? ctx.from.id;
+      const msgId = (ctx as any).callbackQuery?.message?.message_id;
+      if (chatId && msgId) {
+        await args.bot.telegram.deleteMessage(chatId, msgId);
+      }
+    } catch {
+      // fallback: если удалить не получилось — редактируем в меню
+      await args.showMainMenuEdit(ctx, user);
+    }
   });
 
   args.bot.action('show_pay', async (ctx: TelegramCallbackCtx) => {
@@ -153,6 +161,27 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
       args.logger.error('Error handling show_pay action:', error);
       const lang = botLangFromCtx(ctx);
       await cbThenReplyText({ ctx, cbText: bm(lang).errorCbText, replyText: bm(lang).errorTryLaterText });
+    }
+  });
+
+  // Кнопка «В меню» на QR-фото: удаляем QR и показываем главное меню
+  args.bot.action('dismiss_qr', async (ctx: TelegramCallbackCtx) => {
+    const telegramId = ctx.from.id.toString();
+    try {
+      await ctx.answerCbQuery();
+      // Удаляем QR-сообщение
+      const chatId = ctx.chat?.id ?? ctx.from.id;
+      const msgId = (ctx as any).callbackQuery?.message?.message_id;
+      if (chatId && msgId) {
+        await args.bot.telegram.deleteMessage(chatId, msgId).catch(() => {});
+      }
+      // Показываем главное меню новым сообщением
+      const user = await args.usersService.findByTelegramId(telegramId, { userServers: true });
+      if (user) {
+        await args.showMainMenu(ctx, user);
+      }
+    } catch {
+      // ignore
     }
   });
 
