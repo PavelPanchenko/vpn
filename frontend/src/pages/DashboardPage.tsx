@@ -5,6 +5,18 @@ import { PageHeader } from '../components/PageHeader';
 import { Badge, statusBadgeVariant } from '../components/Badge';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/Button';
+import { useMemo } from 'react';
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from 'recharts';
+
+type ChartPoint = { date: string; count: number };
 
 type DashboardStats = {
   servers: {
@@ -16,6 +28,9 @@ type DashboardStats = {
     active: number;
     blocked: number;
     expired: number;
+    today: number;
+    week: number;
+    month: number;
   };
   subscriptions: {
     active: number;
@@ -23,12 +38,18 @@ type DashboardStats = {
   payments: {
     total: number;
     today: number;
+    week: number;
     month: number;
   };
   revenue: {
     total: Record<string, number>;
     today: Record<string, number>;
+    week: Record<string, number>;
     month: Record<string, number>;
+  };
+  charts: {
+    users: ChartPoint[];
+    payments: ChartPoint[];
   };
   recent: {
     payments: Array<{
@@ -67,7 +88,6 @@ function formatMoney(amount: number, currency: string): string {
 
 function revenueEntries(byCurrency: Record<string, number> | null | undefined) {
   const entries = Object.entries(byCurrency ?? {}).filter(([, v]) => typeof v === 'number' && Number.isFinite(v) && v !== 0);
-  // Сначала RUB, потом XTR, потом остальные
   const weight = (c: string) => (c.toUpperCase() === 'RUB' ? 0 : c.toUpperCase() === 'XTR' ? 1 : 2);
   return entries.sort(([a], [b]) => weight(a) - weight(b) || a.localeCompare(b));
 }
@@ -107,15 +127,92 @@ function RevenueChips({ byCurrency }: { byCurrency: Record<string, number> | nul
   );
 }
 
+/** Форматирует дату для оси X графика: "08.02" */
+function formatChartDate(dateStr: string): string {
+  const [, m, d] = dateStr.split('-');
+  return `${d}.${m}`;
+}
+
+/** Mini stat row: label + value */
+function StatRow({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-sm text-slate-500">{label}</span>
+      <span className="text-sm font-semibold text-slate-900">{value}</span>
+    </div>
+  );
+}
+
+function StatsChart({
+  data,
+  color,
+  gradientId,
+}: {
+  data: ChartPoint[];
+  color: string;
+  gradientId: string;
+}) {
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <AreaChart data={data} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="5%" stopColor={color} stopOpacity={0.2} />
+            <stop offset="95%" stopColor={color} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+        <XAxis
+          dataKey="date"
+          tickFormatter={formatChartDate}
+          tick={{ fontSize: 11, fill: '#94a3b8' }}
+          axisLine={{ stroke: '#e2e8f0' }}
+          tickLine={false}
+          interval="preserveStartEnd"
+          minTickGap={40}
+        />
+        <YAxis
+          allowDecimals={false}
+          tick={{ fontSize: 11, fill: '#94a3b8' }}
+          axisLine={false}
+          tickLine={false}
+        />
+        <Tooltip
+          labelFormatter={(label) => {
+            const [y, m, d] = String(label).split('-');
+            return `${d}.${m}.${y}`;
+          }}
+          formatter={(value: number) => [value, 'Кол-во']}
+          contentStyle={{
+            borderRadius: '8px',
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+            fontSize: '13px',
+          }}
+        />
+        <Area
+          type="monotone"
+          dataKey="count"
+          stroke={color}
+          strokeWidth={2}
+          fill={`url(#${gradientId})`}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+}
+
 export function DashboardPage() {
   const statsQ = useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: async () => (await api.get<DashboardStats>('/dashboard/stats')).data,
-    refetchInterval: 30000, // Обновляем каждые 30 секунд
+    refetchInterval: 30000,
   });
 
   const stats = statsQ.data;
   const revenue = stats?.revenue ?? null;
+
+  const chartsData = useMemo(() => stats?.charts ?? null, [stats]);
 
   return (
     <div className="grid gap-6">
@@ -147,10 +244,15 @@ export function DashboardPage() {
             </Card>
 
             <Card title="Пользователи">
-              <div className="space-y-1">
+              <div className="space-y-2">
                 <div className="text-2xl font-bold text-slate-900 sm:text-3xl">{stats.users.total}</div>
-                <div className="text-sm text-slate-500">
-                  {stats.users.active} активных, {stats.users.blocked} заблокированных, {stats.users.expired} истекших
+                <div className="space-y-1">
+                  <StatRow label="Сегодня" value={stats.users.today} />
+                  <StatRow label="Неделя" value={stats.users.week} />
+                  <StatRow label="Месяц" value={stats.users.month} />
+                </div>
+                <div className="text-xs text-slate-400 pt-1">
+                  {stats.users.active} активных · {stats.users.blocked} заблок. · {stats.users.expired} истёк.
                 </div>
               </div>
             </Card>
@@ -163,17 +265,19 @@ export function DashboardPage() {
             </Card>
 
             <Card title="Платежи">
-              <div className="space-y-1">
+              <div className="space-y-2">
                 <div className="text-2xl font-bold text-slate-900 sm:text-3xl">{stats.payments.total}</div>
-                <div className="text-sm text-slate-500">
-                  {stats.payments.today} сегодня, {stats.payments.month} за месяц
+                <div className="space-y-1">
+                  <StatRow label="Сегодня" value={stats.payments.today} />
+                  <StatRow label="Неделя" value={stats.payments.week} />
+                  <StatRow label="Месяц" value={stats.payments.month} />
                 </div>
               </div>
             </Card>
           </div>
 
           {/* Доходы */}
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Card title="Доход (всего)">
               <div className="text-xl font-bold sm:text-2xl">
                 <RevenueChips byCurrency={revenue?.total} />
@@ -184,12 +288,37 @@ export function DashboardPage() {
                 <RevenueChips byCurrency={revenue?.today} />
               </div>
             </Card>
+            <Card title="Доход (неделя)">
+              <div className="text-xl font-bold sm:text-2xl">
+                <RevenueChips byCurrency={revenue?.week} />
+              </div>
+            </Card>
             <Card title="Доход (месяц)">
               <div className="text-xl font-bold sm:text-2xl">
                 <RevenueChips byCurrency={revenue?.month} />
               </div>
             </Card>
           </div>
+
+          {/* Графики */}
+          {chartsData && (
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card title="Новые пользователи (30 дней)">
+                <StatsChart
+                  data={chartsData.users}
+                  color="#3b82f6"
+                  gradientId="usersGradient"
+                />
+              </Card>
+              <Card title="Оплаты (30 дней)">
+                <StatsChart
+                  data={chartsData.payments}
+                  color="#10b981"
+                  gradientId="paymentsGradient"
+                />
+              </Card>
+            </div>
+          )}
 
           {/* Недавние данные */}
           <div className="grid gap-4 lg:grid-cols-2">
@@ -248,4 +377,3 @@ export function DashboardPage() {
     </div>
   );
 }
-
