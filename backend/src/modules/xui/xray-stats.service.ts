@@ -214,6 +214,11 @@ export class XrayStatsService {
       const response = await new Promise<{ users?: string[]; Users?: string[] }>((resolve, reject) => {
         client.GetAllOnlineUsers({}, (err: grpc.ServiceError | null, res: any) => {
           if (err) {
+            if (err.code === grpc.status.UNIMPLEMENTED) {
+              this.logger.warn(`GetAllOnlineUsers not supported on ${address}, update Xray to a version with StatsService.GetAllOnlineUsers`);
+              resolve({ users: [] });
+              return;
+            }
             reject(err);
             return;
           }
