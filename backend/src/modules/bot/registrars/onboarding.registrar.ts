@@ -5,7 +5,7 @@ import { getMarkup } from '../telegram-markup.utils';
 import { cbThenReplyText } from '../telegram-callback.utils';
 import type { TelegramCallbackCtx, TelegramCallbackMatch, TelegramMessageCtx } from '../telegram-runtime.types';
 import type { PlanLike, ServerLike } from '../bot-domain.types';
-import { getTelegramMiniAppUrl } from '../mini-app/mini-app-url';
+
 import { botLangFromCtx, extractTelegramLanguageCode } from '../i18n/bot-lang';
 import { ui } from '../messages/ui.messages';
 
@@ -85,7 +85,7 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       const buttons = servers.map((server: ServerLike) => [
         Markup.button.callback(server.name, `select_server_${server.id}`),
       ]);
-      const miniAppUrl = getTelegramMiniAppUrl(args.config);
+      const miniAppUrl = await args.getTelegramMiniAppUrl();
       if (miniAppUrl) {
         const btn = Markup?.button?.webApp
           ? Markup.button.webApp(lang === 'en' ? '🚀 Open Mini App' : '🚀 Открыть Mini App', miniAppUrl)

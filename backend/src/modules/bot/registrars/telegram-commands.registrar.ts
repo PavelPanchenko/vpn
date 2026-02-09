@@ -145,7 +145,8 @@ export function registerTelegramCommands(args: TelegramRegistrarDeps) {
     try {
       const user = await args.usersService.findByTelegramId(telegramId);
       const menuKeyboard = await args.buildMainMenuKeyboard(user, lang);
-      await args.editLastOrReply(ctx, buildInfoMessageHtml(lang, args.config), menuKeyboard);
+      const infoCtx = await args.getInfoContext();
+      await args.editLastOrReply(ctx, buildInfoMessageHtml(lang, infoCtx), menuKeyboard);
     } catch (error: unknown) {
       args.logger.error('Error handling /info command:', error);
       await ctx.reply(bm(lang).infoLoadFailedText);

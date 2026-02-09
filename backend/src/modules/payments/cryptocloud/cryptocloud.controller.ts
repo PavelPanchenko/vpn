@@ -1,15 +1,16 @@
 import { BadRequestException, Body, Controller, Inject, Optional, Post, forwardRef } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { PaymentIntentsService } from '../payment-intents/payment-intents.service';
 import type { CryptoCloudPostbackBody } from './cryptocloud-postback';
 import { verifyCryptoCloudPostbackToken } from './cryptocloud-postback';
 import { TelegramBotService } from '../../bot/telegram-bot.service';
+import { BotService } from '../../bot/bot.service';
 
 @Controller('payments/cryptocloud')
 export class CryptoCloudController {
   constructor(
     private readonly intents: PaymentIntentsService,
-    private readonly config: ConfigService,
+    @Inject(forwardRef(() => BotService))
+    private readonly botService: BotService,
     @Optional()
     @Inject(forwardRef(() => TelegramBotService))
     private readonly telegramBot: TelegramBotService | null,
@@ -27,7 +28,7 @@ export class CryptoCloudController {
   }
 
   private async handle(body: CryptoCloudPostbackBody) {
-    const secret = (this.config.get<string>('CRYPTOCLOUD_SECRET_KEY') || '').trim();
+    const secret = ((await this.botService.getCryptocloudSecretKey()) || '').trim();
     if (!secret) throw new BadRequestException('CryptoCloud is not configured (CRYPTOCLOUD_SECRET_KEY)');
 
     const token = String((body as any)?.token ?? '').trim();

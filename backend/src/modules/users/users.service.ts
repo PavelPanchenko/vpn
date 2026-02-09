@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, Inject } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, Inject, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, type VpnUser } from '@prisma/client';
 import { randomUUID } from 'crypto';
@@ -46,8 +46,10 @@ function buildReadablePanelEmail(args: { telegramId: string; telegramUsername?: 
   return `${base}-${args.telegramId}@vpn-${prefix}`;
 }
 
-/** Лимит одновременных подключений (устройств) в панели. Берётся из PANEL_CLIENT_LIMIT_IP (по умолчанию 2). */
-function getPanelClientLimitIp(config: ConfigService): number {
+/** Лимит одновременных подключений (устройств) в панели. DB → env → default 2. */
+async function getPanelClientLimitIp(prisma: PrismaService, config: ConfigService): Promise<number> {
+  const cfg = await prisma.botConfig.findFirst({ where: { active: true }, orderBy: { createdAt: 'desc' }, select: { panelClientLimitIp: true } });
+  if (cfg?.panelClientLimitIp != null) return cfg.panelClientLimitIp;
   const v = config.get<string>('PANEL_CLIENT_LIMIT_IP');
   if (v == null || v === '') return 2;
   const n = parseInt(v, 10);
@@ -62,10 +64,14 @@ type TelegramNotifier = {
 
 const TRAFFIC_CACHE_TTL_MS = 5000;
 
+/** Интервал обновления lastOnlineAt (мс). */
+const ONLINE_POLL_INTERVAL_MS = 60_000;
+
 @Injectable()
-export class UsersService {
+export class UsersService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(UsersService.name);
   private readonly trafficCache = new Map<string, { result: Awaited<ReturnType<UsersService['getTraffic']>>; cachedAt: number }>();
+  private onlinePollTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -74,6 +80,32 @@ export class UsersService {
     private readonly config: ConfigService,
     @Inject('TELEGRAM_NOTIFIER') private readonly telegramBot: TelegramNotifier,
   ) {}
+
+  onModuleInit() {
+    this.onlinePollTimer = setInterval(() => {
+      this.updateOnlineTimestamps().catch((err) =>
+        this.logger.error('Failed to update online timestamps:', err),
+      );
+    }, ONLINE_POLL_INTERVAL_MS);
+    this.logger.log(`Online polling started (every ${ONLINE_POLL_INTERVAL_MS / 1000}s)`);
+  }
+
+  onModuleDestroy() {
+    if (this.onlinePollTimer) {
+      clearInterval(this.onlinePollTimer);
+      this.onlinePollTimer = null;
+    }
+  }
+
+  /** Обновляет lastOnlineAt для всех пользователей, которые сейчас онлайн. */
+  async updateOnlineTimestamps(): Promise<void> {
+    const onlineIds = await this.getOnlineUserIds();
+    if (onlineIds.length === 0) return;
+    await this.prisma.vpnUser.updateMany({
+      where: { id: { in: onlineIds } },
+      data: { lastOnlineAt: new Date() },
+    });
+  }
 
   private async getActiveBotToken(): Promise<string | null> {
     const cfg = await this.prisma.botConfig.findFirst({ where: { active: true }, orderBy: { createdAt: 'desc' } });
@@ -166,7 +198,7 @@ export class UsersService {
     }
 
     const expiryTime = options?.expiryTime ?? 0;
-    const limitIp = options?.limitIp ?? getPanelClientLimitIp(this.config);
+    const limitIp = options?.limitIp ?? await getPanelClientLimitIp(this.prisma, this.config);
 
     try {
       await this.xui.addClient(server.panelBaseUrl, auth, server.panelInboundId, {
@@ -335,7 +367,7 @@ export class UsersService {
    * Ответ кэшируется на 5 с.
    */
   async getTraffic(userId: string): Promise<{
-    traffic: { online: boolean; serverId?: string; serverName?: string } | null;
+    traffic: { online: boolean; serverId?: string; serverName?: string; lastOnlineAt?: Date | null } | null;
     error?: string;
   }> {
     const cached = this.trafficCache.get(userId);
@@ -377,7 +409,7 @@ export class UsersService {
       ]);
       const online = isUserOnline(onlineUsers, panelEmail);
       const result = {
-        traffic: { online, serverId: server.id, serverName: server.name },
+        traffic: { online, serverId: server.id, serverName: server.name, lastOnlineAt: user.lastOnlineAt },
       };
       this.trafficCache.set(userId, { result, cachedAt: Date.now() });
       return result;
@@ -603,7 +635,7 @@ export class UsersService {
           const panelPassword = SecretBox.decrypt(server.panelPasswordEnc, secret);
           const auth = await this.xui.login(server.panelBaseUrl, server.panelUsername, panelPassword);
           if (auth.cookie || auth.token) {
-            const limitIp = getPanelClientLimitIp(this.config);
+            const limitIp = await getPanelClientLimitIp(this.prisma, this.config);
             await this.xui.updateClient(server.panelBaseUrl, auth, server.panelInboundId, email, {
               ...(expiryTime !== undefined && { expiryTime }),
               ...(enable !== undefined && { enable }),

@@ -14,6 +14,7 @@ import { PageHeader } from '../components/PageHeader';
 import { Table, Td, Th } from '../components/Table';
 import { Badge, statusBadgeVariant } from '../components/Badge';
 import { ResponsiveSwitch } from '../components/ResponsiveSwitch';
+import { UserAvatar } from '../components/UserAvatar';
 
 type CreateUserPayload = {
   serverId: string;
@@ -163,6 +164,20 @@ export function UsersPage() {
     return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString();
   }
 
+  function fmtLastOnline(v?: string | null) {
+    if (!v) return null;
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) return null;
+    const diffMs = Date.now() - d.getTime();
+    const mins = Math.floor(diffMs / 60_000);
+    if (mins < 1) return 'только что';
+    if (mins < 60) return `${mins} мин назад`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours} ч назад`;
+    const days = Math.floor(hours / 24);
+    return `${days} д назад`;
+  }
+
   function calcDaysLeft(endsAt?: string | null) {
     if (!endsAt) return null;
     const end = new Date(endsAt).getTime();
@@ -239,12 +254,15 @@ export function UsersPage() {
               {filteredUsers.map((u) => (
                 <Card key={u.id}>
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="font-semibold text-slate-900 truncate">{u.name}</div>
-                      <div className="mt-1 font-mono text-xs text-slate-500 break-all">
-                        <Link className="underline text-slate-900" to={`/users/${u.id}`}>
-                          {u.uuid}
-                        </Link>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <UserAvatar userId={u.id} name={u.name} size="sm" />
+                      <div className="min-w-0">
+                        <div className="font-semibold text-slate-900 truncate">{u.name}</div>
+                        <div className="mt-1 font-mono text-xs text-slate-500 break-all">
+                          <Link className="underline text-slate-900" to={`/users/${u.id}`}>
+                            {u.uuid}
+                          </Link>
+                        </div>
                       </div>
                     </div>
                     <Badge variant={statusBadgeVariant(u.status) as any}>{u.status}</Badge>
@@ -261,11 +279,16 @@ export function UsersPage() {
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-slate-500">Онлайн</span>
-                      <span
-                        className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${onlineSet.has(u.id) ? 'bg-green-500' : 'bg-red-400'}`}
-                        title={onlineSet.has(u.id) ? 'онлайн' : 'офлайн'}
-                        aria-hidden
-                      />
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${onlineSet.has(u.id) ? 'bg-green-500' : 'bg-red-400'}`}
+                          title={onlineSet.has(u.id) ? 'онлайн' : 'офлайн'}
+                          aria-hidden
+                        />
+                        {!onlineSet.has(u.id) && fmtLastOnline(u.lastOnlineAt) && (
+                          <span className="text-xs text-slate-400">{fmtLastOnline(u.lastOnlineAt)}</span>
+                        )}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-slate-500">Expires</span>
@@ -353,7 +376,12 @@ export function UsersPage() {
               >
                 {filteredUsers.map((u) => (
                   <tr key={u.id} className="border-t border-slate-100">
-                    <Td className="font-medium">{u.name}</Td>
+                    <Td>
+                      <div className="flex items-center gap-2">
+                        <UserAvatar userId={u.id} name={u.name} size="sm" />
+                        <span className="font-medium">{u.name}</span>
+                      </div>
+                    </Td>
                     <Td className="font-mono text-xs">
                       <Link className="text-slate-900 underline" to={`/users/${u.id}`}>
                         {u.uuid}
@@ -362,11 +390,16 @@ export function UsersPage() {
                     <Td className="font-mono text-xs">{u.telegramId ?? '-'}</Td>
                     <Td>{pickActiveServer(u).name ?? pickActiveServer(u).id ?? '—'}</Td>
                     <Td>
-                      <span
-                        className={`inline-block h-2.5 w-2.5 rounded-full ${onlineSet.has(u.id) ? 'bg-green-500' : 'bg-red-400'}`}
-                        title={onlineSet.has(u.id) ? 'онлайн' : 'офлайн'}
-                        aria-hidden
-                      />
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${onlineSet.has(u.id) ? 'bg-green-500' : 'bg-red-400'}`}
+                          title={onlineSet.has(u.id) ? 'онлайн' : 'офлайн'}
+                          aria-hidden
+                        />
+                        {!onlineSet.has(u.id) && fmtLastOnline(u.lastOnlineAt) && (
+                          <span className="text-xs text-slate-400">{fmtLastOnline(u.lastOnlineAt)}</span>
+                        )}
+                      </span>
                     </Td>
                     <Td>
                       <select

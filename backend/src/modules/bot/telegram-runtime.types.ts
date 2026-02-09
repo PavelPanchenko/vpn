@@ -46,6 +46,12 @@ export type TelegramBotTelegramApi = {
   sendMessage: (chatId: string | number, text: string, extra?: TelegramReplyOptions) => Promise<unknown>;
   editMessageText: (chatId: string | number, messageId: number, inlineMessageId: string | undefined, text: string, extra?: TelegramReplyOptions) => Promise<unknown>;
   deleteMessage: (chatId: string | number, messageId: number) => Promise<unknown>;
+  getUserProfilePhotos: (
+    userId: number,
+    offset?: number,
+    limit?: number,
+  ) => Promise<{ total_count: number; photos: Array<Array<{ file_id: string; width: number; height: number }>> }>;
+  getFileLink: (fileId: string) => Promise<URL>;
   sendInvoice?: (
     chatId: string | number,
     title: string,

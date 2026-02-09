@@ -11,6 +11,7 @@ import type { PlanLike } from '../bot-domain.types';
 import type { UserForConfigMessage } from '../bot-user.types';
 import type { ConfigDataResult, SendConfigQrPhotoResult } from '../messages/config.message';
 import type { BotLang } from '../i18n/bot-lang';
+import type { InfoMessageContext } from '../messages/info.message';
 
 export type TelegramRegistrarDeps = {
   bot: TelegramBot;
@@ -64,5 +65,10 @@ export type TelegramRegistrarDeps = {
   // Trial helpers
   getTrialDaysForUser: (userId: string) => Promise<number>;
   getTrialDaysFromPlans: (plans: PlanLike[]) => number;
+
+  // Settings helpers (resolved from DB → env fallback)
+  getInfoContext: () => Promise<InfoMessageContext>;
+  getTelegramMiniAppUrl: () => Promise<string | null>;
+  getPanelClientLimitIp: () => Promise<number>;
 };
 

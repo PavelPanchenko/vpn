@@ -1,5 +1,3 @@
-import type { ConfigService } from '@nestjs/config';
-
 const CRYPTOCLOUD_BASE_URL = 'https://api.cryptocloud.plus';
 
 export type CryptoCloudCreateInvoiceRequest = {
@@ -27,19 +25,8 @@ export type CryptoCloudCreateInvoiceResponse = {
   };
 };
 
-function getAuthHeaders(config: ConfigService): Record<string, string> {
-  const apiKey = config.get<string>('CRYPTOCLOUD_API_KEY') || '';
-  if (!apiKey) {
-    throw new Error('CryptoCloud is not configured (CRYPTOCLOUD_API_KEY)');
-  }
-  return {
-    Authorization: `Token ${apiKey}`,
-    'content-type': 'application/json',
-  };
-}
-
 export async function cryptocloudCreateInvoice(args: {
-  config: ConfigService;
+  apiKey: string;
   locale?: 'ru' | 'en';
   body: CryptoCloudCreateInvoiceRequest;
 }): Promise<CryptoCloudCreateInvoiceResponse> {
@@ -48,7 +35,7 @@ export async function cryptocloudCreateInvoice(args: {
 
   const res = await fetch(url.toString(), {
     method: 'POST',
-    headers: getAuthHeaders(args.config),
+    headers: { Authorization: `Token ${args.apiKey}`, 'content-type': 'application/json' },
     body: JSON.stringify(args.body),
   });
   const text = await res.text().catch(() => '');
