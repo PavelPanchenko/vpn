@@ -7,7 +7,7 @@ import { UserDetailsPage } from '../pages/UserDetailsPage';
 import { SubscriptionsPage } from '../pages/SubscriptionsPage';
 import { PaymentsPage } from '../pages/PaymentsPage';
 import { PlansPage } from '../pages/PlansPage';
-import { BotPage } from '../pages/BotPage';
+import { SettingsPage } from '../pages/SettingsPage';
 import { SupportPage } from '../pages/SupportPage';
 import { MiniAppPage } from '../pages/MiniAppPage';
 import { PrivacyPolicyPage } from '../pages/PrivacyPolicyPage';
@@ -27,7 +27,7 @@ export function App() {
         <Route path="/subscriptions" element={<SubscriptionsPage />} />
         <Route path="/payments" element={<PaymentsPage />} />
         <Route path="/plans" element={<PlansPage />} />
-        <Route path="/bot" element={<BotPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="/support" element={<SupportPage />} />
       </Route>
 

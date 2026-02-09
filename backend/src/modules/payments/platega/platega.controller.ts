@@ -9,18 +9,18 @@ import {
   UnauthorizedException,
   forwardRef,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import type { PlategaCallbackPayload } from './platega-api';
 import { PaymentIntentsService } from '../payment-intents/payment-intents.service';
 import { TelegramBotService } from '../../bot/telegram-bot.service';
+import { BotService } from '../../bot/bot.service';
 
-function assertPlategaAuth(args: {
-  config: ConfigService;
+async function assertPlategaAuth(args: {
+  botService: BotService;
   merchantIdHeader: string | undefined;
   secretHeader: string | undefined;
 }) {
-  const merchantId = args.config.get<string>('PLATEGA_MERCHANT_ID') || '';
-  const secret = args.config.get<string>('PLATEGA_SECRET') || '';
+  const merchantId = await args.botService.getPlategaMerchantId() || '';
+  const secret = await args.botService.getPlategaSecret() || '';
   if (!merchantId || !secret) throw new BadRequestException('Platega is not configured');
 
   if (!args.merchantIdHeader || !args.secretHeader) throw new UnauthorizedException('Missing Platega auth headers');
@@ -31,13 +31,13 @@ function assertPlategaAuth(args: {
 
 async function handlePlategaCallback(args: {
   intents: PaymentIntentsService;
-  config: ConfigService;
+  botService: BotService;
   merchantIdHeader: string | undefined;
   secretHeader: string | undefined;
   body: PlategaCallbackPayload;
 }): Promise<{ ok: true; telegramId?: string }> {
-  assertPlategaAuth({
-    config: args.config,
+  await assertPlategaAuth({
+    botService: args.botService,
     merchantIdHeader: args.merchantIdHeader,
     secretHeader: args.secretHeader,
   });
@@ -57,7 +57,8 @@ async function handlePlategaCallback(args: {
 export class PlategaController {
   constructor(
     private readonly intents: PaymentIntentsService,
-    private readonly config: ConfigService,
+    @Inject(forwardRef(() => BotService))
+    private readonly botService: BotService,
     @Optional()
     @Inject(forwardRef(() => TelegramBotService))
     private readonly telegramBot: TelegramBotService | null,
@@ -71,7 +72,7 @@ export class PlategaController {
   ) {
     const result = await handlePlategaCallback({
       intents: this.intents,
-      config: this.config,
+      botService: this.botService,
       merchantIdHeader,
       secretHeader,
       body,
@@ -91,7 +92,7 @@ export class PlategaController {
   ) {
     const result = await handlePlategaCallback({
       intents: this.intents,
-      config: this.config,
+      botService: this.botService,
       merchantIdHeader,
       secretHeader,
       body,
@@ -108,7 +109,8 @@ export class PlategaController {
 export class PlategaCallbackController {
   constructor(
     private readonly intents: PaymentIntentsService,
-    private readonly config: ConfigService,
+    @Inject(forwardRef(() => BotService))
+    private readonly botService: BotService,
     @Optional()
     @Inject(forwardRef(() => TelegramBotService))
     private readonly telegramBot: TelegramBotService | null,
@@ -122,7 +124,7 @@ export class PlategaCallbackController {
   ) {
     const result = await handlePlategaCallback({
       intents: this.intents,
-      config: this.config,
+      botService: this.botService,
       merchantIdHeader,
       secretHeader,
       body,
@@ -133,4 +135,3 @@ export class PlategaCallbackController {
     return { ok: true };
   }
 }
-

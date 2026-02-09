@@ -68,10 +68,10 @@ export function buildStatusHtmlMessage(args: {
     } else {
       message +=
         lang === 'en'
-          ? `\n⏰ Subscription expired\n💳 Extend: <code>/pay</code>\n`
+          ? `\n⏰ Subscription expired\n💳 Extend: /pay\n`
           : lang === 'uk'
-            ? `\n⏰ Підписка закінчилась\n💳 Подовжити: <code>/pay</code>\n`
-          : `\n⏰ Подписка истекла\n💳 Продлить: <code>/pay</code>\n`;
+            ? `\n⏰ Підписка закінчилась\n💳 Подовжити: /pay\n`
+          : `\n⏰ Подписка истекла\n💳 Продлить: /pay\n`;
     }
   } else {
     message +=
@@ -113,10 +113,10 @@ export function buildStatusHtmlMessage(args: {
   } else if (metrics.status === 'NEW') {
     message +=
       lang === 'en'
-        ? `\n💳 Buy subscription: <code>/pay</code>\n`
+        ? `\n💳 Buy subscription: /pay\n`
         : lang === 'uk'
-          ? `\n💳 Купити підписку: <code>/pay</code>\n`
-          : `\n💳 Купить подписку: <code>/pay</code>\n`;
+          ? `\n💳 Купити підписку: /pay\n`
+          : `\n💳 Купить подписку: /pay\n`;
   } else if (metrics.status === 'EXPIRED') {
     // строка продления уже есть выше, не дублируем
   } else {

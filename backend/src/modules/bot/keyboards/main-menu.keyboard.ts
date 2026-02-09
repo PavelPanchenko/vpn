@@ -1,13 +1,11 @@
-import type { ConfigService } from '@nestjs/config';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { TelegramReplyOptions } from '../telegram-runtime.types';
-import { getTelegramMiniAppUrl } from '../mini-app/mini-app-url';
 import type { BotLang } from '../i18n/bot-lang';
 
 export async function buildMainMenuKeyboard(args: {
   prisma: PrismaService;
-  config: ConfigService;
   lang: BotLang;
+  miniAppUrl?: string | null;
   user:
     | {
         id?: string;
@@ -21,7 +19,7 @@ export async function buildMainMenuKeyboard(args: {
 
   const langIsEn = args.lang === 'en';
   const langIsUk = args.lang === 'uk';
-  const miniAppUrl = getTelegramMiniAppUrl(args.config);
+  const miniAppUrl = args.miniAppUrl || null;
   const miniAppRow =
     miniAppUrl && Markup?.button?.webApp
       ? [

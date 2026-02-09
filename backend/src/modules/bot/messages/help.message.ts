@@ -26,7 +26,7 @@ export function buildHelpMessageHtml(lang: import('../i18n/bot-lang').BotLang): 
       `<b>Commands:</b>\n` +
       `<code>/start</code> — menu\n` +
       `<code>/config</code> — get config\n` +
-      `<code>/pay</code> — payment\n` +
+      `/pay — payment\n` +
       `<code>/status</code> — subscription status\n` +
       `<code>/info</code> — info & documents\n` +
       `<code>/support</code> — support\n\n` +
@@ -46,7 +46,7 @@ export function buildHelpMessageHtml(lang: import('../i18n/bot-lang').BotLang): 
       `<b>Команди:</b>\n` +
       `<code>/start</code> — меню\n` +
       `<code>/config</code> — отримати конфіг\n` +
-      `<code>/pay</code> — оплата\n` +
+      `/pay — оплата\n` +
       `<code>/status</code> — статус підписки\n` +
       `<code>/info</code> — інформація і документи\n` +
       `<code>/support</code> — підтримка\n\n` +
@@ -66,7 +66,7 @@ export function buildHelpMessageHtml(lang: import('../i18n/bot-lang').BotLang): 
     `<b>Команды:</b>\n` +
     `<code>/start</code> — меню\n` +
     `<code>/config</code> — получить конфиг\n` +
-    `<code>/pay</code> — оплата\n` +
+    `/pay — оплата\n` +
     `<code>/status</code> — статус подписки\n` +
     `<code>/info</code> — информация и документы\n` +
     `<code>/support</code> — поддержка\n\n` +

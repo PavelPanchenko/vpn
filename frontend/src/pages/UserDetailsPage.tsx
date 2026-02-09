@@ -9,6 +9,7 @@ import { type Payment, type Subscription, type VpnUser, type VpnServer, type Use
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
+import { UserAvatar } from '../components/UserAvatar';
 
 type UserDetails = VpnUser & {
   subscriptions: Subscription[];
@@ -78,7 +79,7 @@ export function UserDetailsPage() {
   const trafficQ = useQuery({
     queryKey: ['user-traffic', id],
     queryFn: async () =>
-      (await api.get<{ traffic: { up: number; down: number; total: number; reset: number; lastOnline: number; online?: boolean; serverId?: string; serverName?: string } | null; error?: string }>(`/users/${id}/traffic`)).data,
+      (await api.get<{ traffic: { online?: boolean; serverId?: string; serverName?: string; lastOnlineAt?: string | null } | null; error?: string }>(`/users/${id}/traffic`)).data,
     enabled: Boolean(id),
     staleTime: 0,
     refetchOnMount: 'always',
@@ -104,8 +105,9 @@ export function UserDetailsPage() {
           <div className="text-sm text-slate-600">Not found</div>
         ) : (
           <div className="grid gap-2 text-sm text-slate-800">
-            <div>
-              <span className="text-slate-500">Name:</span> {u.name}
+            <div className="flex items-center gap-3">
+              <UserAvatar userId={u.id} name={u.name} size="lg" />
+              <div className="text-lg font-semibold text-slate-900">{u.name}</div>
             </div>
             <div>
               <span className="text-slate-500">UUID:</span> <span className="font-mono">{u.uuid}</span>
@@ -155,6 +157,11 @@ export function UserDetailsPage() {
               />
               <span>{trafficQ.data.traffic.online ? 'Онлайн' : 'Офлайн'}</span>
             </div>
+            {!trafficQ.data.traffic.online && trafficQ.data.traffic.lastOnlineAt && (
+              <div className="text-xs text-slate-500">
+                Был онлайн: {new Date(trafficQ.data.traffic.lastOnlineAt).toLocaleString()}
+              </div>
+            )}
             {(trafficQ.data.traffic.serverName || trafficQ.data.traffic.serverId) && (
               <div className="text-xs text-slate-500">
                 Сервер: {trafficQ.data.traffic.serverName ?? trafficQ.data.traffic.serverId}

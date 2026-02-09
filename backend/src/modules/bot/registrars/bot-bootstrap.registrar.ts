@@ -16,73 +16,41 @@ export function registerBotCatch(args: { bot: TelegramBot; logger: Logger }) {
 
 export async function registerBotCommandsMenu(args: {
   bot: TelegramBot;
-  prisma: PrismaService;
   logger: Logger;
 }) {
   try {
-    const activeBot = await args.prisma.botConfig.findFirst({
-      where: { active: true },
-      orderBy: { createdAt: 'desc' },
-      select: { useMiniApp: true },
-    });
-    const useMiniApp = Boolean(activeBot?.useMiniApp);
+    const ruCommands = [
+      { command: 'start', description: '🏠 Главное меню' },
+      { command: 'config', description: '📥 Получить конфигурацию VPN' },
+      { command: 'pay', description: '💳 Оплатить подписку' },
+      { command: 'status', description: '📊 Статус подписки' },
+      { command: 'info', description: 'ℹ️ Информация и документы' },
+      { command: 'support', description: '💬 Поддержка' },
+      { command: 'help', description: '❓ Помощь и инструкции' },
+      { command: 'cancel', description: '❌ Отменить режим поддержки' },
+    ];
 
-    const ruCommands = useMiniApp
-      ? [
-          { command: 'start', description: '🏠 Главное меню' },
-          { command: 'info', description: 'ℹ️ Информация и документы' },
-          { command: 'help', description: '❓ Помощь и инструкции' },
-          { command: 'support', description: '💬 Поддержка' },
-          { command: 'cancel', description: '❌ Отменить режим поддержки' },
-        ]
-      : [
-          { command: 'start', description: '🏠 Главное меню' },
-          { command: 'config', description: '📥 Получить конфигурацию VPN' },
-          { command: 'pay', description: '💳 Оплатить подписку' },
-          { command: 'status', description: '📊 Статус подписки' },
-          { command: 'info', description: 'ℹ️ Информация и документы' },
-          { command: 'support', description: '💬 Поддержка' },
-          { command: 'help', description: '❓ Помощь и инструкции' },
-          { command: 'cancel', description: '❌ Отменить режим поддержки' },
-        ];
+    const enCommands = [
+      { command: 'start', description: '🏠 Menu' },
+      { command: 'config', description: '📥 Get VPN config' },
+      { command: 'pay', description: '💳 Pay subscription' },
+      { command: 'status', description: '📊 Subscription status' },
+      { command: 'info', description: 'ℹ️ Info & documents' },
+      { command: 'support', description: '💬 Support' },
+      { command: 'help', description: '❓ Help & guides' },
+      { command: 'cancel', description: '❌ Cancel support mode' },
+    ];
 
-    const enCommands = useMiniApp
-      ? [
-          { command: 'start', description: '🏠 Menu' },
-          { command: 'info', description: 'ℹ️ Info & documents' },
-          { command: 'help', description: '❓ Help & guides' },
-          { command: 'support', description: '💬 Support' },
-          { command: 'cancel', description: '❌ Cancel support mode' },
-        ]
-      : [
-          { command: 'start', description: '🏠 Menu' },
-          { command: 'config', description: '📥 Get VPN config' },
-          { command: 'pay', description: '💳 Pay subscription' },
-          { command: 'status', description: '📊 Subscription status' },
-          { command: 'info', description: 'ℹ️ Info & documents' },
-          { command: 'support', description: '💬 Support' },
-          { command: 'help', description: '❓ Help & guides' },
-          { command: 'cancel', description: '❌ Cancel support mode' },
-        ];
-
-    const ukCommands = useMiniApp
-      ? [
-          { command: 'start', description: '🏠 Головне меню' },
-          { command: 'info', description: 'ℹ️ Інформація і документи' },
-          { command: 'help', description: '❓ Допомога та інструкції' },
-          { command: 'support', description: '💬 Підтримка' },
-          { command: 'cancel', description: '❌ Скасувати режим підтримки' },
-        ]
-      : [
-          { command: 'start', description: '🏠 Головне меню' },
-          { command: 'config', description: '📥 Отримати конфігурацію VPN' },
-          { command: 'pay', description: '💳 Оплатити підписку' },
-          { command: 'status', description: '📊 Статус підписки' },
-          { command: 'info', description: 'ℹ️ Інформація і документи' },
-          { command: 'support', description: '💬 Підтримка' },
-          { command: 'help', description: '❓ Допомога та інструкції' },
-          { command: 'cancel', description: '❌ Скасувати режим підтримки' },
-        ];
+    const ukCommands = [
+      { command: 'start', description: '🏠 Головне меню' },
+      { command: 'config', description: '📥 Отримати конфігурацію VPN' },
+      { command: 'pay', description: '💳 Оплатити підписку' },
+      { command: 'status', description: '📊 Статус підписки' },
+      { command: 'info', description: 'ℹ️ Інформація і документи' },
+      { command: 'support', description: '💬 Підтримка' },
+      { command: 'help', description: '❓ Допомога та інструкції' },
+      { command: 'cancel', description: '❌ Скасувати режим підтримки' },
+    ];
 
     // Telegram поддерживает отдельные команды по language_code.
     // По умолчанию держим русский, и отдельно задаём английский для en.
@@ -143,9 +111,8 @@ export async function bootstrapLongPollingBot(args: {
   onStop: () => void | Promise<void>;
 }) {
   registerBotCatch({ bot: args.deps.bot, logger: args.deps.logger });
-  await registerBotCommandsMenu({ bot: args.deps.bot, prisma: args.deps.prisma, logger: args.deps.logger });
+  await registerBotCommandsMenu({ bot: args.deps.bot, logger: args.deps.logger });
   await maybeDeleteWebhookOnStart({ bot: args.deps.bot, config: args.deps.config, logger: args.deps.logger });
   await launchBot({ bot: args.deps.bot, token: args.token, logger: args.deps.logger });
   registerGracefulStop({ onStop: args.onStop });
 }
-

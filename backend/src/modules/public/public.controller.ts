@@ -1,5 +1,4 @@
 import { Controller, Get } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { BotService } from '../bot/bot.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -7,7 +6,6 @@ import { PrismaService } from '../prisma/prisma.service';
 export class PublicController {
   constructor(
     private readonly botService: BotService,
-    private readonly config: ConfigService,
     private readonly prisma: PrismaService,
   ) {}
 
@@ -30,10 +28,10 @@ export class PublicController {
     return {
       botName: bot.name,
       botUsername: bot.username ?? null,
-      companyName: this.config.get<string>('PUBLIC_COMPANY_NAME') ?? null,
-      supportEmail: this.config.get<string>('PUBLIC_SUPPORT_EMAIL') ?? null,
-      supportTelegram: this.config.get<string>('PUBLIC_SUPPORT_TELEGRAM') ?? null,
-      siteUrl: this.config.get<string>('PUBLIC_SITE_URL') ?? null,
+      companyName: await this.botService.getPublicCompanyName(),
+      supportEmail: await this.botService.getPublicSupportEmail(),
+      supportTelegram: await this.botService.getPublicSupportTelegram(),
+      siteUrl: await this.botService.getPublicSiteUrl(),
       paymentMethods,
       updatedAt: new Date().toISOString(),
     };

@@ -140,6 +140,9 @@ model VpnUser {
   // напоминание об истечении: когда отправлено (чтобы не слать повторно до продления)
   expiryReminderSentAt DateTime?
 
+  // когда пользователь последний раз был онлайн (обновляется фоновой задачей)
+  lastOnlineAt DateTime?
+
   // server selection (nullable since multi-server support)
   serverId   String?
   server     VpnServer?   @relation(fields: [serverId], references: [id], onDelete: Restrict, onUpdate: Cascade)
@@ -328,6 +331,30 @@ model BotConfig {
   paymentsPlategaEnabled Boolean @default(true)
   // Allowed Telegram languages (e.g. ["ru"]) for showing/external payments.
   paymentsPlategaAllowedLangs String[] @default(["ru"])
+
+  // CryptoCloud (encrypted)
+  cryptocloudApiKeyEnc    String?
+  cryptocloudShopId       String?
+  cryptocloudSecretKeyEnc String?
+
+  // Platega (encrypted)
+  plategaMerchantIdEnc    String?
+  plategaSecretEnc        String?
+  plategaPaymentMethod    Int?
+  plategaReturnUrl        String?
+  plategaFailedUrl        String?
+
+  // Контакты
+  publicSiteUrl           String?
+  publicSupportTelegram   String?
+  publicSupportEmail      String?
+  publicCompanyName       String?
+
+  // Лимиты
+  panelClientLimitIp      Int?
+
+  // Mini App
+  telegramMiniAppUrl      String?
 
   paymentMethods BotPaymentMethod[]
 

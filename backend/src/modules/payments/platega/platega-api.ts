@@ -1,5 +1,3 @@
-import type { ConfigService } from '@nestjs/config';
-
 const PLATEGA_BASE_URL = 'https://app.platega.io';
 
 export type PlategaPaymentStatus = 'PENDING' | 'CONFIRMED' | 'CANCELED' | 'CHARGEBACK';
@@ -33,9 +31,7 @@ export type PlategaCreateTransactionResponse = {
   usdtRate?: number;
 };
 
-function getAuthHeaders(config: ConfigService): Record<string, string> {
-  const merchantId = config.get<string>('PLATEGA_MERCHANT_ID') || '';
-  const secret = config.get<string>('PLATEGA_SECRET') || '';
+function getAuthHeaders(merchantId: string, secret: string): Record<string, string> {
   if (!merchantId || !secret) {
     throw new Error('Platega is not configured (PLATEGA_MERCHANT_ID / PLATEGA_SECRET)');
   }
@@ -47,12 +43,13 @@ function getAuthHeaders(config: ConfigService): Record<string, string> {
 }
 
 export async function plategaCreateTransaction(args: {
-  config: ConfigService;
+  merchantId: string;
+  secret: string;
   body: PlategaCreateTransactionRequest;
 }): Promise<PlategaCreateTransactionResponse> {
   const res = await fetch(`${PLATEGA_BASE_URL}/transaction/process`, {
     method: 'POST',
-    headers: getAuthHeaders(args.config),
+    headers: getAuthHeaders(args.merchantId, args.secret),
     body: JSON.stringify(args.body),
   });
   if (!res.ok) {
@@ -61,4 +58,3 @@ export async function plategaCreateTransaction(args: {
   }
   return (await res.json()) as PlategaCreateTransactionResponse;
 }
-

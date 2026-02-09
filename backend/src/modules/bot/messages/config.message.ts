@@ -76,10 +76,10 @@ export async function getConfigData(args: {
       ok: false,
       htmlMessage:
         lang === 'en'
-          ? '⏰ <b>Subscription expired</b>\n\nExtend: <code>/pay</code>'
+          ? '⏰ <b>Subscription expired</b>\n\nExtend: /pay'
           : lang === 'uk'
-            ? '⏰ <b>Підписка закінчилась</b>\n\nПодовжити: <code>/pay</code>'
-          : '⏰ <b>Подписка истекла</b>\n\nПродлить: <code>/pay</code>',
+            ? '⏰ <b>Підписка закінчилась</b>\n\nПодовжити: /pay'
+          : '⏰ <b>Подписка истекла</b>\n\nПродлить: /pay',
     };
   }
   let configResult: { configs?: Array<{ url: string; serverName?: string }> } | null = null;

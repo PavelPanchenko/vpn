@@ -1,20 +1,24 @@
-import type { ConfigService } from '@nestjs/config';
 import type { BotLang } from '../i18n/bot-lang';
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+export type InfoMessageContext = {
+  siteUrl?: string | null;
+  supportEmail?: string | null;
+  supportTelegram?: string | null;
+};
+
 /** Собирает HTML сообщения «Информация» (документы, контакты). DRY для /info и кнопки в меню. */
-export function buildInfoMessageHtml(lang: BotLang, config: ConfigService): string {
-  const siteUrlRaw = config.get<string>('PUBLIC_SITE_URL') || '';
-  const siteUrl = siteUrlRaw.replace(/\/+$/, '');
+export function buildInfoMessageHtml(lang: BotLang, ctx: InfoMessageContext): string {
+  const siteUrl = (ctx.siteUrl || '').replace(/\/+$/, '');
 
   const privacyUrl = siteUrl ? `${siteUrl}/privacy` : null;
   const termsUrl = siteUrl ? `${siteUrl}/terms` : null;
 
-  const supportEmail = config.get<string>('PUBLIC_SUPPORT_EMAIL') || null;
-  const supportTelegram = config.get<string>('PUBLIC_SUPPORT_TELEGRAM') || null;
+  const supportEmail = ctx.supportEmail || null;
+  const supportTelegram = ctx.supportTelegram || null;
 
   let msg =
     lang === 'en'

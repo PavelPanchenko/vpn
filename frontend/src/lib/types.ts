@@ -50,6 +50,7 @@ export type VpnUser = {
   createdAt: string;
   server?: VpnServer | null;
   userServers?: UserServer[];
+  lastOnlineAt?: string | null;
 };
 
 export type Subscription = {

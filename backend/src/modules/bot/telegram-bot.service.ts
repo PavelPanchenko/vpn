@@ -65,6 +65,11 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
   ) {}
 
+  /** Доступ к Telegram API (для аватаров, файлов и т.д.). Null если бот не запущен. */
+  getTelegramApi() {
+    return this.bot?.telegram ?? null;
+  }
+
   async onModuleInit() {
     // Останавливаем бота, если он уже запущен (на случай hot reload)
     if (this.bot && this.isRunning) {
@@ -214,6 +219,13 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         planBtnLabel: (plan) => this.planBtnLabel(plan),
         getTrialDaysForUser: (userId) => this.getTrialDaysForUser(userId),
         getTrialDaysFromPlans: (plans) => this.getTrialDaysFromPlans(plans),
+        getInfoContext: async () => ({
+          siteUrl: await this.botService.getPublicSiteUrl(),
+          supportEmail: await this.botService.getPublicSupportEmail(),
+          supportTelegram: await this.botService.getPublicSupportTelegram(),
+        }),
+        getTelegramMiniAppUrl: () => this.botService.getTelegramMiniAppUrl(),
+        getPanelClientLimitIp: () => this.botService.getPanelClientLimitIp(),
       };
 
       registerOnboardingHandlers(registrarDeps);
@@ -384,7 +396,8 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async buildMainMenuKeyboard(user: { id?: string } | null, lang: BotLang): Promise<TelegramReplyOptions> {
-    return buildMainMenuKeyboard({ prisma: this.prisma, config: this.config, user, lang });
+    const miniAppUrl = await this.botService.getTelegramMiniAppUrl();
+    return buildMainMenuKeyboard({ prisma: this.prisma, user, lang, miniAppUrl });
   }
 
   private async showMainMenu(ctx: TelegramMessageCtx, user: { id: string } & Record<string, unknown>) {

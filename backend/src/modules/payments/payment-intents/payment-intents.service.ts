@@ -1,9 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UsersService } from '../../users/users.service';
 import { SubscriptionsService } from '../../subscriptions/subscriptions.service';
 import { AccessRevokerService } from '../access/access-revoker.service';
+import { BotService } from '../../bot/bot.service';
 import { plategaCreateTransaction, type PlategaPaymentStatus } from '../platega/platega-api';
 import { buildPlategaPayload, verifyPlategaPayload } from '../platega/platega-payload';
 import { buildTelegramStarsInvoicePayload, verifyTelegramStarsInvoicePayload } from '../telegram-stars/telegram-stars.payload';
@@ -38,6 +39,8 @@ export class PaymentIntentsService {
     private readonly users: UsersService,
     private readonly subscriptions: SubscriptionsService,
     private readonly accessRevoker: AccessRevokerService,
+    @Inject(forwardRef(() => BotService))
+    private readonly botService: BotService,
   ) {}
 
   async listAdmin() {
@@ -236,14 +239,16 @@ export class PaymentIntentsService {
 
     // CryptoCloud
     if (provider === 'CRYPTOCLOUD') {
-      const shopId = (this.config.get<string>('CRYPTOCLOUD_SHOP_ID') || '').trim();
+      const shopId = (await this.botService.getCryptocloudShopId() || '').trim();
       if (!shopId) return { provider: 'CRYPTOCLOUD', intentId: created.id, type: 'UNSUPPORTED', reason: 'CRYPTOCLOUD_SHOP_ID is not configured' };
+      const apiKey = (await this.botService.getCryptocloudApiKey() || '').trim();
+      if (!apiKey) return { provider: 'CRYPTOCLOUD', intentId: created.id, type: 'UNSUPPORTED', reason: 'CRYPTOCLOUD_API_KEY is not configured' };
 
       const locale = this.normalizeLang((user as any).telegramLanguageCode ?? null) === 'en' ? 'en' : 'ru';
       let resp: Awaited<ReturnType<typeof cryptocloudCreateInvoice>>;
       try {
         resp = await cryptocloudCreateInvoice({
-          config: this.config,
+          apiKey,
           locale,
           body: {
             shop_id: shopId,
@@ -280,12 +285,14 @@ export class PaymentIntentsService {
 
     // Platega
     if (provider === 'PLATEGA') {
-      const payloadSecret = this.config.get<string>('PAYMENTS_PAYLOAD_SECRET') || this.config.get<string>('PLATEGA_SECRET') || '';
+      const plategaSecret = await this.botService.getPlategaSecret() || '';
+      const payloadSecret = this.config.get<string>('PAYMENTS_PAYLOAD_SECRET') || plategaSecret;
       if (!payloadSecret) return { provider: 'PLATEGA', intentId: created.id, type: 'UNSUPPORTED', reason: 'PAYMENTS_PAYLOAD_SECRET is not configured' };
 
-      const ok = this.config.get<string>('PLATEGA_RETURN_URL') || '';
-      const fail = this.config.get<string>('PLATEGA_FAILED_URL') || '';
-      const method = Number(this.config.get<string>('PLATEGA_PAYMENT_METHOD', '2'));
+      const merchantId = await this.botService.getPlategaMerchantId() || '';
+      const ok = await this.botService.getPlategaReturnUrl() || '';
+      const fail = await this.botService.getPlategaFailedUrl() || '';
+      const method = await this.botService.getPlategaPaymentMethod();
 
       const payload = buildPlategaPayload({
         v: 1,
@@ -300,7 +307,8 @@ export class PaymentIntentsService {
       let tx: Awaited<ReturnType<typeof plategaCreateTransaction>>;
       try {
         tx = await plategaCreateTransaction({
-          config: this.config,
+          merchantId,
+          secret: plategaSecret,
           body: {
             paymentMethod: Number.isFinite(method) ? method : 2,
             paymentDetails: { amount: Number(variant.price), currency: String(variant.currency) },
