@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+import * as crypto from 'crypto';
 
 function base64UrlToBuffer(input: string): Buffer {
   const normalized = input.replace(/-/g, '+').replace(/_/g, '/');
