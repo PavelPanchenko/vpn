@@ -97,7 +97,7 @@ export function UsersPage() {
   });
 
   const editM = useMutation({
-    mutationFn: async (payload: { id: string; data: { name?: string; telegramId?: string; trialDays?: number; serverId?: string } }) =>
+    mutationFn: async (payload: { id: string; data: { name?: string; telegramId?: string; serverId?: string } }) =>
       (await api.patch<VpnUser>(`/users/${payload.id}`, payload.data)).data,
     onSuccess: async () => {
       toast.success('User updated');
@@ -137,10 +137,9 @@ export function UsersPage() {
     serverId: string;
     name: string;
     telegramId: string;
-    trialDays?: number;
   };
   const editForm = useForm<EditUserForm>({
-    defaultValues: { serverId: '', name: '', telegramId: '', trialDays: undefined },
+    defaultValues: { serverId: '', name: '', telegramId: '' },
   });
 
   const editDetailsQ = useQuery({
@@ -325,7 +324,6 @@ export function UsersPage() {
                           serverId: u.serverId ?? undefined,
                           name: u.name,
                           telegramId: u.telegramId ?? '',
-                          trialDays: undefined,
                         });
                       }}
                     >
@@ -429,7 +427,6 @@ export function UsersPage() {
                               serverId: u.serverId ?? undefined,
                               name: u.name,
                               telegramId: u.telegramId ?? '',
-                              trialDays: undefined,
                             });
                           }}
                         >
@@ -553,14 +550,12 @@ export function UsersPage() {
               disabled={editM.isPending || !editTarget}
               onClick={editForm.handleSubmit((v) => {
                 if (!editTarget) return;
-                const trialDays = v.trialDays && Number.isFinite(v.trialDays) ? Number(v.trialDays) : undefined;
                 editM.mutate({
                   id: editTarget.id,
                   data: {
                     serverId: v.serverId !== editTarget.serverId ? v.serverId : undefined,
                     name: v.name.trim(),
                     telegramId: v.telegramId.trim() || undefined,
-                    trialDays,
                   },
                 });
               })}
@@ -643,12 +638,6 @@ export function UsersPage() {
             error={editForm.formState.errors.name?.message}
           />
           <Input label="TG ID" {...editForm.register('telegramId')} />
-          <Input
-            label="Trial days (set from now)"
-            type="number"
-            {...editForm.register('trialDays', { valueAsNumber: true, min: 1, max: 365 })}
-            hint="Оставь пустым — срок не меняем. Если указать — создадим новую активную подписку и обновим expiry в панели."
-          />
         </form>
       </Modal>
 
