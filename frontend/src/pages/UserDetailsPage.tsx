@@ -5,7 +5,7 @@ import { toast } from 'react-toastify';
 import { QRCodeSVG } from 'qrcode.react';
 import { api } from '../lib/api';
 import { getApiErrorMessage } from '../lib/apiError';
-import { type Payment, type Subscription, type VpnUser, type VpnServer, type UserServer } from '../lib/types';
+import { type Payment, type Plan, type Subscription, type VpnUser, type VpnServer, type UserServer } from '../lib/types';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
@@ -23,6 +23,9 @@ export function UserDetailsPage() {
   const [addServerOpen, setAddServerOpen] = useState(false);
   const [selectedServerId, setSelectedServerId] = useState('');
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
+  const [assignPlanOpen, setAssignPlanOpen] = useState(false);
+  const [selectedPlanId, setSelectedPlanId] = useState('');
+  const [customDays, setCustomDays] = useState<number | ''>('');
 
   const userQ = useQuery({
     queryKey: ['user', id],
@@ -75,6 +78,26 @@ export function UserDetailsPage() {
     },
     onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to activate server')),
   });
+
+  const plansQ = useQuery({
+    queryKey: ['plans'],
+    queryFn: async () => (await api.get<Plan[]>('/plans')).data,
+  });
+
+  const assignPlanM = useMutation({
+    mutationFn: async (payload: { vpnUserId: string; planId?: string; periodDays?: number }) =>
+      (await api.post('/subscriptions', payload)).data,
+    onSuccess: async () => {
+      toast.success('Тариф подключен');
+      setAssignPlanOpen(false);
+      setSelectedPlanId('');
+      setCustomDays('');
+      await qc.invalidateQueries({ queryKey: ['user', id] });
+    },
+    onError: (err: any) => toast.error(getApiErrorMessage(err, 'Не удалось подключить тариф')),
+  });
+
+  const selectedPlan = plansQ.data?.find((p) => p.id === selectedPlanId);
 
   const trafficQ = useQuery({
     queryKey: ['user-traffic', id],
@@ -331,7 +354,10 @@ export function UserDetailsPage() {
       </Modal>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="Subscriptions">
+        <Card
+          title="Subscriptions"
+          right={u ? <Button variant="secondary" size="sm" onClick={() => { setSelectedPlanId(''); setCustomDays(''); setAssignPlanOpen(true); }}>Подключить тариф</Button> : undefined}
+        >
           {!u ? null : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -399,6 +425,66 @@ export function UserDetailsPage() {
           )}
         </Card>
       </div>
+
+      <Modal
+        open={assignPlanOpen}
+        title="Подключить тариф"
+        onClose={() => setAssignPlanOpen(false)}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" type="button" onClick={() => setAssignPlanOpen(false)}>Отмена</Button>
+            <Button
+              type="button"
+              disabled={assignPlanM.isPending || (!selectedPlanId && !customDays)}
+              onClick={() => {
+                if (!id) return;
+                const days = customDays || selectedPlan?.periodDays;
+                assignPlanM.mutate({
+                  vpnUserId: id,
+                  ...(selectedPlanId ? { planId: selectedPlanId } : {}),
+                  ...(days ? { periodDays: Number(days) } : {}),
+                });
+              }}
+            >
+              {assignPlanM.isPending ? 'Подключение...' : 'Подключить'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="grid gap-4">
+          <label className="block">
+            <div className="text-sm font-medium text-slate-700">План</div>
+            <select
+              className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+              value={selectedPlanId}
+              onChange={(e) => {
+                setSelectedPlanId(e.target.value);
+                const plan = plansQ.data?.find((p) => p.id === e.target.value);
+                if (plan) setCustomDays(plan.periodDays);
+              }}
+            >
+              <option value="">— без плана (только период) —</option>
+              {(plansQ.data ?? []).filter((p) => p.active).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} — {p.periodDays} дн.
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <div className="text-sm font-medium text-slate-700">Период (дней)</div>
+            <input
+              type="number"
+              min={1}
+              className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+              placeholder="напр. 30"
+              value={customDays}
+              onChange={(e) => setCustomDays(e.target.value ? Number(e.target.value) : '')}
+            />
+            <div className="mt-1 text-xs text-slate-500">Можно задать вручную или выбрать план выше</div>
+          </label>
+        </div>
+      </Modal>
 
       <Modal
         open={qrCodeUrl !== null}
