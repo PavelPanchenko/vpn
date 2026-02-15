@@ -11,7 +11,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <div className="flex min-h-screen w-full">
         <aside className="sticky top-0 hidden h-screen w-72 shrink-0 flex-col border-r border-slate-200 bg-white md:flex">
           <div className="px-4 py-4">
-            <div className="text-sm font-semibold tracking-tight text-slate-900">VLESS Admin</div>
+            <div className="text-sm font-semibold tracking-tight text-slate-900">FreeRoam VPN</div>
             <div className="mt-1 text-xs text-slate-500">Internal dashboard</div>
           </div>
           <nav className="flex-1 px-2 pb-4">
@@ -41,7 +41,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="border-b border-slate-200 bg-white md:hidden">
             <div className="flex items-center justify-between px-3 py-3">
-              <div className="text-sm font-semibold tracking-tight text-slate-900">VLESS Admin</div>
+              <div className="text-sm font-semibold tracking-tight text-slate-900">FreeRoam VPN</div>
               <button
                 type="button"
                 className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-900 shadow-sm"
@@ -60,7 +60,7 @@ export function Layout({ children }: { children: ReactNode }) {
               <div className="absolute inset-y-0 left-0 w-[84%] max-w-xs bg-white shadow-xl">
                 <div className="flex items-center justify-between border-b border-slate-200 px-4 py-4">
                   <div>
-                    <div className="text-sm font-semibold tracking-tight text-slate-900">VLESS Admin</div>
+                    <div className="text-sm font-semibold tracking-tight text-slate-900">FreeRoam VPN</div>
                     <div className="mt-1 text-xs text-slate-500">Internal dashboard</div>
                   </div>
                   <button

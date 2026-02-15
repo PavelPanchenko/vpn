@@ -167,14 +167,27 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
   async getOrCreateByTelegramId(telegramId: string, name: string, include?: Prisma.VpnUserInclude) {
     if (include) {
       const existing = await this.findByTelegramId(telegramId, include);
-      if (existing) return existing;
+      if (existing) {
+        // Обновляем имя при каждом входе (first_name + last_name могут меняться)
+        if (name && name !== 'User' && existing.name !== name) {
+          await this.prisma.vpnUser.update({ where: { id: existing.id }, data: { name } }).catch(() => {});
+          (existing as any).name = name;
+        }
+        return existing;
+      }
 
       const created = await this.createFromTelegram(telegramId, name);
       return this.prisma.vpnUser.findUniqueOrThrow({ where: { id: created.id }, include });
     }
 
     const existing = await this.findByTelegramId(telegramId);
-    if (existing) return existing;
+    if (existing) {
+      if (name && name !== 'User' && existing.name !== name) {
+        await this.prisma.vpnUser.update({ where: { id: existing.id }, data: { name } }).catch(() => {});
+        (existing as any).name = name;
+      }
+      return existing;
+    }
     return this.createFromTelegram(telegramId, name);
   }
 
