@@ -1,0 +1,12 @@
+import { Module } from '@nestjs/common';
+import { PrismaModule } from '../prisma/prisma.module';
+import { BotModule } from '../bot/bot.module';
+import { BroadcastService } from './broadcast.service';
+import { BroadcastController } from './broadcast.controller';
+
+@Module({
+  imports: [PrismaModule, BotModule],
+  providers: [BroadcastService],
+  controllers: [BroadcastController],
+})
+export class BroadcastModule {}

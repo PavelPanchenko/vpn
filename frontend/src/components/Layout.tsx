@@ -23,6 +23,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <NavItem to="/plans">Plans</NavItem>
             <NavItem to="/settings">Settings</NavItem>
             <NavItem to="/support">Support</NavItem>
+            <NavItem to="/broadcast">Broadcast</NavItem>
           </nav>
           <div className="mt-auto px-4 pb-4">
             <Button
@@ -80,6 +81,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   <NavItem to="/plans" onClick={() => setMobileOpen(false)}>Plans</NavItem>
                   <NavItem to="/settings" onClick={() => setMobileOpen(false)}>Settings</NavItem>
                   <NavItem to="/support" onClick={() => setMobileOpen(false)}>Support</NavItem>
+                  <NavItem to="/broadcast" onClick={() => setMobileOpen(false)}>Broadcast</NavItem>
                 </nav>
                 <div className="mt-auto px-4 py-4 border-t border-slate-200">
                   <Button
