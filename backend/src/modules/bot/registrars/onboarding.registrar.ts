@@ -19,7 +19,7 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
     args.logger.log(`Telegram /start lang: telegramId=${telegramId} language_code=${languageCode ?? 'null'} resolved=${lang}`);
     // Выходим из режима поддержки при /start
     args.supportModeUsers.delete(telegramId);
-    const userName = ctx.from.first_name || ctx.from.username || 'User';
+    const userName = [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(' ') || ctx.from.username || 'User';
     const startText = String((ctx.message as any)?.text ?? '');
     const startPayload = startText.startsWith('/start') ? startText.replace(/^\/start\s*/i, '').trim() : '';
 
@@ -120,7 +120,7 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
   args.bot.action(/^select_server_(.+)$/, async (ctx: TelegramCallbackCtx<TelegramCallbackMatch>) => {
     const serverId = ctx.match[1];
     const telegramId = ctx.from.id.toString();
-    const userName = ctx.from.first_name || ctx.from.username || 'User';
+    const userName = [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(' ') || ctx.from.username || 'User';
     const lang = botLangFromCtx(ctx);
     void args.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
 

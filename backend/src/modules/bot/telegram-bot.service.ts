@@ -484,7 +484,13 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
         disable_web_page_preview: true,
       });
     } catch (error: unknown) {
-      this.logger.error(`Failed to send expiry reminder to ${telegramId}:`, error);
+      const msg = error instanceof Error ? error.message : String(error);
+      // «chat not found» / «bot was blocked» — ожидаемая ситуация, не ошибка сервера
+      if (msg.includes('chat not found') || msg.includes('bot was blocked')) {
+        this.logger.warn(`Expiry reminder skipped for ${telegramId}: ${msg}`);
+      } else {
+        this.logger.error(`Failed to send expiry reminder to ${telegramId}:`, error);
+      }
     }
   }
 

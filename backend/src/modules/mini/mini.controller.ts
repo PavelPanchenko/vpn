@@ -121,9 +121,9 @@ export class MiniController {
 
     const telegramId = String(userObj.id);
     const name: string =
-      userObj.first_name ||
+      [userObj.first_name, userObj.last_name].filter(Boolean).join(' ') ||
       userObj.username ||
-      (userObj.last_name ? `${userObj.first_name} ${userObj.last_name}` : 'User');
+      'User';
 
     const languageCode = userObj.language_code ? String(userObj.language_code) : null;
 

@@ -14,6 +14,7 @@ import { BotModule } from './modules/bot/bot.module';
 import { SupportModule } from './modules/support/support.module';
 import { MiniModule } from './modules/mini/mini.module';
 import { PublicModule } from './modules/public/public.module';
+import { BroadcastModule } from './modules/broadcast/broadcast.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { PublicModule } from './modules/public/public.module';
     SupportModule,
     MiniModule,
     PublicModule,
+    BroadcastModule,
   ],
 })
 export class AppModule {}

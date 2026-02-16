@@ -166,14 +166,27 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
   async getOrCreateByTelegramId(telegramId: string, name: string, include?: Prisma.VpnUserInclude) {
     if (include) {
       const existing = await this.findByTelegramId(telegramId, include);
-      if (existing) return existing;
+      if (existing) {
+        // Обновляем имя при каждом входе (first_name + last_name могут меняться)
+        if (name && name !== 'User' && existing.name !== name) {
+          await this.prisma.vpnUser.update({ where: { id: existing.id }, data: { name } }).catch(() => {});
+          (existing as any).name = name;
+        }
+        return existing;
+      }
 
       const created = await this.createFromTelegram(telegramId, name);
       return this.prisma.vpnUser.findUniqueOrThrow({ where: { id: created.id }, include });
     }
 
     const existing = await this.findByTelegramId(telegramId);
-    if (existing) return existing;
+    if (existing) {
+      if (name && name !== 'User' && existing.name !== name) {
+        await this.prisma.vpnUser.update({ where: { id: existing.id }, data: { name } }).catch(() => {});
+        (existing as any).name = name;
+      }
+      return existing;
+    }
     return this.createFromTelegram(telegramId, name);
   }
 
@@ -1027,39 +1040,85 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
       where: { active: true, endsAt: { lt: now } },
       data: { active: false },
     });
-    const users = await this.prisma.vpnUser.findMany({
+
+    // 1. Помечаем ACTIVE → EXPIRED
+    const newlyExpired = await this.prisma.vpnUser.findMany({
       where: { status: 'ACTIVE', expiresAt: { not: null, lt: now } },
-      include: { userServers: { include: { server: true } }, server: true },
+      select: { id: true },
     });
-    for (const user of users) {
-      await this.prisma.vpnUser.update({ where: { id: user.id }, data: { status: 'EXPIRED' } });
-      const panelTargets: Array<{ server: any; email: string }> = [];
-      if (user.userServers?.length) {
-        for (const us of user.userServers) {
-          if (us.panelEmail && us.server) panelTargets.push({ server: us.server, email: us.panelEmail });
-        }
-      }
-      if (panelTargets.length === 0 && user.server && user.panelEmail) {
-        panelTargets.push({ server: user.server, email: user.panelEmail });
-      }
-      const secret = this.config.getOrThrow<string>('PANEL_CRED_SECRET');
-      for (const { server, email } of panelTargets) {
-        if (!server?.panelBaseUrl || !server?.panelUsername || !server?.panelPasswordEnc || server?.panelInboundId == null) continue;
-        try {
-          const panelPassword = SecretBox.decrypt(server.panelPasswordEnc, secret);
-          const auth = await this.xui.login(server.panelBaseUrl, server.panelUsername, panelPassword);
-          if (auth.cookie || auth.token) {
-            try {
-              await this.xui.updateClient(server.panelBaseUrl, auth, server.panelInboundId, email, { enable: false });
-            } catch (_) {
-              // best-effort
-            }
-            await this.xui.deleteClient(server.panelBaseUrl, auth, server.panelInboundId, email);
-          }
-        } catch (e: any) {
-          this.logger.warn(`expireUsersByCron: panel sync failed for user ${user.id} (${email}) — ${e?.message ?? e}`);
-        }
+    if (newlyExpired.length) {
+      await this.prisma.vpnUser.updateMany({
+        where: { id: { in: newlyExpired.map((u) => u.id) } },
+        data: { status: 'EXPIRED' },
+      });
+    }
+
+    // 2. Чистим панель для ВСЕХ expired (включая ретрай для тех, у кого ранее не удалось)
+    const expiredWithServers = await this.prisma.vpnUser.findMany({
+      where: {
+        status: 'EXPIRED',
+        OR: [
+          { userServers: { some: { active: true } } },
+          { server: { isNot: null }, panelEmail: { not: null } },
+        ],
+      },
+      include: { userServers: { where: { active: true }, include: { server: true } }, server: true },
+    });
+
+    for (const user of expiredWithServers) {
+      const cleaned = await this.cleanupPanelClients(user);
+      // Помечаем успешно очищенные userServers как inactive, чтобы не ретраить
+      if (cleaned.length) {
+        await this.prisma.userServer.updateMany({
+          where: { id: { in: cleaned } },
+          data: { active: false },
+        });
       }
     }
+  }
+
+  /** Удаляет клиентов из панели X-UI. Возвращает id успешно очищенных userServers. */
+  private async cleanupPanelClients(
+    user: { id: string; panelEmail?: string | null; server?: any; userServers?: Array<{ id: string; panelEmail: string; server: any }> },
+  ): Promise<string[]> {
+    const panelTargets: Array<{ userServerId?: string; server: any; email: string }> = [];
+    if (user.userServers?.length) {
+      for (const us of user.userServers) {
+        if (us.panelEmail && us.server) panelTargets.push({ userServerId: us.id, server: us.server, email: us.panelEmail });
+      }
+    }
+    if (panelTargets.length === 0 && user.server && user.panelEmail) {
+      panelTargets.push({ server: user.server, email: user.panelEmail });
+    }
+
+    const secret = this.config.getOrThrow<string>('PANEL_CRED_SECRET');
+    const cleanedIds: string[] = [];
+
+    for (const { userServerId, server, email } of panelTargets) {
+      if (!server?.panelBaseUrl || !server?.panelUsername || !server?.panelPasswordEnc || server?.panelInboundId == null) continue;
+      try {
+        const panelPassword = SecretBox.decrypt(server.panelPasswordEnc, secret);
+        const auth = await this.xui.login(server.panelBaseUrl, server.panelUsername, panelPassword);
+        if (auth.cookie || auth.token) {
+          try {
+            await this.xui.updateClient(server.panelBaseUrl, auth, server.panelInboundId, email, { enable: false });
+          } catch (_) {
+            // best-effort disable
+          }
+          try {
+            await this.xui.deleteClient(server.panelBaseUrl, auth, server.panelInboundId, email);
+          } catch (delErr: any) {
+            const msg: string = delErr?.message ?? '';
+            // «Client not found» = уже удалён из панели — считаем успехом
+            if (!msg.includes('not found')) throw delErr;
+          }
+          if (userServerId) cleanedIds.push(userServerId);
+        }
+      } catch (e: any) {
+        this.logger.warn(`cleanupPanelClients: failed for user ${user.id} (${email}) — ${e?.message ?? e}`);
+      }
+    }
+
+    return cleanedIds;
   }
 }
