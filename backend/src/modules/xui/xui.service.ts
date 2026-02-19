@@ -94,6 +94,14 @@ export class XuiService {
     return { ...obj, clientStats: Array.isArray(clientStats) ? clientStats : [] };
   }
 
+  /** Количество клиентов на инбаунде в панели (фактическое с панели). */
+  async getInboundClientCount(baseUrl: string, auth: PanelAuth, inboundId: number): Promise<number> {
+    const inbound = await this.getInbound(baseUrl, inboundId, auth);
+    const settings = typeof inbound.settings === 'string' ? JSON.parse(inbound.settings) : inbound.settings;
+    const clients = settings?.clients ?? [];
+    return Array.isArray(clients) ? clients.length : 0;
+  }
+
   async getClientTraffic(
     baseUrl: string,
     auth: PanelAuth,

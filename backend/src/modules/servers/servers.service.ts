@@ -134,16 +134,36 @@ export class ServersService {
       }
     }
 
+    const secret = this.config.get<string>('PANEL_CRED_SECRET');
+    const panelCountPromises = servers.map(async (s) => {
+      if (!secret || !s.panelBaseUrl || !s.panelUsername || !s.panelPasswordEnc || s.panelInboundId == null) {
+        return { serverId: s.id, count: null as number | null };
+      }
+      try {
+        const panelPassword = SecretBox.decrypt(s.panelPasswordEnc, secret);
+        const auth = await this.xui.login(s.panelBaseUrl, s.panelUsername, panelPassword);
+        if (!auth.cookie && !auth.token) return { serverId: s.id, count: null };
+        const count = await this.xui.getInboundClientCount(s.panelBaseUrl, auth, s.panelInboundId);
+        return { serverId: s.id, count };
+      } catch {
+        return { serverId: s.id, count: null };
+      }
+    });
+    const panelCounts = await Promise.all(panelCountPromises);
+    const panelCountByServer = new Map(panelCounts.map((p) => [p.serverId, p.count]));
+
     return servers.map((s) => {
       const usersOnServer = s._count.userServers;
+      const panelCount = panelCountByServer.get(s.id) ?? null;
+      const usersCount = panelCount !== null ? panelCount : usersOnServer;
       const activeUsersCount = activeByServer.get(s.id) ?? 0;
-      const freeSlots = s.maxUsers > 0 ? Math.max(0, s.maxUsers - usersOnServer) : null;
+      const freeSlots = s.maxUsers > 0 ? Math.max(0, s.maxUsers - usersCount) : null;
 
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { _count, ...rest } = s;
       return this.maskServer({
         ...rest,
-        usersCount: usersOnServer,
+        usersCount,
         activeUsersCount,
         freeSlots,
       });
