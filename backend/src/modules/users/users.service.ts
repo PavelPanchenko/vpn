@@ -192,12 +192,14 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.vpnUser.update({ where: { id: userId }, data }).catch(() => {});
   }
 
-  /** Количество пользователей (поиск q, статус, сервер — те же условия, что и list). */
-  async count(args?: { q?: string; status?: string; serverId?: string }): Promise<number> {
+  /** Количество пользователей (поиск q, статус, сервер, hideBlocked — те же условия, что и list). */
+  async count(args?: { q?: string; status?: string; serverId?: string; hideBlocked?: boolean }): Promise<number> {
     const q = (args?.q ?? '').trim();
     const status = (args?.status ?? '').trim();
     const serverId = (args?.serverId ?? '').trim();
+    const hideBlocked = args?.hideBlocked !== false;
     const where: Prisma.VpnUserWhereInput = {};
+    if (hideBlocked) where.botBlockedAt = null;
     if (status) (where as any).status = status as any;
     if (q) {
       where.OR = [
@@ -356,6 +358,7 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
     serverId?: string;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
+    hideBlocked?: boolean;
   }) {
     await this.refreshExpiredStatuses();
     const offset = Math.max(0, Number(args?.offset ?? 0) || 0);
@@ -364,9 +367,11 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
     const q = (args?.q ?? '').trim();
     const status = (args?.status ?? '').trim();
     const serverId = (args?.serverId ?? '').trim();
+    const hideBlocked = args?.hideBlocked !== false;
     const order = args?.sortOrder === 'asc' ? 'asc' : 'desc';
 
     const where: Prisma.VpnUserWhereInput = {};
+    if (hideBlocked) where.botBlockedAt = null;
     if (status) (where as any).status = status as any;
     if (q) {
       where.OR = [

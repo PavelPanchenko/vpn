@@ -34,5 +34,10 @@ export class PaginationQueryDto {
   @IsOptional()
   @IsString()
   countOnly?: string;
+
+  /** Скрыть пользователей, заблокировавших бота (по умолчанию 1). 0 или false — показать всех. */
+  @IsOptional()
+  @IsString()
+  hideBlocked?: string;
 }
 

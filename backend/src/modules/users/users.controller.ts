@@ -16,11 +16,13 @@ export class UsersController {
   async list(
     @Query() q: PaginationQueryDto & { status?: string; serverId?: string; sortBy?: string; sortOrder?: 'asc' | 'desc'; countOnly?: string },
   ) {
+    const hideBlocked = (q.hideBlocked ?? '1') !== '0' && (q.hideBlocked ?? '').toLowerCase() !== 'false';
     if (q.countOnly === '1') {
       const count = await this.users.count({
         q: q.q,
         status: q.status,
         serverId: q.serverId,
+        hideBlocked,
       });
       return { count };
     }
@@ -32,6 +34,7 @@ export class UsersController {
       serverId: q.serverId,
       sortBy: q.sortBy,
       sortOrder: q.sortOrder,
+      hideBlocked,
     });
   }
 
