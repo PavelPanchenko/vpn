@@ -51,6 +51,8 @@ export type VpnUser = {
   server?: VpnServer | null;
   userServers?: UserServer[];
   lastOnlineAt?: string | null;
+  /** Бот заблокирован пользователем; сбрасывается при /start */
+  botBlockedAt?: string | null;
 };
 
 export type Subscription = {

@@ -143,6 +143,9 @@ model VpnUser {
   // когда пользователь последний раз был онлайн (обновляется фоновой задачей)
   lastOnlineAt DateTime?
 
+  // бот заблокирован пользователем (chat not found / bot was blocked); сбрасывается при /start
+  botBlockedAt DateTime?
+
   // server selection (nullable since multi-server support)
   serverId   String?
   server     VpnServer?   @relation(fields: [serverId], references: [id], onDelete: Restrict, onUpdate: Cascade)

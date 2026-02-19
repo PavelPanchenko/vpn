@@ -14,13 +14,25 @@ export class UsersController {
   constructor(private readonly users: UsersService) {}
 
   @Get()
-  list(@Query() q: PaginationQueryDto & { status?: string; serverId?: string }) {
+  async list(
+    @Query() q: PaginationQueryDto & { status?: string; serverId?: string; sortBy?: string; sortOrder?: 'asc' | 'desc'; countOnly?: string },
+  ) {
+    if (q.countOnly === '1') {
+      const count = await this.users.count({
+        q: q.q,
+        status: q.status,
+        serverId: q.serverId,
+      });
+      return { count };
+    }
     return this.users.list({
       offset: q.offset,
       limit: q.limit,
       q: q.q,
       status: q.status,
       serverId: q.serverId,
+      sortBy: q.sortBy,
+      sortOrder: q.sortOrder,
     });
   }
 

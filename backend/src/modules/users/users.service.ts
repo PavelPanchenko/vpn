@@ -168,11 +168,8 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
     if (include) {
       const existing = await this.findByTelegramId(telegramId, include);
       if (existing) {
-        // Обновляем имя при каждом входе (first_name + last_name могут меняться)
-        if (name && name !== 'User' && existing.name !== name) {
-          await this.prisma.vpnUser.update({ where: { id: existing.id }, data: { name } }).catch(() => {});
-          (existing as any).name = name;
-        }
+        await this.clearBotBlockedAndMaybeName(existing.id, name, existing.name);
+        if (name && name !== 'User' && existing.name !== name) (existing as any).name = name;
         return existing;
       }
 
@@ -182,13 +179,48 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
 
     const existing = await this.findByTelegramId(telegramId);
     if (existing) {
-      if (name && name !== 'User' && existing.name !== name) {
-        await this.prisma.vpnUser.update({ where: { id: existing.id }, data: { name } }).catch(() => {});
-        (existing as any).name = name;
-      }
+      await this.clearBotBlockedAndMaybeName(existing.id, name, existing.name);
+      if (name && name !== 'User' && existing.name !== name) (existing as any).name = name;
       return existing;
     }
     return this.createFromTelegram(telegramId, name);
+  }
+
+  /** Сбрасывает botBlockedAt при /start; при необходимости обновляет name. */
+  private async clearBotBlockedAndMaybeName(userId: string, newName: string, currentName: string) {
+    const data: { botBlockedAt: null; name?: string } = { botBlockedAt: null };
+    if (newName && newName !== 'User' && newName !== currentName) data.name = newName;
+    await this.prisma.vpnUser.update({ where: { id: userId }, data }).catch(() => {});
+  }
+
+  /** Количество пользователей (поиск q, статус, сервер — те же условия, что и list). */
+  async count(args?: { q?: string; status?: string; serverId?: string }): Promise<number> {
+    const q = (args?.q ?? '').trim();
+    const status = (args?.status ?? '').trim();
+    const serverId = (args?.serverId ?? '').trim();
+    const where: Prisma.VpnUserWhereInput = {};
+    if (status) (where as any).status = status as any;
+    if (q) {
+      where.OR = [
+        { name: { contains: q, mode: 'insensitive' } },
+        { telegramId: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+    if (serverId) {
+      where.OR = [
+        ...(where.OR ?? []),
+        { serverId },
+        { userServers: { some: { isActive: true, serverId } } },
+      ];
+    }
+    return this.prisma.vpnUser.count({ where });
+  }
+
+  /** Пометить пользователя как «бот заблокирован» (chat not found / bot was blocked). */
+  async markBotBlockedByTelegramId(telegramId: string): Promise<void> {
+    await this.prisma.vpnUser
+      .updateMany({ where: { telegramId }, data: { botBlockedAt: new Date() } })
+      .catch(() => {});
   }
 
   /** Единая точка: добавить/обновить клиента на панели. */
@@ -230,6 +262,7 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
           ...(options?.enable !== undefined && { enable: options.enable }),
           ...(options?.expiryTime !== undefined && { expiryTime: options.expiryTime }),
           ...(limitIp > 0 && { limitIp }),
+          totalGB: 0, // неограниченный трафик, лимит только по сроку
         });
       } else {
         this.logger.error(`ensurePanelClient failed for ${panelEmail}: ${msg}`);
@@ -316,7 +349,15 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async list(args?: { offset?: number; limit?: number; q?: string; status?: string; serverId?: string }) {
+  async list(args?: {
+    offset?: number;
+    limit?: number;
+    q?: string;
+    status?: string;
+    serverId?: string;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+  }) {
     await this.refreshExpiredStatuses();
     const offset = Math.max(0, Number(args?.offset ?? 0) || 0);
     const limitRaw = Number(args?.limit ?? 50);
@@ -324,6 +365,7 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
     const q = (args?.q ?? '').trim();
     const status = (args?.status ?? '').trim();
     const serverId = (args?.serverId ?? '').trim();
+    const order = args?.sortOrder === 'asc' ? 'asc' : 'desc';
 
     const where: Prisma.VpnUserWhereInput = {};
     if (status) (where as any).status = status as any;
@@ -334,22 +376,29 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
       ];
     }
     if (serverId) {
-      if (serverId === 'NO_SERVER') {
-        where.AND = [
-          { serverId: null },
-          { userServers: { none: { isActive: true } } },
-        ];
-      } else {
-        // Фильтруем по активной локации (userServers.isActive) или legacy serverId
-        where.OR = [
-          ...(where.OR ?? []),
-          { serverId },
-          { userServers: { some: { isActive: true, serverId } } },
-        ];
-      }
+      where.OR = [
+        ...(where.OR ?? []),
+        { serverId },
+        { userServers: { some: { isActive: true, serverId } } },
+      ];
     }
+
+    const sortBy = (args?.sortBy ?? 'createdAt').toLowerCase();
+    const orderBy: Prisma.VpnUserOrderByWithRelationInput =
+      sortBy === 'name'
+        ? { name: order }
+        : sortBy === 'expiresat'
+          ? { expiresAt: order }
+          : sortBy === 'status'
+            ? { status: order }
+            : sortBy === 'lastonlineat'
+              ? { lastOnlineAt: order }
+              : sortBy === 'servername'
+                ? { server: { name: order } }
+                : { createdAt: order };
+
     return this.prisma.vpnUser.findMany({
-      orderBy: { createdAt: 'desc' },
+      orderBy,
       where,
       skip: offset,
       take: limit,
@@ -1235,8 +1284,10 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
         if (auth.cookie || auth.token) {
           try {
             await this.xui.updateClient(server.panelBaseUrl, auth, server.panelInboundId, email, { enable: false });
-          } catch (_) {
-            // best-effort disable
+          } catch (disableErr: any) {
+            this.logger.warn(
+              `cleanupPanelClients: disable failed for ${email} (user ${user.id}): ${disableErr?.message ?? disableErr}. Will try delete.`,
+            );
           }
           try {
             await this.xui.deleteClient(server.panelBaseUrl, auth, server.panelInboundId, email);

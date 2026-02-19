@@ -10,6 +10,7 @@ import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
 import { Table, Td, Th } from '../components/Table';
 import { Badge } from '../components/Badge';
+import { IconButton } from '../components/IconButton';
 import { CURRENCY_CODES } from '../lib/currencies';
 import { formatPrice } from '../lib/formatters';
 import { ResponsiveSwitch } from '../components/ResponsiveSwitch';
@@ -279,38 +280,34 @@ export function PlansPage() {
         title="Тарифы"
         description="Тарифные планы и варианты оплаты (валюта/цена/провайдер)."
         actions={
-          <>
-            <Button variant="secondary" onClick={() => plansQ.refetch()}>
-              Обновить
-            </Button>
-            <Button
-              onClick={() => {
-                createForm.reset({
-                  code: '',
-                  name: '',
-                  description: '',
-                  periodDays: 30,
-                  isTrial: false,
-                  active: true,
-                  availableFor: 'ALL',
-                  isTop: false,
-                  variants: [
-                    {
-                      currency: 'RUB',
-                      price: 0,
-                      provider: defaultProviderForCurrency('RUB'),
-                      active: true,
-                    },
-                  ],
-                });
-                setNewVariantCurrency('USD');
-                setNewVariantPrice(0);
-                setCreateOpen(true);
-              }}
-            >
-              Добавить тариф
-            </Button>
-          </>
+          <IconButton
+            icon="add"
+            variant="primary"
+            title="Добавить тариф"
+            onClick={() => {
+              createForm.reset({
+                code: '',
+                name: '',
+                description: '',
+                periodDays: 30,
+                isTrial: false,
+                active: true,
+                availableFor: 'ALL',
+                isTop: false,
+                variants: [
+                  {
+                    currency: 'RUB',
+                    price: 0,
+                    provider: defaultProviderForCurrency('RUB'),
+                    active: true,
+                  },
+                ],
+              });
+              setNewVariantCurrency('USD');
+              setNewVariantPrice(0);
+              setCreateOpen(true);
+            }}
+          />
         }
       />
 
@@ -349,9 +346,10 @@ export function PlansPage() {
                     </div>
 
                     <div className="mt-4 flex gap-2">
-                      <Button
+                      <IconButton
+                        icon="edit"
                         variant="secondary"
-                        className="flex-1"
+                        title="Редактировать"
                         onClick={() => {
                           setEditTarget(p as any);
                           editForm.reset({
@@ -366,12 +364,8 @@ export function PlansPage() {
                             variants: [],
                           });
                         }}
-                      >
-                        Редактировать
-                      </Button>
-                      <Button variant="danger" className="flex-1" onClick={() => setDeleteTarget(p as any)}>
-                        Удалить
-                      </Button>
+                      />
+                      <IconButton icon="delete" variant="danger" title="Удалить" onClick={() => setDeleteTarget(p as any)} />
                     </div>
                   </div>
                 );
@@ -419,8 +413,10 @@ export function PlansPage() {
                     </Td>
                     <Td className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button
+                        <IconButton
+                          icon="edit"
                           variant="secondary"
+                          title="Редактировать"
                           onClick={() => {
                             setEditTarget(p as any);
                             editForm.reset({
@@ -435,12 +431,8 @@ export function PlansPage() {
                               variants: [],
                             });
                           }}
-                        >
-                          Редактировать
-                        </Button>
-                        <Button variant="danger" onClick={() => setDeleteTarget(p as any)}>
-                          Удалить
-                        </Button>
+                        />
+                        <IconButton icon="delete" variant="danger" title="Удалить" onClick={() => setDeleteTarget(p as any)} />
                       </div>
                     </Td>
                   </tr>

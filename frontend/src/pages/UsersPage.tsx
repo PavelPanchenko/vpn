@@ -13,6 +13,7 @@ import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
 import { Table, Td, Th } from '../components/Table';
 import { Badge, statusBadgeVariant } from '../components/Badge';
+import { IconButton } from '../components/IconButton';
 import { ResponsiveSwitch } from '../components/ResponsiveSwitch';
 import { UserAvatar } from '../components/UserAvatar';
 
@@ -40,28 +41,48 @@ export function UsersPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<VpnUser | null>(null);
   const [editTarget, setEditTarget] = useState<VpnUser | null>(null);
+  const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | VpnUserStatus>('ALL');
   const [serverFilter, setServerFilter] = useState<string>('ALL');
-  const [search, setSearch] = useState('');
+  const [onlineFilter, setOnlineFilter] = useState<'ALL' | 'ONLINE'>('ALL');
+  const [sortBy, setSortBy] = useState<'name' | 'expiresAt' | 'status' | 'lastOnlineAt' | 'createdAt' | 'serverName'>('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const serversQ = useQuery({
     queryKey: ['servers'],
     queryFn: async () => (await api.get<VpnServer[]>('/servers')).data,
   });
 
+  const qStr = useMemo(() => search.trim(), [search]);
+
   const onlineIdsQ = useQuery({
     queryKey: ['users-online'],
     queryFn: async () => (await api.get<string[]>('/users/online')).data,
     refetchInterval: 30_000,
+  });
+  const usersCountQ = useQuery({
+    queryKey: ['users-count', qStr, statusFilter, serverFilter],
+    queryFn: async () =>
+      (
+        await api.get<{ count: number }>('/users', {
+          params: {
+            countOnly: '1',
+            ...(qStr ? { q: qStr } : {}),
+            ...(statusFilter !== 'ALL' ? { status: statusFilter } : {}),
+            ...(serverFilter !== 'ALL' ? { serverId: serverFilter } : {}),
+          },
+        })
+      ).data.count,
+    retry: false,
+    staleTime: 30_000,
   });
   const onlineSet = useMemo(
     () => new Set(Array.isArray(onlineIdsQ.data) ? onlineIdsQ.data : []),
     [onlineIdsQ.data],
   );
 
-  const qStr = useMemo(() => search.trim(), [search]);
   const usersQ = useInfiniteQuery({
-    queryKey: ['users', { statusFilter, serverFilter, q: qStr }],
+    queryKey: ['users', { q: qStr, statusFilter, serverFilter, sortBy, sortOrder }],
     queryFn: async ({ pageParam }) =>
       (await api.get<VpnUser[]>('/users', {
         params: {
@@ -70,6 +91,8 @@ export function UsersPage() {
           q: qStr || undefined,
           status: statusFilter !== 'ALL' ? statusFilter : undefined,
           serverId: serverFilter !== 'ALL' ? serverFilter : undefined,
+          sortBy,
+          sortOrder,
         },
       })).data,
     initialPageParam: 0,
@@ -127,7 +150,11 @@ export function UsersPage() {
     return { id, name };
   }
 
-  const filteredUsers = users;
+  const filteredUsers = useMemo(() => {
+    const list = users;
+    if (onlineFilter !== 'ONLINE') return list;
+    return list.filter((u) => onlineSet.has(u.id));
+  }, [users, onlineFilter, onlineSet]);
 
   const createForm = useForm<CreateUserForm>({
     defaultValues: { serverId: '', name: '', telegramId: '', trialDays: 3 },
@@ -185,73 +212,119 @@ export function UsersPage() {
     return Math.ceil(diffMs / (24 * 60 * 60 * 1000));
   }
 
+  type SortField = 'name' | 'expiresAt' | 'status' | 'lastOnlineAt' | 'createdAt' | 'serverName';
+  function handleSort(field: SortField) {
+    if (sortBy === field) {
+      setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(field);
+      setSortOrder(field === 'name' || field === 'status' || field === 'serverName' ? 'asc' : 'desc');
+    }
+  }
+  function SortTh({ field, children }: { field: SortField; children: React.ReactNode }) {
+    const active = sortBy === field;
+    return (
+      <Th>
+        <button
+          type="button"
+          onClick={() => handleSort(field)}
+          className="inline-flex items-center gap-1 font-semibold uppercase tracking-wide text-slate-500 hover:text-slate-700"
+        >
+          {children}
+          {active && <span className="text-slate-700">{sortOrder === 'asc' ? ' ↑' : ' ↓'}</span>}
+        </button>
+      </Th>
+    );
+  }
+
+  const totalCount = usersCountQ.data;
+  const countReady = usersCountQ.isSuccess && typeof totalCount === 'number';
+
   return (
     <div className="grid gap-6">
       <PageHeader
-        title="Users"
-        description="Пользователи VLESS (позже будут маппиться на Telegram)."
+        title="Пользователи"
+        description={
+          countReady
+            ? (onlineFilter === 'ONLINE'
+                ? `Показано: ${filteredUsers.length} из ${totalCount} (онлайн)`
+                : `Пользователей: ${totalCount}${qStr ? ` (по запросу «${qStr}»)` : ''}`)
+            : 'Пользователи VLESS.'
+        }
         actions={
-          <div className="flex w-full flex-col gap-2 md:flex-row md:items-center md:justify-end md:flex-nowrap">
-            <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center md:w-auto md:flex-nowrap">
-              <select
-                className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200 sm:w-auto"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as 'ALL' | VpnUserStatus)}
-              >
-                <option value="ALL">All statuses</option>
-                <option value="NEW">NEW</option>
-                <option value="ACTIVE">ACTIVE</option>
-                <option value="BLOCKED">BLOCKED</option>
-                <option value="EXPIRED">EXPIRED</option>
-              </select>
-              <select
-                className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200 sm:w-auto"
-                value={serverFilter}
-                onChange={(e) => setServerFilter(e.target.value)}
-              >
-                <option value="ALL">All servers</option>
-                <option value="NO_SERVER">Без сервера</option>
-                {servers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-              <input
-                className={[
-                  'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none sm:w-56 md:w-60',
-                  'placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200',
-                ].join(' ')}
-                placeholder="Search by name / TG"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            <div className="flex gap-2 md:flex-nowrap">
-              <Button variant="secondary" onClick={() => usersQ.refetch()}>
-                Refresh
-              </Button>
-              <Button
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <select
+              className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as 'ALL' | VpnUserStatus)}
+            >
+              <option value="ALL">Все статусы</option>
+              <option value="NEW">NEW</option>
+              <option value="ACTIVE">ACTIVE</option>
+              <option value="BLOCKED">BLOCKED</option>
+              <option value="EXPIRED">EXPIRED</option>
+            </select>
+            <select
+              className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+              value={serverFilter}
+              onChange={(e) => setServerFilter(e.target.value)}
+            >
+              <option value="ALL">Все серверы</option>
+              {servers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            <select
+              className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+              value={onlineFilter}
+              onChange={(e) => setOnlineFilter(e.target.value as 'ALL' | 'ONLINE')}
+            >
+              <option value="ALL">Все</option>
+              <option value="ONLINE">Онлайн</option>
+            </select>
+            <input
+              className={[
+                'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none sm:w-56 md:w-60',
+                'placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200',
+              ].join(' ')}
+              placeholder="Поиск по имени / TG"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <IconButton
+                icon="add"
+                variant="primary"
+                title="Добавить пользователя"
                 onClick={() => {
                   createForm.reset({ serverId: '', name: '', telegramId: '' });
                   setCreateOpen(true);
                 }}
-              >
-                Add user
-              </Button>
+              />
             </div>
           </div>
         }
       />
 
       {usersQ.isLoading ? (
-        <div className="text-sm text-slate-600">Loading…</div>
+        <div className="text-sm text-slate-600">Загрузка…</div>
       ) : (
         <ResponsiveSwitch
           mobile={
             <div className="grid gap-3">
               {filteredUsers.map((u) => (
-                <Card key={u.id}>
+                <div key={u.id} className="relative">
+                  {u.botBlockedAt && (
+                    <span
+                      className="absolute top-0 right-0 z-10 rounded-bl bg-slate-200/90 px-1.5 py-0.5 text-[10px] text-slate-600"
+                      title={`Бот заблокирован: ${new Date(u.botBlockedAt).toLocaleString()}`}
+                    >
+                      заблок.
+                    </span>
+                  )}
+                  <Card>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <UserAvatar userId={u.id} name={u.name} size="sm" />
@@ -264,7 +337,9 @@ export function UsersPage() {
                         </div>
                       </div>
                     </div>
-                    <Badge variant={statusBadgeVariant(u.status) as any}>{u.status}</Badge>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge variant={statusBadgeVariant(u.status) as any}>{u.status}</Badge>
+                    </div>
                   </div>
 
                   <div className="mt-3 grid gap-2 text-sm text-slate-700">
@@ -315,9 +390,10 @@ export function UsersPage() {
                   </div>
 
                   <div className="mt-4 flex gap-2">
-                    <Button
+                    <IconButton
+                      icon="edit"
                       variant="secondary"
-                      className="flex-1"
+                      title="Изменить"
                       onClick={() => {
                         setEditTarget(u);
                         editForm.reset({
@@ -326,19 +402,16 @@ export function UsersPage() {
                           telegramId: u.telegramId ?? '',
                         });
                       }}
-                    >
-                      Edit
-                    </Button>
-                    <Button variant="danger" className="flex-1" onClick={() => setDeleteTarget(u)}>
-                      Delete
-                    </Button>
+                    />
+                    <IconButton icon="delete" variant="danger" title="Удалить" onClick={() => setDeleteTarget(u)} />
                   </div>
                 </Card>
+                </div>
               ))}
 
               {filteredUsers.length === 0 ? (
                 <Card>
-                  <div className="text-sm text-slate-500">No users yet</div>
+                  <div className="text-sm text-slate-500">Пользователей пока нет</div>
                 </Card>
               ) : null}
 
@@ -350,7 +423,7 @@ export function UsersPage() {
                     disabled={usersQ.isFetchingNextPage}
                     onClick={() => usersQ.fetchNextPage()}
                   >
-                    {usersQ.isFetchingNextPage ? 'Loading…' : 'Load more'}
+                    {usersQ.isFetchingNextPage ? 'Загрузка…' : 'Ещё'}
                   </Button>
                 </div>
               ) : null}
@@ -361,20 +434,28 @@ export function UsersPage() {
               <Table
                 columns={
                   <tr>
-                    <Th>Name</Th>
+                    <SortTh field="name">Имя</SortTh>
                     <Th>UUID</Th>
                     <Th>TG ID</Th>
-                    <Th>Server</Th>
-                    <Th>Онлайн</Th>
-                    <Th>Status</Th>
-                    <Th>Expires</Th>
-                    <Th className="text-right">Actions</Th>
+                    <SortTh field="serverName">Сервер</SortTh>
+                    <SortTh field="lastOnlineAt">Онлайн</SortTh>
+                    <SortTh field="status">Статус</SortTh>
+                    <SortTh field="expiresAt">Истекает</SortTh>
+                    <Th className="text-right">Действия</Th>
                   </tr>
                 }
               >
                 {filteredUsers.map((u) => (
                   <tr key={u.id} className="border-t border-slate-100">
-                    <Td>
+                    <Td className="relative">
+                      {u.botBlockedAt && (
+                        <span
+                          className="absolute top-0 right-0 rounded-bl bg-slate-200/90 px-1.5 py-0.5 text-[10px] text-slate-600"
+                          title={`Бот заблокирован: ${new Date(u.botBlockedAt).toLocaleString()}`}
+                        >
+                          заблок.
+                        </span>
+                      )}
                       <div className="flex items-center gap-2">
                         <UserAvatar userId={u.id} name={u.name} size="sm" />
                         <span className="font-medium">{u.name}</span>
@@ -401,7 +482,7 @@ export function UsersPage() {
                     </Td>
                     <Td>
                       <select
-                        className="mt-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                        className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
                         value={u.status}
                         onChange={(e) =>
                           updateM.mutate({
@@ -419,8 +500,10 @@ export function UsersPage() {
                     <Td>{u.expiresAt ? new Date(u.expiresAt).toLocaleString() : '-'}</Td>
                     <Td className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button
+                        <IconButton
+                          icon="edit"
                           variant="secondary"
+                          title="Изменить"
                           onClick={() => {
                             setEditTarget(u);
                             editForm.reset({
@@ -429,12 +512,8 @@ export function UsersPage() {
                               telegramId: u.telegramId ?? '',
                             });
                           }}
-                        >
-                          Edit
-                        </Button>
-                        <Button variant="danger" onClick={() => setDeleteTarget(u)}>
-                          Delete
-                        </Button>
+                        />
+                        <IconButton icon="delete" variant="danger" title="Удалить" onClick={() => setDeleteTarget(u)} />
                       </div>
                     </Td>
                   </tr>
@@ -442,7 +521,7 @@ export function UsersPage() {
                 {filteredUsers.length === 0 ? (
                   <tr className="border-t border-slate-100">
                     <Td className="text-slate-500" colSpan={8}>
-                      No users yet
+                      Пользователей пока нет
                     </Td>
                   </tr>
                 ) : null}
@@ -455,7 +534,7 @@ export function UsersPage() {
                     disabled={usersQ.isFetchingNextPage}
                     onClick={() => usersQ.fetchNextPage()}
                   >
-                    {usersQ.isFetchingNextPage ? 'Loading…' : 'Load more'}
+                    {usersQ.isFetchingNextPage ? 'Загрузка…' : 'Ещё'}
                   </Button>
                 </div>
               ) : null}
@@ -466,7 +545,7 @@ export function UsersPage() {
 
       <Modal
         open={createOpen}
-        title="Add user"
+        title="Добавить пользователя"
         onClose={() => setCreateOpen(false)}
         footer={
           <div className="flex justify-end gap-2">
@@ -492,14 +571,14 @@ export function UsersPage() {
       >
         <form className="grid gap-3" onSubmit={(e) => e.preventDefault()}>
           <Input
-            label="Name"
-            placeholder="e.g. Pavel"
-            {...createForm.register('name', { required: 'Enter name', minLength: { value: 2, message: 'Too short' } })}
+            label="Имя"
+            placeholder="например, Павел"
+            {...createForm.register('name', { required: 'Введите имя', minLength: { value: 2, message: 'Слишком коротко' } })}
             error={createForm.formState.errors.name?.message}
           />
 
           <label className="block">
-            <div className="text-sm font-medium text-slate-700">Server</div>
+            <div className="text-sm font-medium text-slate-700">Сервер</div>
             <select
               className={[
                 'mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none',
@@ -508,11 +587,11 @@ export function UsersPage() {
               ]
                 .filter(Boolean)
                 .join(' ')}
-              {...createForm.register('serverId', { required: 'Select server' })}
+              {...createForm.register('serverId', { required: 'Выберите сервер' })}
               defaultValue=""
             >
               <option value="" disabled>
-                Select server…
+                Выберите сервер…
               </option>
               {servers.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -525,9 +604,9 @@ export function UsersPage() {
             ) : null}
           </label>
 
-          <Input label="TG ID" placeholder="e.g. 123456789" {...createForm.register('telegramId')} />
+          <Input label="TG ID" placeholder="например, 123456789" {...createForm.register('telegramId')} />
           <Input
-            label="Trial days"
+            label="Пробный период (дней)"
             type="number"
             {...createForm.register('trialDays', { valueAsNumber: true, min: 1, max: 365 })}
             hint="По умолчанию 3. При создании выставит expiresAt и в панели."
@@ -538,12 +617,12 @@ export function UsersPage() {
 
       <Modal
         open={Boolean(editTarget)}
-        title="Edit user"
+        title="Редактировать пользователя"
         onClose={() => setEditTarget(null)}
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" type="button" onClick={() => setEditTarget(null)}>
-              Cancel
+              Отмена
             </Button>
             <Button
               type="button"
@@ -560,7 +639,7 @@ export function UsersPage() {
                 });
               })}
             >
-              Save
+              Сохранить
             </Button>
           </div>
         }
@@ -577,7 +656,7 @@ export function UsersPage() {
                   <span className="font-medium">{editTarget?.status ?? '—'}</span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-slate-500">Expires (user)</span>
+                  <span className="text-slate-500">Истекает (пользователь)</span>
                   <span className="font-mono text-xs">{fmtDate(editTarget?.expiresAt ?? null)}</span>
                 </div>
                 <div className="mt-2 text-xs font-medium text-slate-700">Активная подписка</div>
@@ -608,7 +687,7 @@ export function UsersPage() {
           </div>
 
           <label className="block">
-            <div className="text-sm font-medium text-slate-700">Server</div>
+            <div className="text-sm font-medium text-slate-700">Сервер</div>
             <select
               className={[
                 'mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none',
@@ -617,10 +696,10 @@ export function UsersPage() {
               ]
                 .filter(Boolean)
                 .join(' ')}
-              {...editForm.register('serverId', { required: 'Select server' })}
+              {...editForm.register('serverId', { required: 'Выберите сервер' })}
             >
               <option value="" disabled>
-                Select server…
+                Выберите сервер…
               </option>
               {servers.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -633,8 +712,8 @@ export function UsersPage() {
             ) : null}
           </label>
           <Input
-            label="Name"
-            {...editForm.register('name', { required: 'Enter name', minLength: { value: 2, message: 'Too short' } })}
+            label="Имя"
+            {...editForm.register('name', { required: 'Введите имя', minLength: { value: 2, message: 'Слишком коротко' } })}
             error={editForm.formState.errors.name?.message}
           />
           <Input label="TG ID" {...editForm.register('telegramId')} />
@@ -643,12 +722,12 @@ export function UsersPage() {
 
       <Modal
         open={Boolean(deleteTarget)}
-        title="Delete user"
+        title="Удалить пользователя"
         onClose={() => setDeleteTarget(null)}
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" type="button" onClick={() => setDeleteTarget(null)}>
-              Cancel
+              Отмена
             </Button>
             <Button
               variant="danger"
@@ -656,7 +735,7 @@ export function UsersPage() {
               disabled={deleteM.isPending || !deleteTarget}
               onClick={() => deleteTarget && deleteM.mutate(deleteTarget.id)}
             >
-              Delete
+              Удалить
             </Button>
           </div>
         }

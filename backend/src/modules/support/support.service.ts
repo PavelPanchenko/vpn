@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateSupportMessageDto } from './dto/create-support-message.dto';
 import { UpdateSupportMessageDto } from './dto/update-support-message.dto';
@@ -8,6 +8,8 @@ import { TelegramBotService } from '../bot/telegram-bot.service';
 
 @Injectable()
 export class SupportService {
+  private readonly logger = new Logger(SupportService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => TelegramBotService))
@@ -148,14 +150,12 @@ export class SupportService {
     }
 
     if (!user.telegramId) {
-      // Логируем предупреждение, но не прерываем создание ответа в БД
-      console.warn(`User ${user.id} does not have telegramId, cannot send support reply via Telegram`);
+      this.logger.warn(`User ${user.id} does not have telegramId, cannot send support reply via Telegram`);
     } else {
       try {
         await this.telegramBotService.sendSupportReply(user.telegramId, dto.message);
       } catch (error: any) {
-        // Логируем ошибку, но не прерываем создание ответа в БД
-        console.error('Failed to send support reply via Telegram:', error);
+        this.logger.error('Failed to send support reply via Telegram:', error);
       }
     }
 

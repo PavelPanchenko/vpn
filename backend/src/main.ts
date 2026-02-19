@@ -2,6 +2,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
+import { BufferLogger } from './common/buffer-logger';
 
 function parseCorsOrigins(raw: string | undefined | null): string[] {
   if (!raw) return [];
@@ -33,7 +34,7 @@ function isLocalhostOrigin(origin: string): boolean {
 
 async function bootstrap() {
   try {
-    const app = await NestFactory.create(AppModule);
+    const app = await NestFactory.create(AppModule, { logger: new BufferLogger() });
     const config = app.get(ConfigService);
     const corsOrigin = config.get<string>('CORS_ORIGIN');
     const allowlist = parseCorsOrigins(corsOrigin);

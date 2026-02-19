@@ -7,6 +7,7 @@ import { getApiErrorMessage } from '../lib/apiError';
 import { type Subscription, type VpnUser, type Plan } from '../lib/types';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
+import { IconButton } from '../components/IconButton';
 import { Input } from '../components/Input';
 import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
@@ -86,7 +87,7 @@ export function SubscriptionsPage() {
     mutationFn: async (payload: { vpnUserId: string; periodDays?: number; planId?: string }) =>
       (await api.post<Subscription>('/subscriptions', payload)).data,
     onSuccess: async () => {
-      toast.success('Subscription created');
+      toast.success('Подписка создана');
       setCreateOpen(false);
       createForm.reset();
       await qc.invalidateQueries({ queryKey: ['subscriptions'] });
@@ -98,7 +99,7 @@ export function SubscriptionsPage() {
   const removeM = useMutation({
     mutationFn: async (id: string) => (await api.delete(`/subscriptions/${id}`)).data,
     onSuccess: async () => {
-      toast.success('Subscription deleted');
+      toast.success('Подписка удалена');
       await qc.invalidateQueries({ queryKey: ['subscriptions'] });
       await qc.invalidateQueries({ queryKey: ['users'] });
     },
@@ -124,28 +125,24 @@ export function SubscriptionsPage() {
   return (
     <div className="grid gap-6">
       <PageHeader
-        title="Subscriptions"
+        title="Подписки"
         description="Управление подписками пользователей."
         actions={
-          <>
-            <Button variant="secondary" onClick={() => subsQ.refetch()}>
-              Refresh
-            </Button>
-            <Button
-              onClick={() => {
-                createForm.reset();
-                setCreateOpen(true);
-              }}
-            >
-              Create subscription
-            </Button>
-          </>
+          <IconButton
+            icon="add"
+            variant="primary"
+            title="Создать подписку"
+            onClick={() => {
+              createForm.reset();
+              setCreateOpen(true);
+            }}
+          />
         }
       />
 
-      <Card title="Subscriptions">
+      <Card title="Подписки">
         {subsQ.isLoading ? (
-          <div className="text-sm text-slate-600">Loading…</div>
+          <div className="text-sm text-slate-600">Загрузка…</div>
         ) : (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -170,7 +167,7 @@ export function SubscriptionsPage() {
                 onChange={(e) => setActiveFilter(e.target.value as 'ALL' | 'ACTIVE' | 'INACTIVE')}
               >
                 <option value="ALL">All</option>
-                <option value="ACTIVE">Active only</option>
+                <option value="ACTIVE">Только активные</option>
                 <option value="INACTIVE">Inactive only</option>
               </select>
             </div>
@@ -195,30 +192,29 @@ export function SubscriptionsPage() {
 
                       <div className="mt-2 grid gap-1 text-sm text-slate-700">
                         <div className="flex items-center justify-between gap-3">
-                          <span className="text-slate-500">Starts</span>
+                          <span className="text-slate-500">Начало</span>
                           <span className="text-right">{new Date(s.startsAt).toLocaleString()}</span>
                         </div>
                         <div className="flex items-center justify-between gap-3">
-                          <span className="text-slate-500">Ends</span>
+                          <span className="text-slate-500">Конец</span>
                           <span className="text-right">{new Date(s.endsAt).toLocaleString()}</span>
                         </div>
                       </div>
 
                       <div className="mt-3">
-                        <Button
+                        <IconButton
+                          icon="delete"
                           variant="danger"
-                          className="w-full"
+                          title="Удалить"
                           onClick={() => {
-                            if (confirm('Delete this subscription?')) removeM.mutate(s.id);
+                            if (confirm('Удалить эту подписку?')) removeM.mutate(s.id);
                           }}
-                        >
-                          Delete
-                        </Button>
+                        />
                       </div>
                     </div>
                   ))}
 
-                  {filteredSubs.length === 0 ? <div className="text-sm text-slate-500">No subscriptions</div> : null}
+                  {filteredSubs.length === 0 ? <div className="text-sm text-slate-500">Подписок нет</div> : null}
                 </div>
               }
               desktop={
@@ -226,11 +222,11 @@ export function SubscriptionsPage() {
                   <table className="w-full text-sm">
                     <thead className="text-left text-slate-500">
                       <tr>
-                        <th className="py-2">User</th>
-                        <th className="py-2">Starts</th>
-                        <th className="py-2">Ends</th>
-                        <th className="py-2">Days</th>
-                        <th className="py-2">Active</th>
+                        <th className="py-2">Пользователь</th>
+                        <th className="py-2">Начало</th>
+                        <th className="py-2">Конец</th>
+                        <th className="py-2">Дней</th>
+                        <th className="py-2">Активна</th>
                         <th className="py-2"></th>
                       </tr>
                     </thead>
@@ -248,23 +244,21 @@ export function SubscriptionsPage() {
                           <td className="py-2">{s.periodDays}</td>
                           <td className="py-2">{s.active ? 'yes' : 'no'}</td>
                           <td className="py-2 text-right">
-                            <Button
+                            <IconButton
+                              icon="delete"
                               variant="danger"
+                              title="Удалить"
                               onClick={() => {
-                                if (confirm('Delete this subscription?')) {
-                                  removeM.mutate(s.id);
-                                }
+                                if (confirm('Удалить эту подписку?')) removeM.mutate(s.id);
                               }}
-                            >
-                              Delete
-                            </Button>
+                            />
                           </td>
                         </tr>
                       ))}
                       {filteredSubs.length === 0 ? (
                         <tr>
                           <td className="py-3 text-slate-500" colSpan={6}>
-                            No subscriptions
+                            Подписок нет
                           </td>
                         </tr>
                       ) : null}
@@ -277,7 +271,7 @@ export function SubscriptionsPage() {
             {subsQ.hasNextPage ? (
               <div className="flex justify-center pt-3">
                 <Button variant="secondary" disabled={subsQ.isFetchingNextPage} onClick={() => subsQ.fetchNextPage()}>
-                  {subsQ.isFetchingNextPage ? 'Loading…' : 'Load more'}
+                  {subsQ.isFetchingNextPage ? 'Загрузка…' : 'Ещё'}
                 </Button>
               </div>
             ) : null}
@@ -295,7 +289,7 @@ export function SubscriptionsPage() {
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" type="button" onClick={() => setCreateOpen(false)}>
-              Cancel
+              Отмена
             </Button>
             <Button
               type="button"
@@ -308,20 +302,20 @@ export function SubscriptionsPage() {
                 });
               })}
             >
-              Create
+              Создать
             </Button>
           </div>
         }
       >
         <form className="grid gap-4" onSubmit={(e) => e.preventDefault()}>
           <label className="block">
-            <div className="text-sm font-medium text-slate-700">User *</div>
+            <div className="text-sm font-medium text-slate-700">Пользователь *</div>
             <select
               className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               {...createForm.register('vpnUserId', { required: true })}
             >
               <option value="" disabled>
-                Select user…
+                Выберите пользователя…
               </option>
               {users.map((u) => (
                 <option key={u.id} value={u.id}>
@@ -332,7 +326,7 @@ export function SubscriptionsPage() {
           </label>
 
           <label className="block">
-            <div className="text-sm font-medium text-slate-700">Plan (optional)</div>
+            <div className="text-sm font-medium text-slate-700">Тариф (необязательно)</div>
             <select
               className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               {...createForm.register('planId')}
@@ -346,7 +340,7 @@ export function SubscriptionsPage() {
             </select>
             {selectedPlan && (
               <div className="mt-1 text-xs text-slate-500">
-                {selectedPlan.description || `${selectedPlan.periodDays} days access`}
+                {selectedPlan.description || `Доступ на ${selectedPlan.periodDays} дн.`}
               </div>
             )}
           </label>

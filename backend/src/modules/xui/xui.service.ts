@@ -191,6 +191,7 @@ export class XuiService {
       id: client.id,
       email: client.email,
       flow: client.flow ?? '',
+      totalGB: 0, // неограниченный трафик; лимит только по сроку (expiryTime)
     };
     if (client.expiryTime != null && client.expiryTime > 0) {
       obj.expiryTime = client.expiryTime;
@@ -218,7 +219,7 @@ export class XuiService {
     auth: PanelAuth,
     inboundId: number,
     email: string,
-    patch: { email?: string; flow?: string; expiryTime?: number; enable?: boolean; limitIp?: number },
+    patch: { email?: string; flow?: string; expiryTime?: number; enable?: boolean; limitIp?: number; totalGB?: number },
   ): Promise<any> {
     const inbound = await this.getInbound(baseUrl, inboundId, auth);
     const settings = typeof inbound.settings === 'string' ? JSON.parse(inbound.settings) : inbound.settings;
@@ -233,6 +234,7 @@ export class XuiService {
     }
     if (patch.enable !== undefined) clients[idx].enable = patch.enable;
     if (patch.limitIp !== undefined) clients[idx].limitIp = patch.limitIp > 0 ? patch.limitIp : 0;
+    if (patch.totalGB !== undefined) clients[idx].totalGB = patch.totalGB;
 
     const url = `${this.normalizeBaseUrl(baseUrl)}/panel/api/inbounds/update/${inboundId}`;
     const body = { ...inbound, settings: JSON.stringify({ ...settings, clients }) };
