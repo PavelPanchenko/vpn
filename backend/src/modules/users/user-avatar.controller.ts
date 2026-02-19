@@ -78,10 +78,10 @@ export class UserAvatarController {
     } catch (err: any) {
       if (err instanceof NotFoundException) throw err;
 
-      // Если Telegram вернул «user not found», кэшируем на 24ч чтобы не спамить API
       const msg: string = err.message ?? '';
       if (msg.includes('user not found') || msg.includes('chat not found')) {
         avatarNotFoundCache.set(user.telegramId, Date.now());
+        await this.users.markBotBlockedByTelegramId(user.telegramId);
       }
 
       this.logger.warn(`Failed to get avatar for user ${params.id}: ${msg}`);

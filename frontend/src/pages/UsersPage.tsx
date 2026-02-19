@@ -16,6 +16,7 @@ import { Badge, statusBadgeVariant } from '../components/Badge';
 import { IconButton } from '../components/IconButton';
 import { ResponsiveSwitch } from '../components/ResponsiveSwitch';
 import { UserAvatar } from '../components/UserAvatar';
+import { BotOff } from 'lucide-react';
 
 type CreateUserPayload = {
   serverId: string;
@@ -45,6 +46,7 @@ export function UsersPage() {
   const [statusFilter, setStatusFilter] = useState<'ALL' | VpnUserStatus>('ALL');
   const [serverFilter, setServerFilter] = useState<string>('ALL');
   const [onlineFilter, setOnlineFilter] = useState<'ALL' | 'ONLINE'>('ALL');
+  const [showBlocked, setShowBlocked] = useState(false);
   const [sortBy, setSortBy] = useState<'name' | 'expiresAt' | 'status' | 'lastOnlineAt' | 'createdAt' | 'serverName'>('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
@@ -61,7 +63,7 @@ export function UsersPage() {
     refetchInterval: 30_000,
   });
   const usersCountQ = useQuery({
-    queryKey: ['users-count', qStr, statusFilter, serverFilter],
+    queryKey: ['users-count', qStr, statusFilter, serverFilter, showBlocked],
     queryFn: async () =>
       (
         await api.get<{ count: number }>('/users', {
@@ -70,6 +72,7 @@ export function UsersPage() {
             ...(qStr ? { q: qStr } : {}),
             ...(statusFilter !== 'ALL' ? { status: statusFilter } : {}),
             ...(serverFilter !== 'ALL' ? { serverId: serverFilter } : {}),
+            hideBlocked: showBlocked ? '0' : '1',
           },
         })
       ).data.count,
@@ -82,7 +85,7 @@ export function UsersPage() {
   );
 
   const usersQ = useInfiniteQuery({
-    queryKey: ['users', { q: qStr, statusFilter, serverFilter, sortBy, sortOrder }],
+    queryKey: ['users', { q: qStr, statusFilter, serverFilter, showBlocked, sortBy, sortOrder }],
     queryFn: async ({ pageParam }) =>
       (await api.get<VpnUser[]>('/users', {
         params: {
@@ -91,6 +94,7 @@ export function UsersPage() {
           q: qStr || undefined,
           status: statusFilter !== 'ALL' ? statusFilter : undefined,
           serverId: serverFilter !== 'ALL' ? serverFilter : undefined,
+          hideBlocked: showBlocked ? '0' : '1',
           sortBy,
           sortOrder,
         },
@@ -284,6 +288,15 @@ export function UsersPage() {
               <option value="ALL">Все</option>
               <option value="ONLINE">Онлайн</option>
             </select>
+            <label className="flex h-10 cursor-pointer items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={showBlocked}
+                onChange={(e) => setShowBlocked(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-slate-700 focus:ring-slate-400"
+              />
+              Показать заблокировавших бота
+            </label>
             <input
               className={[
                 'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none sm:w-56 md:w-60',
@@ -315,21 +328,22 @@ export function UsersPage() {
           mobile={
             <div className="grid gap-3">
               {filteredUsers.map((u) => (
-                <div key={u.id} className="relative">
-                  {u.botBlockedAt && (
-                    <span
-                      className="absolute top-0 right-0 z-10 rounded-bl bg-slate-200/90 px-1.5 py-0.5 text-[10px] text-slate-600"
-                      title={`Бот заблокирован: ${new Date(u.botBlockedAt).toLocaleString()}`}
-                    >
-                      заблок.
-                    </span>
-                  )}
+                <div
+                  key={u.id}
+                  className={u.botBlockedAt ? 'rounded-lg bg-slate-100/80 opacity-75' : ''}
+                  title={u.botBlockedAt ? `Бот заблокирован: ${new Date(u.botBlockedAt).toLocaleString()}` : undefined}
+                >
                   <Card>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <UserAvatar userId={u.id} name={u.name} size="sm" />
-                      <div className="min-w-0">
-                        <div className="font-semibold text-slate-900 truncate">{u.name}</div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 font-semibold text-slate-900 truncate">
+                          {u.name}
+                          {u.botBlockedAt && (
+                            <BotOff size={14} className="shrink-0 text-slate-500" title="Бот заблокирован" aria-hidden />
+                          )}
+                        </div>
                         <div className="mt-1 font-mono text-xs text-slate-500 break-all">
                           <Link className="underline text-slate-900" to={`/users/${u.id}`}>
                             {u.uuid}
@@ -446,19 +460,18 @@ export function UsersPage() {
                 }
               >
                 {filteredUsers.map((u) => (
-                  <tr key={u.id} className="border-t border-slate-100">
-                    <Td className="relative">
-                      {u.botBlockedAt && (
-                        <span
-                          className="absolute top-0 right-0 rounded-bl bg-slate-200/90 px-1.5 py-0.5 text-[10px] text-slate-600"
-                          title={`Бот заблокирован: ${new Date(u.botBlockedAt).toLocaleString()}`}
-                        >
-                          заблок.
-                        </span>
-                      )}
+                  <tr
+                    key={u.id}
+                    className={`border-t border-slate-100 ${u.botBlockedAt ? 'bg-slate-100/70 text-slate-600' : ''}`}
+                    title={u.botBlockedAt ? `Бот заблокирован: ${new Date(u.botBlockedAt).toLocaleString()}` : undefined}
+                  >
+                    <Td>
                       <div className="flex items-center gap-2">
                         <UserAvatar userId={u.id} name={u.name} size="sm" />
                         <span className="font-medium">{u.name}</span>
+                        {u.botBlockedAt && (
+                          <BotOff size={14} className="shrink-0 text-slate-500" title="Бот заблокирован" aria-hidden />
+                        )}
                       </div>
                     </Td>
                     <Td className="font-mono text-xs">
