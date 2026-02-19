@@ -340,11 +340,11 @@ export function UsersPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 font-semibold text-slate-900 truncate">
                           {u.name}
-                          {u.botBlockedAt && (
-                            <span title="Бот заблокирован" aria-hidden>
+                          {u.botBlockedAt ? (
+                            <span title="Бот заблокирован" className="inline-flex">
                               <BotOff size={14} className="shrink-0 text-slate-500" />
                             </span>
-                          )}
+                          ) : null}
                         </div>
                         <div className="mt-1 font-mono text-xs text-slate-500 break-all">
                           <Link className="underline text-slate-900" to={`/users/${u.id}`}>
@@ -471,11 +471,11 @@ export function UsersPage() {
                       <div className="flex items-center gap-2">
                         <UserAvatar userId={u.id} name={u.name} size="sm" />
                         <span className="font-medium">{u.name}</span>
-                        {u.botBlockedAt && (
-                          <span title="Бот заблокирован" aria-hidden>
+                        {u.botBlockedAt ? (
+                          <span title="Бот заблокирован" className="inline-flex">
                             <BotOff size={14} className="shrink-0 text-slate-500" />
                           </span>
-                        )}
+                        ) : null}
                       </div>
                     </Td>
                     <Td className="font-mono text-xs">
