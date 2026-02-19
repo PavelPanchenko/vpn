@@ -192,7 +192,7 @@ function NavItem({
   title,
 }: {
   to: string;
-  icon?: React.ComponentType<{ size?: number; className?: string; 'aria-hidden'?: boolean }>;
+  icon?: React.ComponentType<{ size?: number | string; className?: string; 'aria-hidden'?: boolean }>;
   children: ReactNode;
   onClick?: () => void;
   collapsed?: boolean;
