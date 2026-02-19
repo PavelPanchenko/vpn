@@ -341,7 +341,9 @@ export function UsersPage() {
                         <div className="flex items-center gap-1.5 font-semibold text-slate-900 truncate">
                           {u.name}
                           {u.botBlockedAt && (
-                            <BotOff size={14} className="shrink-0 text-slate-500" title="Бот заблокирован" aria-hidden />
+                            <span title="Бот заблокирован" aria-hidden>
+                              <BotOff size={14} className="shrink-0 text-slate-500" />
+                            </span>
                           )}
                         </div>
                         <div className="mt-1 font-mono text-xs text-slate-500 break-all">
@@ -470,7 +472,9 @@ export function UsersPage() {
                         <UserAvatar userId={u.id} name={u.name} size="sm" />
                         <span className="font-medium">{u.name}</span>
                         {u.botBlockedAt && (
-                          <BotOff size={14} className="shrink-0 text-slate-500" title="Бот заблокирован" aria-hidden />
+                          <span title="Бот заблокирован" aria-hidden>
+                            <BotOff size={14} className="shrink-0 text-slate-500" />
+                          </span>
                         )}
                       </div>
                     </Td>
