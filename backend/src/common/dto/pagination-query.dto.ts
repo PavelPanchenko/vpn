@@ -19,5 +19,20 @@ export class PaginationQueryDto {
   @IsOptional()
   @IsString()
   q?: string;
+
+  /** Поле сортировки: name, expiresAt, status, lastOnlineAt, createdAt, serverName */
+  @IsOptional()
+  @IsString()
+  sortBy?: string;
+
+  /** asc | desc */
+  @IsOptional()
+  @IsString()
+  sortOrder?: 'asc' | 'desc';
+
+  /** Вернуть только { count } (для страницы пользователей). */
+  @IsOptional()
+  @IsString()
+  countOnly?: string;
 }
 

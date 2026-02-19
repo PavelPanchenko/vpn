@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TelegramBotService } from '../bot/telegram-bot.service';
+import { UsersService } from '../users/users.service';
 import type { Prisma } from '@prisma/client';
 
 export enum BroadcastAudience {
@@ -29,6 +30,7 @@ export class BroadcastService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly telegramBot: TelegramBotService,
+    private readonly usersService: UsersService,
   ) {}
 
   /** Формирует Prisma-where по сегменту аудитории. */
@@ -92,6 +94,7 @@ export class BroadcastService {
         const msg: string = err?.message ?? '';
         if (msg.includes('chat not found') || msg.includes('bot was blocked')) {
           result.blocked++;
+          await this.usersService.markBotBlockedByTelegramId(telegramId);
           this.logger.warn(`Broadcast skipped ${telegramId}: ${msg}`);
         } else {
           result.failed++;

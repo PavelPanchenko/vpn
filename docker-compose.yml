@@ -7,6 +7,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: vless_admin
+    # В консоль только предупреждения и ошибки (без checkpoint/connection и т.п.)
+    command: ["postgres", "-c", "log_min_messages=warning"]
 
     volumes:
       - db-data:/var/lib/postgresql/data
@@ -30,6 +32,8 @@ services:
     environment:
       # Переопределяем DATABASE_URL, чтобы backend ходил в контейнер db
       DATABASE_URL: postgresql://postgres:postgres@db:5432/vless_admin?schema=public
+      # В консоль только warn/error (полные логи — в админке /logs)
+      LOG_LEVEL_CONSOLE: warn,error
     ports:
       - "127.0.0.1:3000:3000"
 

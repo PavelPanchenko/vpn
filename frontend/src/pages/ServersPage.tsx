@@ -10,6 +10,7 @@ import { Input } from '../components/Input';
 import { PageHeader } from '../components/PageHeader';
 import { Table, Td, Th } from '../components/Table';
 import { Badge } from '../components/Badge';
+import { IconButton } from '../components/IconButton';
 import { Modal } from '../components/Modal';
 import { ResponsiveSwitch } from '../components/ResponsiveSwitch';
 
@@ -192,20 +193,13 @@ export function ServersPage() {
   return (
     <div className="grid gap-6">
       <PageHeader
-        title="Servers"
+        title="Серверы"
         description="Управление VLESS/Xray серверами и лимитами пользователей."
-        actions={
-          <>
-            <Button variant="secondary" onClick={() => serversQ.refetch()}>
-              Refresh
-            </Button>
-            <Button onClick={openCreate}>Connect server</Button>
-          </>
-        }
+        actions={<IconButton icon="add" variant="primary" title="Подключить сервер" onClick={openCreate} />}
       />
 
       {serversQ.isLoading ? (
-        <div className="text-sm text-slate-600">Loading…</div>
+        <div className="text-sm text-slate-600">Загрузка…</div>
       ) : (
         <ResponsiveSwitch
           mobile={
@@ -246,29 +240,25 @@ export function ServersPage() {
                     </div>
                   </div>
 
-                  <div className="mt-4 grid grid-cols-2 gap-2">
-                    <Button variant="secondary" className="w-full" onClick={() => startEdit(s)}>
-                      Edit
-                    </Button>
-                    <Button variant="danger" className="w-full" onClick={() => removeM.mutate(s.id)}>
-                      Delete
-                    </Button>
+                  <div className="mt-4 flex gap-2">
+                    <IconButton icon="edit" variant="secondary" title="Изменить" onClick={() => startEdit(s)} />
+                    <IconButton icon="delete" variant="danger" title="Удалить" onClick={() => removeM.mutate(s.id)} />
                   </div>
                 </div>
               ))}
 
-              {rows.length === 0 ? <div className="text-sm text-slate-500">No servers yet</div> : null}
+              {rows.length === 0 ? <div className="text-sm text-slate-500">Серверов пока нет</div> : null}
             </div>
           }
           desktop={
             <Table
               columns={
                 <tr>
-                  <Th>Name</Th>
+                  <Th>Имя</Th>
                   <Th>Endpoint</Th>
-                  <Th>Mode</Th>
-                  <Th>Users</Th>
-                  <Th className="text-right">Actions</Th>
+                  <Th>Режим</Th>
+                  <Th>Пользователи</Th>
+                  <Th className="text-right">Действия</Th>
                 </tr>
               }
             >
@@ -294,22 +284,18 @@ export function ServersPage() {
                   </Td>
                   <Td>
                     <div className="text-xs text-slate-600">
-                      <div>Total: {s.usersCount ?? '-'}</div>
-                      <div>Active: {s.activeUsersCount ?? '-'}</div>
-                      <div>Free: {s.freeSlots ?? '-'}</div>
+                      <div>Всего: {s.usersCount ?? '-'}</div>
+                      <div>Активных: {s.activeUsersCount ?? '-'}</div>
+                      <div>Свободно: {s.freeSlots ?? '-'}</div>
                       <div className="mt-1 text-slate-500">
-                        Panel: {s.panelBaseUrl ? 'connected' : '—'} {s.panelInboundId ? `(#${s.panelInboundId})` : ''}
+                        Панель: {s.panelBaseUrl ? 'подключена' : '—'} {s.panelInboundId ? `(#${s.panelInboundId})` : ''}
                       </div>
                     </div>
                   </Td>
                   <Td className="text-right">
                     <div className="flex justify-end gap-2">
-                      <Button variant="secondary" onClick={() => startEdit(s)}>
-                        Edit
-                      </Button>
-                      <Button variant="danger" onClick={() => removeM.mutate(s.id)}>
-                        Delete
-                      </Button>
+                      <IconButton icon="edit" variant="secondary" title="Изменить" onClick={() => startEdit(s)} />
+                      <IconButton icon="delete" variant="danger" title="Удалить" onClick={() => removeM.mutate(s.id)} />
                     </div>
                   </Td>
                 </tr>
@@ -317,7 +303,7 @@ export function ServersPage() {
               {rows.length === 0 ? (
                 <tr className="border-t border-slate-100">
                   <Td className="text-slate-500" colSpan={5}>
-                    No servers yet
+                    Серверов пока нет
                   </Td>
                 </tr>
               ) : null}
@@ -328,12 +314,12 @@ export function ServersPage() {
 
       <Modal
         open={createOpen}
-        title="Connect new server (x-ui-pro panel)"
+        title="Подключить новый сервер (панель x-ui-pro)"
         onClose={() => setCreateOpen(false)}
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" type="button" onClick={() => setCreateOpen(false)}>
-              Cancel
+              Отмена
             </Button>
             <Button
               type="button"
@@ -350,34 +336,34 @@ export function ServersPage() {
                 });
               })}
             >
-              Connect
+              Подключить
             </Button>
           </div>
         }
       >
         <form className="grid gap-3" onSubmit={(e) => e.preventDefault()}>
           <Input
-            label="Name"
-            placeholder="e.g. DE-FRA-1"
-            {...connectForm.register('name', { required: 'Required' })}
+            label="Имя"
+            placeholder="например, DE-FRA-1"
+            {...connectForm.register('name', { required: 'Обязательно' })}
             error={connectForm.formState.errors.name?.message}
           />
           <Input
-            label="Panel base URL"
+            label="URL панели"
             placeholder="https://germanyvpn.mooo.com/xxxx"
-            {...connectForm.register('panelBaseUrl', { required: 'Required' })}
+            {...connectForm.register('panelBaseUrl', { required: 'Обязательно' })}
             error={connectForm.formState.errors.panelBaseUrl?.message}
           />
           <div className="grid grid-cols-2 gap-3">
             <Input
-              label="Panel username"
-              {...connectForm.register('panelUsername', { required: 'Required' })}
+              label="Логин панели"
+              {...connectForm.register('panelUsername', { required: 'Обязательно' })}
               error={connectForm.formState.errors.panelUsername?.message}
             />
             <Input
-              label="Panel password"
+              label="Пароль панели"
               type="password"
-              {...connectForm.register('panelPassword', { required: 'Required' })}
+              {...connectForm.register('panelPassword', { required: 'Обязательно' })}
               error={connectForm.formState.errors.panelPassword?.message}
             />
           </div>
@@ -393,7 +379,7 @@ export function ServersPage() {
                 panelTestM.mutate({ panelBaseUrl: v.panelBaseUrl, panelUsername: v.panelUsername, panelPassword: v.panelPassword });
               }}
             >
-              Test connection
+              Проверить подключение
             </Button>
             <Button
               type="button"
@@ -405,7 +391,7 @@ export function ServersPage() {
                 panelInboundsM.mutate({ panelBaseUrl: v.panelBaseUrl, panelUsername: v.panelUsername, panelPassword: v.panelPassword });
               }}
             >
-              Load inbounds
+              Загрузить inbound'ы
             </Button>
           </div>
 
@@ -421,18 +407,18 @@ export function ServersPage() {
                 .join(' ')}
               disabled={!panelInbounds || panelInbounds.length === 0}
               {...connectForm.register('inboundId', {
-                required: 'Select inbound',
+                required: 'Выберите inbound',
                 valueAsNumber: true,
               })}
               defaultValue=""
               onChange={(e) => connectForm.setValue('inboundId', Number(e.target.value), { shouldValidate: true })}
             >
               <option value="" disabled>
-                {panelInbounds ? 'Select inbound…' : 'Load inbounds first…'}
+                {panelInbounds ? 'Выберите inbound…' : 'Сначала загрузите inbound\'ы…'}
               </option>
               {(panelInbounds ?? []).map((i) => (
                 <option key={i.id} value={i.id}>
-                  #{i.id} • {i.protocol} • {i.port} • {i.enable ? 'enabled' : 'disabled'} • {i.remark || i.tag}
+                  #{i.id} • {i.protocol} • {i.port} • {i.enable ? 'вкл' : 'выкл'} • {i.remark || i.tag}
                 </option>
               ))}
             </select>
@@ -443,13 +429,13 @@ export function ServersPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <Input
-              label="Max users (0 = unlimited)"
+              label="Макс. пользователей (0 = без лимита)"
               type="number"
               {...connectForm.register('maxUsers', { valueAsNumber: true })}
             />
             <label className="flex items-end gap-2 pb-1 text-sm text-slate-700">
               <input type="checkbox" {...connectForm.register('active')} defaultChecked />
-              Active
+              Активен
             </label>
           </div>
         </form>
@@ -457,7 +443,7 @@ export function ServersPage() {
 
       <Modal
         open={editOpen}
-        title="Edit server"
+        title="Редактировать сервер"
         onClose={() => {
           setEditOpen(false);
           setEditing(null);
@@ -472,7 +458,7 @@ export function ServersPage() {
                   disabled={syncM.isPending}
                   onClick={() => syncM.mutate({ id: editing.id, inboundId: editForm.getValues().panelInboundId ?? undefined })}
                 >
-                  Sync from panel
+                  Синхронизировать с панелью
                 </Button>
               ) : null}
             </div>
@@ -485,7 +471,7 @@ export function ServersPage() {
                   setEditing(null);
                 }}
               >
-                Cancel
+                Отмена
               </Button>
               <Button
                 type="button"
@@ -516,17 +502,17 @@ export function ServersPage() {
                   });
                 })}
               >
-                Save
+                Сохранить
               </Button>
             </div>
           </div>
         }
       >
         <form className="grid gap-3" onSubmit={(e) => e.preventDefault()}>
-          <Input label="Name" {...editForm.register('name', { required: 'Required' })} error={editForm.formState.errors.name?.message} />
+          <Input label="Имя" {...editForm.register('name', { required: 'Обязательно' })} error={editForm.formState.errors.name?.message} />
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Host" {...editForm.register('host', { required: 'Required' })} error={editForm.formState.errors.host?.message} />
-            <Input label="Port" type="number" {...editForm.register('port', { valueAsNumber: true, required: 'Required' })} error={editForm.formState.errors.port?.message as any} />
+            <Input label="Хост" {...editForm.register('host', { required: 'Обязательно' })} error={editForm.formState.errors.host?.message} />
+            <Input label="Порт" type="number" {...editForm.register('port', { valueAsNumber: true, required: 'Обязательно' })} error={editForm.formState.errors.port?.message as any} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -559,20 +545,20 @@ export function ServersPage() {
             TLS (legacy, для обратной совместимости)
           </label>
 
-          <Input label="Path (optional)" {...editForm.register('path')} placeholder="/ws" />
+          <Input label="Path (необязательно)" {...editForm.register('path')} placeholder="/ws" />
           <Input label="SNI (optional, для TLS/REALITY)" {...editForm.register('sni')} placeholder="sub.example.com" />
-          <Input label="Public key" {...editForm.register('publicKey', { required: 'Required' })} error={editForm.formState.errors.publicKey?.message} />
-          <Input label="Short ID" {...editForm.register('shortId', { required: 'Required' })} error={editForm.formState.errors.shortId?.message} />
+          <Input label="Public key" {...editForm.register('publicKey', { required: 'Обязательно' })} error={editForm.formState.errors.publicKey?.message} />
+          <Input label="Short ID" {...editForm.register('shortId', { required: 'Обязательно' })} error={editForm.formState.errors.shortId?.message} />
           <div className="grid grid-cols-2 gap-3">
             <Input label="Xray Stats host (gRPC)" {...editForm.register('xrayStatsHost')} placeholder="127.0.0.1 или IP сервера" />
             <Input label="Xray Stats port" type="number" {...editForm.register('xrayStatsPort', { valueAsNumber: true })} placeholder="8080" />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <Input label="Max users (0 = unlimited)" type="number" {...editForm.register('maxUsers', { valueAsNumber: true })} />
+            <Input label="Макс. пользователей (0 = без лимита)" type="number" {...editForm.register('maxUsers', { valueAsNumber: true })} />
             <label className="flex items-end gap-2 pb-1 text-sm text-slate-700">
               <input type="checkbox" {...editForm.register('active')} />
-              Active
+              Активен
             </label>
           </div>
           <label className="flex items-center gap-2 text-sm text-slate-700">

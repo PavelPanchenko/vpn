@@ -22,7 +22,7 @@ export function LoginPage() {
       authStore.setToken(res.data.accessToken);
       navigate('/');
     } catch (err: any) {
-      setError(getApiErrorMessage(err, 'Login failed'));
+      setError(getApiErrorMessage(err, 'Ошибка входа'));
     } finally {
       setLoading(false);
     }
@@ -40,14 +40,14 @@ export function LoginPage() {
           <div className="flex flex-col gap-3">
             <Input label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
             <Input
-              label="Password"
+              label="Пароль"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
             {error ? <div className="text-sm text-red-600">{error}</div> : null}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Signing in…' : 'Sign in'}
+              {loading ? 'Вход…' : 'Войти'}
             </Button>
           </div>
         </form>

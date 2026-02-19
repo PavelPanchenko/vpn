@@ -10,6 +10,7 @@ import { CURRENCY_CODES } from '../lib/currencies';
 import { pickExternalVariant } from '../lib/variantPicking';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
+import { IconButton } from '../components/IconButton';
 import { Input } from '../components/Input';
 import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
@@ -115,7 +116,7 @@ export function PaymentsPage() {
   const createM = useMutation({
     mutationFn: async (payload: CreatePaymentPayload) => (await api.post<Payment>('/payments', payload)).data,
     onSuccess: async () => {
-      toast.success('Payment created');
+      toast.success('Платёж создан');
       setCreateOpen(false);
       createForm.reset();
       await qc.invalidateQueries({ queryKey: ['payments'] });
@@ -128,7 +129,7 @@ export function PaymentsPage() {
   const removeM = useMutation({
     mutationFn: async (id: string) => (await api.delete(`/payments/${id}`)).data,
     onSuccess: async () => {
-      toast.success('Payment deleted');
+      toast.success('Платёж удалён');
       await qc.invalidateQueries({ queryKey: ['payments'] });
     },
     onError: (err: any) => toast.error(getApiErrorMessage(err, 'Failed to delete payment')),
@@ -151,23 +152,24 @@ export function PaymentsPage() {
   return (
     <div className="grid gap-6">
       <PageHeader
-        title="Payments"
+        title="Платежи"
         description="Управление платежами и подписками пользователей."
         actions={
-          <Button
+          <IconButton
+            icon="add"
+            variant="primary"
+            title="Создать платёж"
             onClick={() => {
               createForm.reset();
               setCreateOpen(true);
             }}
-          >
-            Create payment
-          </Button>
+          />
         }
       />
 
-      <Card title="Payments" right={<Button variant="secondary" onClick={() => paymentsQ.refetch()}>Refresh</Button>}>
+      <Card title="Платежи">
         {paymentsQ.isLoading ? (
-          <div className="text-sm text-slate-600">Loading…</div>
+          <div className="text-sm text-slate-600">Загрузка…</div>
         ) : (
           <ResponsiveSwitch
             mobile={
@@ -192,39 +194,38 @@ export function PaymentsPage() {
                     <div className="mt-2 text-sm text-slate-700">
                       {p.plan ? (
                         <div className="flex items-center justify-between gap-3">
-                          <span className="text-slate-500">Plan</span>
+                          <span className="text-slate-500">Тариф</span>
                           <span className="text-right">
                             {p.plan.name} · {p.plan.periodDays}d
                           </span>
                         </div>
                       ) : (
                         <div className="flex items-center justify-between gap-3">
-                          <span className="text-slate-500">Plan</span>
+                          <span className="text-slate-500">Тариф</span>
                           <span className="text-slate-400">Manual</span>
                         </div>
                       )}
                       {p.planPriceAtPurchase !== null && p.planPriceAtPurchase !== p.amount ? (
                         <div className="mt-1 text-xs text-slate-500">
-                          Plan price was: {p.planPriceAtPurchase} {p.currency}
+                          Цена тарифа на момент: {p.planPriceAtPurchase} {p.currency}
                         </div>
                       ) : null}
                     </div>
 
                     <div className="mt-3">
-                      <Button
+                      <IconButton
+                        icon="delete"
                         variant="danger"
-                        className="w-full"
+                        title="Удалить"
                         onClick={() => {
-                          if (confirm('Delete this payment?')) removeM.mutate(p.id);
+                          if (confirm('Удалить этот платёж?')) removeM.mutate(p.id);
                         }}
-                      >
-                        Delete
-                      </Button>
+                      />
                     </div>
                   </div>
                 ))}
 
-                {payments.length === 0 ? <div className="text-sm text-slate-500">No payments</div> : null}
+                {payments.length === 0 ? <div className="text-sm text-slate-500">Платежей нет</div> : null}
               </div>
             }
             desktop={
@@ -232,12 +233,12 @@ export function PaymentsPage() {
                 <table className="w-full text-sm">
                   <thead className="text-left text-slate-500">
                     <tr>
-                      <th className="py-2">User</th>
-                      <th className="py-2">Plan</th>
-                      <th className="py-2">Created</th>
-                      <th className="py-2">Amount</th>
-                      <th className="py-2">Currency</th>
-                      <th className="py-2">Status</th>
+                      <th className="py-2">Пользователь</th>
+                      <th className="py-2">Тариф</th>
+                      <th className="py-2">Дата</th>
+                      <th className="py-2">Сумма</th>
+                      <th className="py-2">Валюта</th>
+                      <th className="py-2">Статус</th>
                       <th className="py-2"></th>
                     </tr>
                   </thead>
@@ -263,30 +264,28 @@ export function PaymentsPage() {
                           <div className="font-medium">{p.amount} {p.currency}</div>
                           {p.planPriceAtPurchase !== null && p.planPriceAtPurchase !== p.amount && (
                             <div className="text-xs text-slate-500">
-                              Plan price was: {p.planPriceAtPurchase} {p.currency}
+                              Цена тарифа на момент: {p.planPriceAtPurchase} {p.currency}
                             </div>
                           )}
                         </td>
                         <td className="py-2">{p.currency}</td>
                         <td className="py-2">{p.status}</td>
                         <td className="py-2 text-right">
-                          <Button
+                          <IconButton
+                            icon="delete"
                             variant="danger"
+                            title="Delete"
                             onClick={() => {
-                              if (confirm('Delete this payment?')) {
-                                removeM.mutate(p.id);
-                              }
+                              if (confirm('Delete this payment?')) removeM.mutate(p.id);
                             }}
-                          >
-                            Delete
-                          </Button>
+                          />
                         </td>
                       </tr>
                     ))}
                     {payments.length === 0 ? (
                       <tr>
                         <td className="py-3 text-slate-500" colSpan={7}>
-                          No payments
+                          Платежей нет
                         </td>
                       </tr>
                     ) : null}
@@ -298,16 +297,9 @@ export function PaymentsPage() {
         )}
       </Card>
 
-      <Card
-        title="Payment intents"
-        right={
-          <Button variant="secondary" onClick={() => intentsQ.refetch()}>
-            Refresh
-          </Button>
-        }
-      >
+      <Card title="Платежные намерения">
         {intentsQ.isLoading ? (
-          <div className="text-sm text-slate-600">Loading…</div>
+          <div className="text-sm text-slate-600">Загрузка…</div>
         ) : (
           <ResponsiveSwitch
             mobile={
@@ -335,7 +327,7 @@ export function PaymentsPage() {
                         <span className="text-right">{it.provider}</span>
                       </div>
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-slate-500">Plan</span>
+                        <span className="text-slate-500">Тариф</span>
                         <span className="text-right">{it.plan?.name ?? it.planId}</span>
                       </div>
                       {it.expiresAt ? (
@@ -359,13 +351,13 @@ export function PaymentsPage() {
                           className="w-full"
                           onClick={() => window.open(it.checkoutUrl!, '_blank', 'noopener,noreferrer')}
                         >
-                          Open checkout
+                          Открыть оплату
                         </Button>
                       </div>
                     ) : null}
                   </div>
                 ))}
-                {intents.length === 0 ? <div className="text-sm text-slate-500">No payment intents</div> : null}
+                {intents.length === 0 ? <div className="text-sm text-slate-500">Платежных намерений нет</div> : null}
               </div>
             }
             desktop={
@@ -373,9 +365,9 @@ export function PaymentsPage() {
                 <table className="w-full text-sm table-fixed">
                   <thead className="text-left text-slate-500">
                     <tr>
-                      <th className="py-2 w-[16%]">User</th>
-                      <th className="py-2 w-[8%]">Plan</th>
-                      <th className="py-2 w-[13%]">Created</th>
+                      <th className="py-2 w-[16%]">Пользователь</th>
+                      <th className="py-2 w-[8%]">Тариф</th>
+                      <th className="py-2 w-[13%]">Дата</th>
                       <th className="py-2 w-[7%]">Amount</th>
                       <th className="py-2 w-[7%]">Currency</th>
                       <th className="py-2 w-[12%]">Provider</th>
@@ -403,7 +395,7 @@ export function PaymentsPage() {
                         <td className="py-2 text-right">
                           {it.checkoutUrl ? (
                             <Button variant="secondary" onClick={() => window.open(it.checkoutUrl!, '_blank', 'noopener,noreferrer')}>
-                              Open
+                              Открыть
                             </Button>
                           ) : null}
                         </td>
@@ -412,7 +404,7 @@ export function PaymentsPage() {
                     {intents.length === 0 ? (
                       <tr>
                         <td className="py-3 text-slate-500" colSpan={9}>
-                          No payment intents
+                          Платежных намерений нет
                         </td>
                       </tr>
                     ) : null}
@@ -434,7 +426,7 @@ export function PaymentsPage() {
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" type="button" onClick={() => setCreateOpen(false)}>
-              Cancel
+              Отмена
             </Button>
             <Button
               type="button"
@@ -449,20 +441,20 @@ export function PaymentsPage() {
                 });
               })}
             >
-              Create
+              Создать
             </Button>
           </div>
         }
       >
         <form className="grid gap-4" onSubmit={(e) => e.preventDefault()}>
           <label className="block">
-            <div className="text-sm font-medium text-slate-700">User *</div>
+            <div className="text-sm font-medium text-slate-700">Пользователь *</div>
             <select
               className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               {...createForm.register('vpnUserId', { required: true })}
             >
               <option value="" disabled>
-                Select user…
+                Выберите пользователя…
               </option>
               {users.map((u) => (
                 <option key={u.id} value={u.id}>
@@ -473,7 +465,7 @@ export function PaymentsPage() {
           </label>
 
           <label className="block">
-            <div className="text-sm font-medium text-slate-700">Plan (optional)</div>
+            <div className="text-sm font-medium text-slate-700">Тариф (необязательно)</div>
             <select
               className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
               {...createForm.register('planId')}
@@ -481,13 +473,13 @@ export function PaymentsPage() {
               <option value="">Manual payment (no plan)</option>
               {availablePlans.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name} — {formatPlanVariantsShort(p)} ({p.periodDays} days)
+                  {p.name} — {formatPlanVariantsShort(p)} ({p.periodDays} дн.)
                 </option>
               ))}
             </select>
             {selectedPlan && (
               <div className="mt-1 text-xs text-slate-500">
-                {selectedPlan.description || `${selectedPlan.periodDays} days access`}
+                {selectedPlan.description || `Доступ на ${selectedPlan.periodDays} дн.`}
               </div>
             )}
           </label>
@@ -551,7 +543,7 @@ export function PaymentsPage() {
             </select>
             {selectedPlan && createForm.watch('status') === 'PAID' && (
               <div className="mt-1 text-xs text-green-600">
-                Subscription will be automatically created when payment is PAID
+                Подписка будет создана автоматически при статусе оплаты PAID
               </div>
             )}
           </label>

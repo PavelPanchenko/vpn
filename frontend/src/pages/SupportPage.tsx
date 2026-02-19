@@ -76,7 +76,7 @@ export function SupportPage() {
     mutationFn: async (payload: { id: string; message: string }) =>
       (await api.post<SupportMessage>(`/support/${payload.id}/reply`, { message: payload.message })).data,
     onSuccess: async () => {
-      toast.success('Reply sent');
+      toast.success('Ответ отправлен');
       setReplyTarget(null);
       replyForm.reset();
       await qc.invalidateQueries({ queryKey: ['support'] });

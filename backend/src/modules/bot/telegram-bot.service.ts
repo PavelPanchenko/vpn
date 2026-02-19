@@ -485,8 +485,9 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
       });
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
-      // «chat not found» / «bot was blocked» — ожидаемая ситуация, не ошибка сервера
+      // «chat not found» / «bot was blocked» — помечаем и не спамим ERROR
       if (msg.includes('chat not found') || msg.includes('bot was blocked')) {
+        await this.usersService.markBotBlockedByTelegramId(telegramId);
         this.logger.warn(`Expiry reminder skipped for ${telegramId}: ${msg}`);
       } else {
         this.logger.error(`Failed to send expiry reminder to ${telegramId}:`, error);

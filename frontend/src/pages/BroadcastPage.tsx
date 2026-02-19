@@ -7,12 +7,12 @@ import { api } from '../lib/api';
 import { toast } from 'react-toastify';
 
 const AUDIENCES = [
-  { value: 'ALL', label: 'All users' },
-  { value: 'ACTIVE', label: 'Active' },
-  { value: 'EXPIRED', label: 'Expired' },
-  { value: 'NEW', label: 'New (never connected)' },
-  { value: 'BLOCKED', label: 'Blocked' },
-  { value: 'EXPIRING_SOON', label: 'Expiring soon (3 days)' },
+  { value: 'ALL', label: 'Все пользователи' },
+  { value: 'ACTIVE', label: 'Активные' },
+  { value: 'EXPIRED', label: 'Истёкшие' },
+  { value: 'NEW', label: 'Новые (никогда не подключались)' },
+  { value: 'BLOCKED', label: 'Заблокированные' },
+  { value: 'EXPIRING_SOON', label: 'Истекают скоро (3 дня)' },
 ] as const;
 
 const TEMPLATES = [
@@ -91,7 +91,7 @@ export function BroadcastPage() {
       const res = await api.post('/broadcast/preview', { audience });
       setPreviewCount(res.data.count);
     } catch {
-      toast.error('Failed to load preview');
+      toast.error('Не удалось загрузить превью');
     } finally {
       setPreviewLoading(false);
     }
@@ -104,9 +104,9 @@ export function BroadcastPage() {
     try {
       const res = await api.post('/broadcast/send', { audience, message });
       setResult(res.data);
-      toast.success(`Broadcast sent: ${res.data.sent} delivered`);
+      toast.success(`Рассылка отправлена: доставлено ${res.data.sent}`);
     } catch {
-      toast.error('Broadcast failed');
+      toast.error('Ошибка рассылки');
     } finally {
       setSending(false);
     }
@@ -116,12 +116,12 @@ export function BroadcastPage() {
 
   return (
     <div className="space-y-6 px-2 py-4 sm:px-6 sm:py-6">
-      <PageHeader title="Broadcast" description="Send a message to a segment of users via Telegram" />
+      <PageHeader title="Рассылка" description="Отправка сообщения сегменту пользователей через Telegram" />
 
-      <Card title="Audience">
+      <Card title="Аудитория">
         <div className="space-y-4">
           <div>
-            <label className="text-sm font-medium text-slate-700">Segment</label>
+            <label className="text-sm font-medium text-slate-700">Сегмент</label>
             <select
               value={audience}
               onChange={(e) => {
@@ -141,18 +141,18 @@ export function BroadcastPage() {
 
           <div className="flex items-center gap-3">
             <Button variant="secondary" size="sm" onClick={handlePreview} disabled={previewLoading}>
-              {previewLoading ? 'Loading...' : 'Preview recipients'}
+              {previewLoading ? 'Загрузка…' : 'Показать получателей'}
             </Button>
             {previewCount !== null && (
               <span className="text-sm text-slate-600">
-                <span className="font-semibold text-slate-900">{previewCount}</span> recipients
+                <span className="font-semibold text-slate-900">{previewCount}</span> получателей
               </span>
             )}
           </div>
         </div>
       </Card>
 
-      <Card title="Templates">
+      <Card title="Шаблоны">
         <div className="flex flex-wrap gap-2">
           {TEMPLATES.map((t) => (
             <button
@@ -171,19 +171,19 @@ export function BroadcastPage() {
           ))}
         </div>
         <p className="mt-2 text-xs text-slate-500">
-          Click a template to load it. You can edit the text before sending.
+          Нажмите на шаблон, чтобы подставить текст. Его можно отредактировать перед отправкой.
         </p>
       </Card>
 
-      <Card title="Message">
+      <Card title="Сообщение">
         <div className="space-y-3">
           <div>
-            <label className="text-sm font-medium text-slate-700">Text (HTML supported)</label>
+            <label className="text-sm font-medium text-slate-700">Текст (поддерживается HTML)</label>
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               rows={6}
-              placeholder={'Hello!\n\nYour message here...\n\nSupported: <b>bold</b>, <i>italic</i>, <code>code</code>, <a href="...">link</a>'}
+              placeholder={'Привет!\n\nВаш текст здесь...\n\nПоддерживаются: <b>жирный</b>, <i>курсив</i>, <code>код</code>, <a href="...">ссылка</a>'}
               className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
             />
           </div>
@@ -193,55 +193,55 @@ export function BroadcastPage() {
               onClick={() => setConfirmOpen(true)}
               disabled={!canSend || sending}
             >
-              {sending ? 'Sending...' : 'Send broadcast'}
+              {sending ? 'Отправка…' : 'Отправить рассылку'}
             </Button>
             {!message.trim() && (
-              <span className="text-xs text-slate-500">Write a message first</span>
+              <span className="text-xs text-slate-500">Сначала введите сообщение</span>
             )}
           </div>
         </div>
       </Card>
 
       {result && (
-        <Card title="Result">
+        <Card title="Результат">
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <Stat label="Total" value={result.total} />
-            <Stat label="Sent" value={result.sent} className="text-green-600" />
-            <Stat label="Blocked" value={result.blocked} className="text-amber-600" />
-            <Stat label="Failed" value={result.failed} className="text-red-600" />
+            <Stat label="Всего" value={result.total} />
+            <Stat label="Доставлено" value={result.sent} className="text-green-600" />
+            <Stat label="Заблокировали бота" value={result.blocked} className="text-amber-600" />
+            <Stat label="Ошибки" value={result.failed} className="text-red-600" />
           </div>
         </Card>
       )}
 
       <Modal
         open={confirmOpen}
-        title="Confirm broadcast"
+        title="Подтвердить рассылку"
         onClose={() => setConfirmOpen(false)}
         footer={
           <div className="flex items-center justify-end gap-2">
             <Button variant="secondary" size="sm" onClick={() => setConfirmOpen(false)}>
-              Cancel
+              Отмена
             </Button>
             <Button size="sm" onClick={handleSend}>
-              Send to {previewCount ?? 0} users
+              Отправить {previewCount ?? 0} пользователям
             </Button>
           </div>
         }
       >
         <div className="space-y-3 text-sm text-slate-700">
           <p>
-            You are about to send a message to{' '}
-            <span className="font-semibold text-slate-900">{previewCount}</span> users in the{' '}
+            Вы отправите сообщение{' '}
+            <span className="font-semibold text-slate-900">{previewCount}</span> пользователям в сегменте «
             <span className="font-semibold text-slate-900">
               {AUDIENCES.find((a) => a.value === audience)?.label}
-            </span>{' '}
-            segment.
+            </span>
+            ».
           </p>
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <div className="text-xs font-medium text-slate-500">Preview</div>
+            <div className="text-xs font-medium text-slate-500">Превью</div>
             <div className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">{message}</div>
           </div>
-          <p className="text-xs text-slate-500">This action cannot be undone.</p>
+          <p className="text-xs text-slate-500">Действие нельзя отменить.</p>
         </div>
       </Modal>
     </div>

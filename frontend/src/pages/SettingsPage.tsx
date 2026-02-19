@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import { api } from '../lib/api';
 import { getApiErrorMessage } from '../lib/apiError';
 import { Button } from '../components/Button';
+import { IconButton } from '../components/IconButton';
 import { Input } from '../components/Input';
 import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
@@ -262,36 +263,37 @@ export function SettingsPage() {
               <div className="text-xs text-slate-500">Создан: {new Date(config.createdAt).toLocaleString()}</div>
               <div className="text-xs text-slate-500">Обновлён: {new Date(config.updatedAt).toLocaleString()}</div>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
-              <Button
+            <div className="flex gap-2 justify-end">
+              <IconButton
+                icon="edit"
                 variant="secondary"
-                className="w-full sm:w-auto"
+                title="Изменить"
                 onClick={() => {
                   editBotForm.reset({ active: config.active });
                   setEditBotOpen(true);
                 }}
-              >
-                Изменить
-              </Button>
-              <Button
+              />
+              <IconButton
+                icon="delete"
                 variant="danger"
-                className="w-full sm:w-auto"
+                title="Удалить"
                 onClick={() => {
                   if (confirm('Удалить конфигурацию? Бот перестанет работать.')) {
                     deleteBotM.mutate(config.id);
                   }
                 }}
-              >
-                Удалить
-              </Button>
+              />
             </div>
           </div>
         ) : (
           <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-sm text-slate-500">Бот не настроен. Добавьте токен, чтобы запустить.</div>
-            <Button onClick={() => { createForm.reset(); setCreateOpen(true); }}>
-              Добавить токен
-            </Button>
+            <IconButton
+              icon="add"
+              variant="primary"
+              title="Добавить токен"
+              onClick={() => { createForm.reset(); setCreateOpen(true); }}
+            />
           </div>
         )}
       </Card>
@@ -386,7 +388,7 @@ export function SettingsPage() {
                     placeholder={config.hasPlategaSecret ? '••• задан (оставить пустым = не менять)' : 'из .env'}
                   />
                   <Input
-                    label="Payment Method"
+                    label="Способ оплаты (Platega)"
                     type="number"
                     {...form.register('plategaPaymentMethod', { valueAsNumber: true })}
                     placeholder="из .env (по умолч. 2)"

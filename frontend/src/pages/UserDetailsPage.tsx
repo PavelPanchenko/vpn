@@ -8,6 +8,7 @@ import { getApiErrorMessage } from '../lib/apiError';
 import { type Payment, type Plan, type Subscription, type VpnUser, type VpnServer, type UserServer } from '../lib/types';
 import { Card } from '../components/Card';
 import { Button } from '../components/Button';
+import { IconButton } from '../components/IconButton';
 import { Modal } from '../components/Modal';
 import { UserAvatar } from '../components/UserAvatar';
 
@@ -49,7 +50,7 @@ export function UserDetailsPage() {
   const addServerM = useMutation({
     mutationFn: async (serverId: string) => (await api.post(`/users/${id}/servers`, { serverId })).data,
     onSuccess: async () => {
-      toast.success('Server added');
+      toast.success('Сервер добавлен');
       setAddServerOpen(false);
       setSelectedServerId('');
       await qc.invalidateQueries({ queryKey: ['user', id] });
@@ -61,7 +62,7 @@ export function UserDetailsPage() {
   const removeServerM = useMutation({
     mutationFn: async (serverId: string) => (await api.delete(`/users/${id}/servers/${serverId}`)).data,
     onSuccess: async () => {
-      toast.success('Server removed');
+      toast.success('Сервер удалён');
       await qc.invalidateQueries({ queryKey: ['user', id] });
       await qc.invalidateQueries({ queryKey: ['user-config', id] });
     },
@@ -71,7 +72,7 @@ export function UserDetailsPage() {
   const activateServerM = useMutation({
     mutationFn: async (serverId: string) => (await api.post(`/users/${id}/servers/${serverId}/activate`)).data,
     onSuccess: async () => {
-      toast.success('Server activated');
+      toast.success('Сервер активирован');
       await qc.invalidateQueries({ queryKey: ['user', id] });
       await qc.invalidateQueries({ queryKey: ['user-config', id] });
       await qc.invalidateQueries({ queryKey: ['user-traffic', id] });
@@ -121,11 +122,11 @@ export function UserDetailsPage() {
 
   return (
     <div className="grid gap-4">
-      <Card title="User details">
+      <Card title="Данные пользователя">
         {userQ.isLoading ? (
-          <div className="text-sm text-slate-600">Loading…</div>
+          <div className="text-sm text-slate-600">Загрузка…</div>
         ) : !u ? (
-          <div className="text-sm text-slate-600">Not found</div>
+          <div className="text-sm text-slate-600">Не найден</div>
         ) : (
           <div className="grid gap-2 text-sm text-slate-800">
             <div className="flex items-center gap-3">
@@ -136,14 +137,14 @@ export function UserDetailsPage() {
               <span className="text-slate-500">UUID:</span> <span className="font-mono">{u.uuid}</span>
             </div>
             <div>
-              <span className="text-slate-500">Status:</span> {u.status}
+              <span className="text-slate-500">Статус:</span> {u.status}
             </div>
             <div>
-              <span className="text-slate-500">Expires:</span>{' '}
+              <span className="text-slate-500">Истекает:</span>{' '}
               {u.expiresAt ? new Date(u.expiresAt).toLocaleString() : '-'}
             </div>
             <div>
-              <span className="text-slate-500">Servers:</span>{' '}
+              <span className="text-slate-500">Серверы:</span>{' '}
               {u.userServers && u.userServers.length > 0
                 ? u.userServers
                     .filter((us) => us.active)
@@ -154,18 +155,17 @@ export function UserDetailsPage() {
             <div>
               <span className="text-slate-500">TG ID:</span> {u.telegramId ?? '-'}
             </div>
+            {u.botBlockedAt && (
+              <div>
+                <span className="text-slate-500">Бот заблокирован:</span>{' '}
+                <span className="text-slate-600">{new Date(u.botBlockedAt).toLocaleString()}</span>
+              </div>
+            )}
           </div>
         )}
       </Card>
 
-      <Card
-        title="Онлайн"
-        right={
-          <Button variant="secondary" size="sm" onClick={() => qc.invalidateQueries({ queryKey: ['user-traffic', id] })} disabled={trafficQ.isFetching}>
-            {trafficQ.isFetching ? '…' : 'Refresh'}
-          </Button>
-        }
-      >
+      <Card title="Онлайн">
         {trafficQ.isLoading ? (
           <div className="text-sm text-slate-600">Загрузка…</div>
         ) : trafficQ.error ? (
@@ -199,15 +199,13 @@ export function UserDetailsPage() {
       </Card>
 
       <Card
-        title="VPN configs"
+        title="VPN конфиги"
         right={
-          <Button variant="secondary" onClick={() => setAddServerOpen(true)}>
-            Add server
-          </Button>
+          <IconButton icon="add" variant="secondary" title="Добавить сервер" onClick={() => setAddServerOpen(true)} />
         }
       >
         {configQ.isLoading ? (
-          <div className="text-sm text-slate-600">Loading…</div>
+          <div className="text-sm text-slate-600">Загрузка…</div>
         ) : configQ.data?.configs && configQ.data.configs.length > 0 ? (
           <div className="space-y-3">
             {configQ.data.configs.map((cfg, idx) => {
@@ -218,7 +216,7 @@ export function UserDetailsPage() {
                     <div className="flex items-center gap-2">
                       <div className="text-sm font-medium text-slate-900">{cfg.serverName}</div>
                       {userServer?.isActive && (
-                        <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">Active</span>
+                        <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">Активен</span>
                       )}
                     </div>
                     <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2">
@@ -227,7 +225,7 @@ export function UserDetailsPage() {
                         className="w-full sm:w-auto"
                         onClick={() => setQrCodeUrl(cfg.url)}
                       >
-                        Show QR
+                        Показать QR
                       </Button>
                       <Button
                         variant="secondary"
@@ -235,13 +233,13 @@ export function UserDetailsPage() {
                         onClick={async () => {
                           try {
                             await navigator.clipboard.writeText(cfg.url);
-                            toast.success(`Copied ${cfg.serverName}`);
+                            toast.success(`Скопировано: ${cfg.serverName}`);
                           } catch {
-                            toast.error('Copy failed');
+                            toast.error('Не удалось скопировать');
                           }
                         }}
                       >
-                        Copy
+                        Копировать
                       </Button>
                     </div>
                   </div>
@@ -251,12 +249,12 @@ export function UserDetailsPage() {
             })}
           </div>
         ) : (
-          <div className="text-sm text-slate-600">No configs</div>
+          <div className="text-sm text-slate-600">Конфигов пока нет</div>
         )}
       </Card>
 
       {u?.userServers && u.userServers.filter((us) => us.active).length > 0 && (
-        <Card title="Available locations">
+        <Card title="Доступные локации">
           <div className="space-y-2">
             {u.userServers
               .filter((us) => us.active)
@@ -270,7 +268,7 @@ export function UserDetailsPage() {
                   <div className="flex items-center gap-2">
                     <div className="text-sm font-medium text-slate-900">{us.server.name}</div>
                     {us.isActive && (
-                      <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">Active</span>
+                      <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">Активен</span>
                     )}
                   </div>
                   <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-2">
@@ -281,12 +279,12 @@ export function UserDetailsPage() {
                         className="w-full sm:w-auto"
                         disabled={activateServerM.isPending}
                         onClick={() => {
-                          if (confirm(`Activate location ${us.server.name}? The current active location will be deactivated.`)) {
+                          if (confirm(`Активировать локацию ${us.server.name}? Текущая активная локация будет отключена.`)) {
                             activateServerM.mutate(us.serverId);
                           }
                         }}
                       >
-                        Activate
+                        Активировать
                       </Button>
                     )}
                     <Button
@@ -295,12 +293,12 @@ export function UserDetailsPage() {
                       className="w-full sm:w-auto"
                       disabled={removeServerM.isPending}
                       onClick={() => {
-                        if (confirm(`Remove location ${us.server.name}?`)) {
+                        if (confirm(`Удалить локацию ${us.server.name}?`)) {
                           removeServerM.mutate(us.serverId);
                         }
                       }}
                     >
-                      Remove
+                      Удалить
                     </Button>
                   </div>
                 </div>
@@ -311,7 +309,7 @@ export function UserDetailsPage() {
 
       <Modal
         open={addServerOpen}
-        title="Add server"
+        title="Добавить сервер"
         onClose={() => {
           setAddServerOpen(false);
           setSelectedServerId('');
@@ -319,27 +317,27 @@ export function UserDetailsPage() {
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" type="button" onClick={() => setAddServerOpen(false)}>
-              Cancel
+              Отмена
             </Button>
             <Button
               type="button"
               disabled={addServerM.isPending || !selectedServerId}
               onClick={() => selectedServerId && addServerM.mutate(selectedServerId)}
             >
-              Add
+              Добавить
             </Button>
           </div>
         }
       >
         <label className="block">
-          <div className="text-sm font-medium text-slate-700">Server</div>
+          <div className="text-sm font-medium text-slate-700">Сервер</div>
           <select
             className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
             value={selectedServerId}
             onChange={(e) => setSelectedServerId(e.target.value)}
           >
             <option value="" disabled>
-              Select server…
+              Выберите сервер…
             </option>
             {availableServers.map((s) => (
               <option key={s.id} value={s.id}>
@@ -348,25 +346,25 @@ export function UserDetailsPage() {
             ))}
           </select>
           {availableServers.length === 0 && (
-            <div className="mt-2 text-xs text-slate-500">All available servers are already added</div>
+            <div className="mt-2 text-xs text-slate-500">Все доступные серверы уже добавлены</div>
           )}
         </label>
       </Modal>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card
-          title="Subscriptions"
-          right={u ? <Button variant="secondary" size="sm" onClick={() => { setSelectedPlanId(''); setCustomDays(''); setAssignPlanOpen(true); }}>Подключить тариф</Button> : undefined}
+          title="Подписки"
+          right={u ? <IconButton icon="add" variant="secondary" title="Подключить тариф" onClick={() => { setSelectedPlanId(''); setCustomDays(''); setAssignPlanOpen(true); }} /> : undefined}
         >
           {!u ? null : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="text-left text-slate-500">
                   <tr>
-                    <th className="py-2">Starts</th>
-                    <th className="py-2">Ends</th>
-                    <th className="py-2">Days</th>
-                    <th className="py-2">Active</th>
+                    <th className="py-2">Начало</th>
+                    <th className="py-2">Конец</th>
+                    <th className="py-2">Дней</th>
+                    <th className="py-2">Активна</th>
                   </tr>
                 </thead>
                 <tbody className="text-slate-800">
@@ -375,13 +373,13 @@ export function UserDetailsPage() {
                       <td className="py-2">{new Date(s.startsAt).toLocaleString()}</td>
                       <td className="py-2">{new Date(s.endsAt).toLocaleString()}</td>
                       <td className="py-2">{s.periodDays}</td>
-                      <td className="py-2">{s.active ? 'yes' : 'no'}</td>
+                      <td className="py-2">{s.active ? 'да' : 'нет'}</td>
                     </tr>
                   ))}
                   {u.subscriptions.length === 0 ? (
                     <tr>
                       <td className="py-3 text-slate-500" colSpan={4}>
-                        No subscriptions
+                        Подписок нет
                       </td>
                     </tr>
                   ) : null}
@@ -391,16 +389,16 @@ export function UserDetailsPage() {
           )}
         </Card>
 
-        <Card title="Payments">
+        <Card title="Платежи">
           {!u ? null : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="text-left text-slate-500">
                   <tr>
-                    <th className="py-2">Created</th>
-                    <th className="py-2">Amount</th>
-                    <th className="py-2">Currency</th>
-                    <th className="py-2">Status</th>
+                    <th className="py-2">Дата</th>
+                    <th className="py-2">Сумма</th>
+                    <th className="py-2">Валюта</th>
+                    <th className="py-2">Статус</th>
                   </tr>
                 </thead>
                 <tbody className="text-slate-800">
@@ -415,7 +413,7 @@ export function UserDetailsPage() {
                   {u.payments.length === 0 ? (
                     <tr>
                       <td className="py-3 text-slate-500" colSpan={4}>
-                        No payments
+                        Платежей нет
                       </td>
                     </tr>
                   ) : null}
@@ -488,12 +486,12 @@ export function UserDetailsPage() {
 
       <Modal
         open={qrCodeUrl !== null}
-        title="QR Code"
+        title="QR-код"
         onClose={() => setQrCodeUrl(null)}
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="secondary" type="button" onClick={() => setQrCodeUrl(null)}>
-              Close
+              Закрыть
             </Button>
             {qrCodeUrl && (
               <Button
@@ -502,13 +500,13 @@ export function UserDetailsPage() {
                 onClick={async () => {
                   try {
                     await navigator.clipboard.writeText(qrCodeUrl);
-                    toast.success('Config copied to clipboard');
+                    toast.success('Конфиг скопирован');
                   } catch {
-                    toast.error('Copy failed');
+                    toast.error('Не удалось скопировать');
                   }
                 }}
               >
-                Copy config
+                Копировать конфиг
               </Button>
             )}
           </div>
@@ -520,7 +518,7 @@ export function UserDetailsPage() {
               <QRCodeSVG value={qrCodeUrl} size={256} level="M" />
             </div>
             <div className="text-center">
-              <div className="text-sm font-medium text-slate-700">Scan to add VPN config</div>
+              <div className="text-sm font-medium text-slate-700">Отсканируйте, чтобы добавить VPN конфиг</div>
               <div className="mt-1 break-all font-mono text-xs text-slate-500">{qrCodeUrl}</div>
             </div>
           </div>

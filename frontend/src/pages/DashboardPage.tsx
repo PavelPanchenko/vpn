@@ -28,6 +28,7 @@ type DashboardStats = {
     active: number;
     blocked: number;
     expired: number;
+    botBlocked: number;
     today: number;
     week: number;
     month: number;
@@ -217,13 +218,8 @@ export function DashboardPage() {
   return (
     <div className="grid gap-6">
       <PageHeader
-        title="Dashboard"
+        title="Главная"
         description="Общая статистика и мониторинг системы VPN"
-        actions={
-          <Button variant="secondary" onClick={() => statsQ.refetch()}>
-            Обновить
-          </Button>
-        }
       />
 
       {statsQ.isLoading ? (
@@ -254,6 +250,7 @@ export function DashboardPage() {
                 <div className="text-xs text-slate-400 pt-1">
                   {stats.users.active} активных · {stats.users.blocked} заблок. · {stats.users.expired} истёк.
                 </div>
+                <StatRow label="Заблокировали бота" value={stats.users.botBlocked ?? 0} />
               </div>
             </Card>
 
@@ -334,7 +331,7 @@ export function DashboardPage() {
                           {p.vpnUser.name || p.vpnUser.uuid}
                         </div>
                         <div className="text-xs text-slate-500">
-                          {p.plan?.name || 'Manual'} • {new Date(p.createdAt).toLocaleString('ru-RU')}
+                          {p.plan?.name || 'Вручную'} • {new Date(p.createdAt).toLocaleString('ru-RU')}
                         </div>
                       </div>
                       <div className="text-sm font-semibold text-green-600">

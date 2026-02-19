@@ -32,11 +32,12 @@ export class DashboardService {
     ]);
 
     // Статистика пользователей
-    const [totalUsers, activeUsers, blockedUsers, expiredUsers, todayUsers, weekUsers, monthUsers] = await Promise.all([
+    const [totalUsers, activeUsers, blockedUsers, expiredUsers, botBlockedUsers, todayUsers, weekUsers, monthUsers] = await Promise.all([
       this.prisma.vpnUser.count(),
       this.prisma.vpnUser.count({ where: { status: 'ACTIVE' } }),
       this.prisma.vpnUser.count({ where: { status: 'BLOCKED' } }),
       this.prisma.vpnUser.count({ where: { status: 'EXPIRED' } }),
+      this.prisma.vpnUser.count({ where: { botBlockedAt: { not: null } } }),
       this.prisma.vpnUser.count({ where: { createdAt: { gte: todayStart } } }),
       this.prisma.vpnUser.count({ where: { createdAt: { gte: weekStart } } }),
       this.prisma.vpnUser.count({ where: { createdAt: { gte: monthStart } } }),
@@ -145,6 +146,7 @@ export class DashboardService {
         active: activeUsers,
         blocked: blockedUsers,
         expired: expiredUsers,
+        botBlocked: botBlockedUsers,
         today: todayUsers,
         week: weekUsers,
         month: monthUsers,
