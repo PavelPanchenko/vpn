@@ -123,14 +123,18 @@ export class ServersService {
       }),
       this.prisma.vpnUser.findMany({
         where: { status: 'ACTIVE' },
-        select: { serverId: true },
+        select: {
+          serverId: true,
+          userServers: { where: { isActive: true }, select: { serverId: true } },
+        },
       }),
     ]);
 
     const activeByServer = new Map<string, number>();
     for (const u of activeUsers) {
-      if (u.serverId) {
-        activeByServer.set(u.serverId, (activeByServer.get(u.serverId) ?? 0) + 1);
+      const activeServerId = u.serverId ?? u.userServers?.[0]?.serverId ?? null;
+      if (activeServerId) {
+        activeByServer.set(activeServerId, (activeByServer.get(activeServerId) ?? 0) + 1);
       }
     }
 
