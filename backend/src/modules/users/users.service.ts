@@ -273,7 +273,7 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** Единая точка: привязать пользователя к серверу (БД + опционально клиент на панели). */
+  /** Единая точка: привязать пользователя к серверу (БД + опционально клиент на панели). Идемпотентно: при существующей связи — обновляем. */
   private async attachUserToServer(
     userId: string,
     serverId: string,
@@ -283,6 +283,38 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
     if (!user) throw new NotFoundException('User not found');
     const server = await this.prisma.vpnServer.findUnique({ where: { id: serverId } });
     if (!server || !server.active) throw new NotFoundException('Server not found');
+
+    const existing = await this.prisma.userServer.findUnique({
+      where: { vpnUserId_serverId: { vpnUserId: userId, serverId } },
+    });
+    if (existing) {
+      if (options.addToPanel) {
+        const panelEmail =
+          user.telegramId
+            ? buildReadablePanelEmail({
+                telegramId: user.telegramId,
+                telegramUsername: options.telegramUsername ?? null,
+                uuid: user.uuid,
+                serverId,
+              })
+            : buildPanelEmail(user.uuid, serverId);
+        await this.ensurePanelClient(server, user.uuid, panelEmail, {
+          expiryTime: options.expiryTime,
+          enable: options.isActive ? true : undefined,
+        }).catch(() => {});
+        await this.prisma.userServer.update({
+          where: { id: existing.id },
+          data: { panelEmail, isActive: options.isActive },
+        });
+      } else {
+        await this.prisma.userServer.update({
+          where: { id: existing.id },
+          data: { isActive: options.isActive },
+        });
+      }
+      return;
+    }
+
     const count = await this.prisma.vpnServer.findUnique({
       where: { id: serverId },
       include: { _count: { select: { userServers: true } } },
@@ -303,9 +335,25 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
         enable: options.isActive ? true : undefined,
       });
     }
-    await this.prisma.userServer.create({
-      data: { vpnUserId: userId, serverId, panelEmail, active: true, isActive: options.isActive },
-    });
+    try {
+      await this.prisma.userServer.create({
+        data: { vpnUserId: userId, serverId, panelEmail, active: true, isActive: options.isActive },
+      });
+    } catch (e: any) {
+      if (e?.code === 'P2002') {
+        const again = await this.prisma.userServer.findUnique({
+          where: { vpnUserId_serverId: { vpnUserId: userId, serverId } },
+        });
+        if (again) {
+          await this.prisma.userServer.update({
+            where: { id: again.id },
+            data: { panelEmail, isActive: options.isActive },
+          }).catch(() => {});
+          return;
+        }
+      }
+      throw e;
+    }
   }
 
   /**
