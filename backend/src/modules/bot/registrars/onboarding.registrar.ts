@@ -273,10 +273,12 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
             : `📅 Подписка активна до: ${expiresAtStr}\n\n`
           : '\n';
 
+      const switchHint = result.trialCreated ? '' : bm(lang).switchLocationUpdateConfigText;
       await ctx.editMessageText(
         `${bm(lang).locationConnectedHeaderText}\n\n` +
           `${lang === 'en' ? '📍 Location' : '📍 Локация'}: ${server.name}\n` +
           periodLine +
+          switchHint +
           bm(lang).afterConnectHintText,
       );
 

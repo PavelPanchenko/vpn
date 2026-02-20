@@ -287,30 +287,30 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
       where: { vpnUserId_serverId: { vpnUserId: userId, serverId } },
     });
     if (existing) {
-      if (options.addToPanel) {
-        const panelEmail =
-          user.telegramId
+      const panelEmail = options.addToPanel
+        ? (user.telegramId
             ? buildReadablePanelEmail({
                 telegramId: user.telegramId,
                 telegramUsername: options.telegramUsername ?? null,
                 uuid: user.uuid,
                 serverId,
               })
-            : buildPanelEmail(user.uuid, serverId);
+            : buildPanelEmail(user.uuid, serverId))
+        : undefined;
+      if (options.addToPanel && panelEmail) {
         await this.ensurePanelClient(server, user.uuid, panelEmail, {
           expiryTime: options.expiryTime,
           enable: options.isActive ? true : undefined,
         }).catch(() => {});
-        await this.prisma.userServer.update({
-          where: { id: existing.id },
-          data: { panelEmail, isActive: options.isActive },
-        });
-      } else {
-        await this.prisma.userServer.update({
-          where: { id: existing.id },
-          data: { isActive: options.isActive },
-        });
       }
+      await this.prisma.userServer.update({
+        where: { id: existing.id },
+        data: {
+          active: true,
+          isActive: options.isActive,
+          ...(panelEmail ? { panelEmail } : {}),
+        },
+      });
       return;
     }
 

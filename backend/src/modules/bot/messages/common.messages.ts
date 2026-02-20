@@ -18,6 +18,8 @@ const BotMessagesByLang = {
     cbConnectingLocationText: '⏳ Подключаем локацию...',
     planUnavailableText: '❌ Тариф недоступен или не найден.',
     locationConnectedHeaderText: '✅ Локация успешно подключена!',
+    switchLocationUpdateConfigText:
+      '🔄 При смене локации обязательно получите новый конфиг («📥 Получить конфиг» или /config) и обновите его в VPN-приложении — параметры сервера изменились.\n\n',
     afterConnectHintText:
       `Что дальше:\n` +
       `1) Нажмите «📥 Получить конфиг» (или команда /config)\n` +
@@ -67,6 +69,8 @@ const BotMessagesByLang = {
     cbConnectingLocationText: '⏳ Connecting location...',
     planUnavailableText: '❌ Plan is unavailable or not found.',
     locationConnectedHeaderText: '✅ Location connected!',
+    switchLocationUpdateConfigText:
+      '🔄 After switching location, get a new config (“📥 Get config” or /config) and update it in your VPN app — the server parameters have changed.\n\n',
     afterConnectHintText:
       `Next steps:\n` +
       `1) Tap “📥 Get config” (or /config)\n` +
@@ -111,6 +115,8 @@ const BotMessagesByLang = {
     cbConnectingLocationText: '⏳ Підключаємо локацію...',
     planUnavailableText: '❌ Тариф недоступний або не знайдений.',
     locationConnectedHeaderText: '✅ Локацію успішно підключено!',
+    switchLocationUpdateConfigText:
+      '🔄 Після зміни локації обовʼязково отримайте новий конфіг («📥 Отримати конфіг» або /config) та оновіть його у VPN-застосунку — параметри сервера змінилися.\n\n',
     afterConnectHintText:
       `Що далі:\n` +
       `1) Натисніть «📥 Отримати конфіг» (або /config)\n` +
