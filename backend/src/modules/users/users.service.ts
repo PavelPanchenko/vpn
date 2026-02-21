@@ -9,6 +9,7 @@ import { SecretBox } from '../../common/crypto/secret-box';
 import { addDaysUtc } from '../../common/utils/date.utils';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { MigratePanelEmailsDto } from './dto/migrate-panel-emails.dto';
 
 /** Единый формат panelEmail: только uuid и serverId. Одинаковый при создании и при поиске. */
 function buildPanelEmail(uuid: string, serverId: string): string {
