@@ -519,6 +519,45 @@ export class TelegramBotService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Уведомление клиенту при смене локации админом через админ-панель.
+   */
+  async sendLocationChangedByAdmin(telegramId: string | null, serverName: string): Promise<void> {
+    if (!telegramId?.trim()) return;
+    if (!this.bot) {
+      this.logger.warn('Cannot send location changed: bot not initialized');
+      return;
+    }
+    try {
+      const lang = await this.langForTelegramId(telegramId);
+      const text = bm(lang).locationChangedByAdminTemplate.replace('{name}', this.esc(serverName));
+      await this.bot.telegram.sendMessage(telegramId, text, {
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+      });
+    } catch (error: unknown) {
+      this.logger.error(`Failed to send location changed to ${telegramId}:`, error);
+    }
+  }
+
+  async sendLocationRemovedByAdmin(telegramId: string | null, serverName: string): Promise<void> {
+    if (!telegramId?.trim()) return;
+    if (!this.bot) {
+      this.logger.warn('Cannot send location removed: bot not initialized');
+      return;
+    }
+    try {
+      const lang = await this.langForTelegramId(telegramId);
+      const text = bm(lang).locationRemovedByAdminTemplate.replace('{name}', this.esc(serverName));
+      await this.bot.telegram.sendMessage(telegramId, text, {
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+      });
+    } catch (error: unknown) {
+      this.logger.error(`Failed to send location removed to ${telegramId}:`, error);
+    }
+  }
+
+  /**
    * Останавливает бота и опционально отпускает advisory lock.
    * @param releaseLock — при false lock не отпускаем (смена токена в том же инстансе).
    */

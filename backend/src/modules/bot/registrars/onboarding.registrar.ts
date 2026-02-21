@@ -1,10 +1,9 @@
 import type { TelegramRegistrarDeps } from './telegram-registrar.deps';
-import { getPaidPlansWithFallback } from '../plans/paid-plans.utils';
 import { bm } from '../messages/common.messages';
 import { getMarkup } from '../telegram-markup.utils';
 import { cbThenReplyText } from '../telegram-callback.utils';
 import type { TelegramCallbackCtx, TelegramCallbackMatch, TelegramMessageCtx } from '../telegram-runtime.types';
-import type { PlanLike, ServerLike } from '../bot-domain.types';
+import type { ServerLike } from '../bot-domain.types';
 
 import { botLangFromCtx, extractTelegramLanguageCode } from '../i18n/bot-lang';
 import { ui } from '../messages/ui.messages';
@@ -130,11 +129,34 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       // Проверяем, не добавлен ли уже этот сервер
       const existingUserServer = await args.prisma.userServer.findFirst({
         where: { vpnUserId: user.id, serverId },
+        include: { server: true },
       });
 
       if (existingUserServer) {
-        await ctx.answerCbQuery(lang === 'en' ? 'This location is already added!' : 'Эта локация уже добавлена!');
-        await args.showMainMenuEdit(ctx, user);
+        if (existingUserServer.isActive) {
+          await ctx.answerCbQuery(
+            lang === 'en' ? 'This location is already active!'
+              : lang === 'uk' ? 'Ця локація вже активна!'
+              : 'Эта локация уже активна!',
+          );
+          await args.showMainMenuEdit(ctx, user);
+          return;
+        }
+        await ctx.answerCbQuery();
+        const confirmText = bm(lang).switchLocationConfirmText.replace('{name}', args.esc(existingUserServer.server.name));
+        const Markup = await getMarkup();
+        const buttons = [
+          [Markup.button.callback(
+            lang === 'en' ? '✅ Confirm switch' : lang === 'uk' ? '✅ Підтвердити перемикання' : '✅ Подтвердить переключение',
+            `confirm_switch_server_${serverId}`,
+          )],
+          [Markup.button.callback(
+            lang === 'en' ? '🔙 Choose another location' : lang === 'uk' ? '🔙 Обрати іншу локацію' : '🔙 Выбрать другую локацию',
+            'back_to_servers',
+          )],
+          [Markup.button.callback(ui(lang).backToMenuBtn, 'back_to_main')],
+        ];
+        await args.editHtml(ctx, confirmText, Markup.inlineKeyboard(buttons));
         return;
       }
 
@@ -148,80 +170,96 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
 
       await ctx.answerCbQuery();
 
-      const { plans: paidPlans, basePlans: plans } = await getPaidPlansWithFallback({
-        userId: user.id,
-        plansService: args.plansService,
-        prisma: args.prisma,
+      const trialDays = await args.getTrialDaysForUser(user.id);
+
+      const currentActive = await args.prisma.userServer.findFirst({
+        where: { vpnUserId: user.id, isActive: true },
+        include: { server: true },
       });
 
-      // Показываем первые 4 тарифа (чтобы не перегружать сообщение)
-      const displayedPlans = paidPlans.slice(0, 4);
+      let message = `📍 <b>${args.esc(server.name)}</b>\n\n`;
 
-      const maskedHost = args.maskServerHost(server.host);
-      const sec = server.security || 'NONE';
-      const trialDays = args.getTrialDaysFromPlans(plans);
-
-      let message =
-        (lang === 'en'
-          ? `📍 <b>${args.esc(server.name)}</b>\n` +
-            `<i>${args.esc(maskedHost)}:${args.esc(server.port)} · ${args.esc(sec)}</i>\n\n` +
-            `🎁 Trial access: <b>${args.esc(trialDays)} day(s)</b>\n`
-          : `📍 <b>${args.esc(server.name)}</b>\n` +
-            `<i>${args.esc(maskedHost)}:${args.esc(server.port)} · ${args.esc(sec)}</i>\n\n` +
-            `🎁 Пробный доступ: <b>${args.esc(trialDays)} дн.</b>\n`);
-
-      if (displayedPlans.length > 0) {
-        const middleIndex = Math.floor(displayedPlans.length / 2);
-        const recommendedPlan = displayedPlans[middleIndex];
-        const minPrice = Math.min(
-          ...displayedPlans.map((p: PlanLike) => Math.min(...((p.variants ?? []).map((v) => v.price)))),
-        );
-        const minPricePlan = displayedPlans.find((p: PlanLike) =>
-          (p.variants ?? []).some((v) => v.price === minPrice),
-        );
-
-        message += lang === 'en' ? `\n<b>Plans after trial</b>\n` : `\n<b>Тарифы после пробного периода</b>\n`;
-        displayedPlans.forEach((plan: PlanLike) => {
-          const tag = plan.id === recommendedPlan?.id ? ' ⭐' : '';
-          const prices = (plan.variants ?? [])
-            .map((v) => `${args.esc(v.price)} ${args.esc(v.currency)}`)
-            .join(' | ');
-          message +=
-            lang === 'en'
-              ? `• <b>${args.esc(plan.name)}</b>${tag} — ${prices} / ${args.esc(plan.periodDays)} day(s)\n`
-              : `• <b>${args.esc(plan.name)}</b>${tag} — ${prices} / ${args.esc(plan.periodDays)} дн.\n`;
-        });
-        if (paidPlans.length > displayedPlans.length) {
-          message +=
-            lang === 'en'
-              ? `• …${args.esc(paidPlans.length - displayedPlans.length)} more plans\n`
-              : `• …ещё ${args.esc(paidPlans.length - displayedPlans.length)} тарифов\n`;
-        }
-        const minPriceCurrency =
-          (minPricePlan?.variants ?? []).find((v) => v.price === minPrice)?.currency ?? 'RUB';
-        message +=
-          lang === 'en'
-            ? `\n💰 From <b>${args.esc(minPrice)} ${args.esc(minPriceCurrency)}</b>\n`
-            : `\n💰 От <b>${args.esc(minPrice)} ${args.esc(minPriceCurrency)}</b>\n`;
+      if (currentActive) {
+        message += lang === 'en'
+          ? `⚠️ Current location <b>${args.esc(currentActive.server.name)}</b> will be deactivated.\n`
+          : lang === 'uk'
+            ? `⚠️ Поточна локація <b>${args.esc(currentActive.server.name)}</b> буде вимкнена.\n`
+            : `⚠️ Текущая локация <b>${args.esc(currentActive.server.name)}</b> будет отключена.\n`;
+      } else {
+        message += lang === 'en'
+          ? `🎁 Trial access: <b>${args.esc(trialDays)} day(s)</b>\n`
+          : `🎁 Пробний доступ: <b>${args.esc(trialDays)} дн.</b>\n`;
       }
-
-      message += lang === 'en' ? `\nTap “Confirm” to connect.` : `\nНажмите «Подтвердить», чтобы подключиться.`;
 
       const Markup = await getMarkup();
       const buttons = [
-        [
-          Markup.button.callback(
-            lang === 'en' ? '✅ Confirm & connect' : '✅ Подтвердить и подключить',
-            `confirm_server_${serverId}`,
-          ),
-        ],
-        [Markup.button.callback(lang === 'en' ? '🔙 Choose another location' : '🔙 Выбрать другую локацию', 'back_to_servers')],
+        [Markup.button.callback(
+          lang === 'en' ? '✅ Confirm & connect' : lang === 'uk' ? '✅ Підтвердити і підключити' : '✅ Подтвердить и подключить',
+          `confirm_server_${serverId}`,
+        )],
+        [Markup.button.callback(
+          lang === 'en' ? '🔙 Choose another location' : lang === 'uk' ? '🔙 Обрати іншу локацію' : '🔙 Выбрать другую локацию',
+          'back_to_servers',
+        )],
+        [Markup.button.callback(ui(lang).backToMenuBtn, 'back_to_main')],
       ];
 
       await args.editHtml(ctx, message, Markup.inlineKeyboard(buttons));
     } catch (error: unknown) {
       args.logger.error('Error handling server selection:', error);
       await cbThenReplyText({ ctx, cbText: bm(lang).loadInfoCbText, replyText: bm(lang).errorTryLaterText });
+    }
+  });
+
+  // Подтверждение переключения на уже добавленную локацию
+  args.bot.action(/^confirm_switch_server_(.+)$/, async (ctx: TelegramCallbackCtx<TelegramCallbackMatch>) => {
+    const serverId = ctx.match[1];
+    const telegramId = ctx.from.id.toString();
+    const lang = botLangFromCtx(ctx);
+    void args.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
+
+    try {
+      const user = await args.usersService.findByTelegramId(telegramId);
+      if (!user) {
+        await ctx.answerCbQuery(bm(lang).userNotFoundCbText);
+        return;
+      }
+
+      const existingUserServer = await args.prisma.userServer.findFirst({
+        where: { vpnUserId: user.id, serverId },
+        include: { server: true },
+      });
+      if (!existingUserServer || existingUserServer.isActive) {
+        await ctx.answerCbQuery(bm(lang).loadInfoCbText);
+        await args.showMainMenuEdit(ctx, user);
+        return;
+      }
+
+      await args.usersService.activateServer(user.id, serverId);
+      const alertText = bm(lang).switchLocationAlertText.replace('{name}', existingUserServer.server.name);
+      await ctx.answerCbQuery(alertText, { show_alert: true });
+
+      const successText =
+        `${bm(lang).locationConnectedHeaderText}\n\n` +
+        `${lang === 'en' ? '📍 Location' : lang === 'uk' ? '📍 Локація' : '📍 Локация'}: <b>${args.esc(existingUserServer.server.name)}</b>\n\n` +
+        (lang === 'en'
+          ? `🔄 Get a new config and update it in your VPN app.`
+          : lang === 'uk'
+            ? `🔄 Отримайте новий конфіг та оновіть його у VPN-застосунку.`
+            : `🔄 Получите новый конфиг и обновите его в VPN-приложении.`);
+
+      const Markup = await getMarkup();
+      const successButtons = [
+        [Markup.button.callback(
+          lang === 'en' ? '📥 Get config' : lang === 'uk' ? '📥 Отримати конфіг' : '📥 Получить конфиг',
+          'get_config',
+        )],
+        [Markup.button.callback(ui(lang).backToMenuBtn, 'back_to_main')],
+      ];
+      await args.editHtml(ctx, successText, Markup.inlineKeyboard(successButtons));
+    } catch (error: unknown) {
+      args.logger.error('Error handling switch confirmation:', error);
+      await cbThenReplyText({ ctx, cbText: bm(lang).connectLocationCbErrorText, replyText: bm(lang).errorTryLaterOrAdminText });
     }
   });
 
@@ -247,42 +285,47 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
         return;
       }
 
-      await ctx.answerCbQuery(bm(lang).cbConnectingLocationText);
-
       const trialDays = await args.getTrialDaysForUser(user.id);
-      const result = await args.usersService.addServerAndTrialWithUsername(user.id, serverId, trialDays, ctx.from.username ?? null);
+      const result = await args.usersService.addServerAndTrial(user.id, serverId, trialDays, ctx.from.username ?? null);
       const updatedUser = result.updated;
       if (!updatedUser) return;
 
-      const expiresAtStr = updatedUser.expiresAt
-        ? new Date(updatedUser.expiresAt).toLocaleString(lang === 'en' ? 'en-GB' : 'ru-RU', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-          })
-        : null;
+      if (!result.trialCreated) {
+        const alertText = bm(lang).switchLocationAlertText.replace('{name}', server.name);
+        await ctx.answerCbQuery(alertText, { show_alert: true });
+      } else {
+        await ctx.answerCbQuery();
+      }
+
       const periodLine = result.trialCreated
         ? lang === 'en'
-          ? `🎁 Trial period: ${args.esc(trialDays)} day(s)\n\n`
-          : `🎁 Пробный период: ${args.esc(trialDays)} дн.\n\n`
-        : expiresAtStr
-          ? lang === 'en'
-            ? `📅 Active until: ${expiresAtStr}\n\n`
-            : `📅 Подписка активна до: ${expiresAtStr}\n\n`
-          : '\n';
+          ? `🎁 Trial: <b>${args.esc(trialDays)} day(s)</b>\n`
+          : `🎁 Пробний період: <b>${args.esc(trialDays)} дн.</b>\n`
+        : '';
 
-      const switchHint = result.trialCreated ? '' : bm(lang).switchLocationUpdateConfigText;
-      await ctx.editMessageText(
+      const switchHint = result.trialCreated
+        ? ''
+        : lang === 'en'
+          ? `\n🔄 Get a new config and update it in your VPN app.\n`
+          : lang === 'uk'
+            ? `\n🔄 Отримайте новий конфіг та оновіть його у VPN-застосунку.\n`
+            : `\n🔄 Получите новый конфиг и обновите его в VPN-приложении.\n`;
+
+      const successText =
         `${bm(lang).locationConnectedHeaderText}\n\n` +
-          `${lang === 'en' ? '📍 Location' : '📍 Локация'}: ${server.name}\n` +
-          periodLine +
-          switchHint +
-          bm(lang).afterConnectHintText,
-      );
+        `${lang === 'en' ? '📍 Location' : lang === 'uk' ? '📍 Локація' : '📍 Локация'}: <b>${args.esc(server.name)}</b>\n` +
+        periodLine +
+        switchHint;
 
-      await args.showMainMenuEdit(ctx, updatedUser);
+      const Markup2 = await getMarkup();
+      const successButtons = [
+        [Markup2.button.callback(
+          lang === 'en' ? '📥 Get config' : lang === 'uk' ? '📥 Отримати конфіг' : '📥 Получить конфиг',
+          'get_config',
+        )],
+        [Markup2.button.callback(ui(lang).backToMenuBtn, 'back_to_main')],
+      ];
+      await args.editHtml(ctx, successText, Markup2.inlineKeyboard(successButtons));
     } catch (error: unknown) {
       args.logger.error('Error confirming server selection:', error);
       await cbThenReplyText({
@@ -318,21 +361,33 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
         return;
       }
 
+      const activeServerId = user?.userServers
+        ?.find((us: any) => us.isActive)?.serverId ?? null;
+
       const Markup = await getMarkup();
-      const buttons = allServers.map((server: ServerLike) => [
-        Markup.button.callback(server.name, `select_server_${server.id}`),
-      ]);
+      const buttons = allServers.map((server: ServerLike) => {
+        const isActive = server.id === activeServerId;
+        const label = isActive ? `✅ ${server.name}` : server.name;
+        return [Markup.button.callback(label, `select_server_${server.id}`)];
+      });
+      const miniAppUrl = await args.getTelegramMiniAppUrl();
+      if (miniAppUrl) {
+        const btn = Markup?.button?.webApp
+          ? Markup.button.webApp(lang === 'en' ? '🚀 Open Mini App' : '🚀 Открыть Mini App', miniAppUrl)
+          : Markup.button.url(lang === 'en' ? '🚀 Open Mini App' : '🚀 Открыть Mini App', miniAppUrl);
+        buttons.push([btn]);
+      }
       buttons.push([Markup.button.callback(ui(lang).backToMenuBtn, 'back_to_main')]);
 
       const trialDays = user ? await args.getTrialDaysForUser(user.id) : 3;
-      const messageText =
-        user && user.userServers && user.userServers.length > 0
-          ? lang === 'en'
-            ? `📍 <b>Choose location</b>\n\nSelect a server to switch or get a new config.`
-            : `📍 <b>Выбор локации</b>\n\nВыберите сервер для переключения или получения нового конфига.`
-          : lang === 'en'
-            ? `📍 <b>Choose location</b>\n\nAfter connecting you’ll get a trial period of <b>${args.esc(trialDays)} day(s)</b>.`
-            : `📍 <b>Выбор локации</b>\n\nПосле подключения будет пробный период <b>${args.esc(trialDays)} дн.</b>`;
+      const hasServers = user && user.userServers && user.userServers.length > 0;
+      const messageText = hasServers
+        ? lang === 'en'
+          ? `📍 <b>Choose location</b>\n\nSelect a server to switch. ✅ — current.`
+          : `📍 <b>Выбор локации</b>\n\nВыберите сервер для переключения. ✅ — текущий.`
+        : lang === 'en'
+          ? `📍 <b>Choose location</b>\n\nAfter connecting you'll get a trial period of <b>${args.esc(trialDays)} day(s)</b>.`
+          : `📍 <b>Выбор локации</b>\n\nПосле подключения будет пробный период <b>${args.esc(trialDays)} дн.</b>`;
 
       await args.editHtml(ctx, messageText, Markup.inlineKeyboard(buttons));
     } catch (error: unknown) {

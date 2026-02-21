@@ -80,13 +80,13 @@ export class UsersController {
   }
 
   @Delete(':id/servers/:serverId')
-  removeServer(@Param() params: IdParamDto, @Param('serverId') serverId: string) {
-    return this.users.removeServer(params.id, serverId);
+  removeServer(@Param('id') id: string, @Param('serverId') serverId: string) {
+    return this.users.removeServer(id, serverId, { byAdmin: true });
   }
 
   @Post(':id/servers/:serverId/activate')
-  activateServer(@Param() params: IdParamDto, @Param('serverId') serverId: string) {
-    return this.users.activateServer(params.id, serverId);
+  activateServer(@Param('id') id: string, @Param('serverId') serverId: string) {
+    return this.users.activateServer(id, serverId, { byAdmin: true });
   }
 
   /**

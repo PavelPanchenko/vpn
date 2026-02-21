@@ -46,6 +46,9 @@ export async function buildMainMenuKeyboard(args: {
     hydratedUser?.serverId || (hydratedUser?.userServers && hydratedUser.userServers.length > 0),
   );
 
+  const helpBtn = Markup.button.callback(langIsEn ? '❓ Help' : langIsUk ? '❓ Допомога' : '❓ Помощь', 'show_help');
+  const supportBtn = Markup.button.callback(langIsEn ? '💬 Support' : langIsUk ? '💬 Підтримка' : '💬 Поддержка', 'start_support');
+
   if (hasActiveLocation) {
     const rows: unknown[][] = [];
     rows.push([Markup.button.callback(langIsEn ? '📥 Get config' : langIsUk ? '📥 Отримати конфіг' : '📥 Получить конфиг', 'get_config')]);
@@ -53,12 +56,14 @@ export async function buildMainMenuKeyboard(args: {
     rows.push([Markup.button.callback(langIsEn ? '📍 Choose another location' : langIsUk ? '📍 Обрати іншу локацію' : '📍 Выбрать другую локацию', 'back_to_servers')]);
     rows.push([Markup.button.callback(langIsEn ? '💳 Pay subscription' : langIsUk ? '💳 Оплатити підписку' : '💳 Оплатить подписку', 'show_pay')]);
     if (miniAppRow) rows.push(miniAppRow);
+    rows.push([helpBtn, supportBtn]);
     return Markup.inlineKeyboard(rows);
   } else {
     const rows: unknown[][] = [];
     rows.push([Markup.button.callback(langIsEn ? '📍 Choose location' : langIsUk ? '📍 Обрати локацію' : '📍 Выбрать локацию', 'back_to_servers')]);
     rows.push([Markup.button.callback(langIsEn ? '💳 Pay subscription' : langIsUk ? '💳 Оплатити підписку' : '💳 Оплатить подписку', 'show_pay')]);
     if (miniAppRow) rows.push(miniAppRow);
+    rows.push([helpBtn, supportBtn]);
     return Markup.inlineKeyboard(rows);
   }
 }

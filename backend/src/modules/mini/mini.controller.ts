@@ -375,9 +375,10 @@ export class MiniController {
       return this.buildStatusPayload(result.updated as any);
     }
 
-    // 3) иначе — добавляем новую локацию, используя текущий expiresAt (без сброса подписки)
-    const updated = await this.usersService.addServer(user.id, dto.serverId);
-    return this.buildStatusPayload(updated as any);
+    // 3) иначе — добавляем новую локацию с активацией и добавлением на панель.
+    //    addServerAndTrial: если подписка жива — просто переключит, если нет — выдаст триал.
+    const result = await this.usersService.addServerAndTrial(user.id, dto.serverId, 3);
+    return this.buildStatusPayload(result.updated as any);
   }
 
   @Post('config')

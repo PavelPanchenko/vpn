@@ -60,6 +60,8 @@ type EnsurePanelClientOptions = { expiryTime?: number; enable?: boolean; limitIp
 
 type TelegramNotifier = {
   sendAccessDaysChangedNotification: (telegramId: string | null, expiresAt: Date | null) => Promise<void>;
+  sendLocationChangedByAdmin: (telegramId: string | null, serverName: string) => Promise<void>;
+  sendLocationRemovedByAdmin: (telegramId: string | null, serverName: string) => Promise<void>;
 };
 
 const TRAFFIC_CACHE_TTL_MS = 5000;
@@ -899,14 +901,19 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
     return this.get(userId);
   }
 
-  async addServerAndTrial(userId: string, serverId: string, trialDays: number): Promise<{ updated: any; trialCreated: boolean }> {
+  async addServerAndTrial(
+    userId: string,
+    serverId: string,
+    trialDays: number,
+    telegramUsername?: string | null,
+  ): Promise<{ updated: any; trialCreated: boolean }> {
     const user = await this.prisma.vpnUser.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
+
     const existing = await this.prisma.userServer.findUnique({
       where: { vpnUserId_serverId: { vpnUserId: userId, serverId } },
     });
     if (existing) {
-      // На всякий случай синхронизируем expiry со подпиской перед активацией (DRY, чтобы панель не получала "короткий" expiresAt)
       await this.syncExpiresAtWithActiveSubscription(userId);
       await this.activateServer(userId, serverId);
       return { updated: await this.get(userId), trialCreated: false };
@@ -919,73 +926,6 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
       select: { endsAt: true },
     });
 
-    // Если уже есть активная (не истёкшая) подписка — НЕ создаём триал и НЕ перезаписываем expiresAt.
-    if (activeSub && activeSub.endsAt.getTime() > now.getTime()) {
-      await this.prisma.$transaction(async (tx) => {
-        // Переключаем активную локацию
-        await tx.userServer.updateMany({ where: { vpnUserId: userId }, data: { isActive: false } });
-      });
-
-      await this.attachUserToServer(userId, serverId, {
-        isActive: true,
-        addToPanel: true,
-        expiryTime: activeSub.endsAt.getTime(),
-        telegramUsername: null,
-      });
-
-      // Убеждаемся, что expiresAt у пользователя соответствует подписке (DRY)
-      await this.syncExpiresAtWithActiveSubscription(userId);
-
-      return { updated: await this.get(userId), trialCreated: false };
-    }
-
-    const endsAt = new Date(now);
-    endsAt.setUTCDate(endsAt.getUTCDate() + trialDays);
-    await this.prisma.$transaction(async (tx) => {
-      await tx.userServer.updateMany({ where: { vpnUserId: userId }, data: { isActive: false } });
-    });
-    await this.attachUserToServer(userId, serverId, {
-      isActive: true,
-      addToPanel: true,
-      expiryTime: endsAt.getTime(),
-      telegramUsername: null,
-    });
-    await this.prisma.$transaction(async (tx) => {
-      // Гарантируем единственную активную подписку (иначе ломается шкала в UI)
-      await tx.subscription.updateMany({ where: { vpnUserId: userId, active: true }, data: { active: false } });
-      await tx.subscription.create({
-        data: { vpnUserId: userId, periodDays: trialDays, startsAt: now, endsAt, active: true },
-      });
-      await tx.vpnUser.update({
-        where: { id: userId },
-        data: {
-          expiresAt: endsAt,
-          status: user.status === 'NEW' ? 'ACTIVE' : user.status,
-        },
-      });
-    });
-    return { updated: await this.get(userId), trialCreated: true };
-  }
-
-  async addServerAndTrialWithUsername(userId: string, serverId: string, trialDays: number, telegramUsername?: string | null) {
-    // DRY: обёртка для бота, чтобы можно было прокинуть username в формат panelEmail.
-    // Вся логика trial остаётся в addServerAndTrial; здесь переиспользуем attach на ветках, где создаётся связь.
-    // Пока используем простую стратегию: если связь уже есть — fallback к старому поведению.
-    const existing = await this.prisma.userServer.findUnique({
-      where: { vpnUserId_serverId: { vpnUserId: userId, serverId } },
-    });
-    if (existing) return this.addServerAndTrial(userId, serverId, trialDays);
-
-    // Повторяем логику addServerAndTrial только в части attach с username:
-    const user = await this.prisma.vpnUser.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException('User not found');
-
-    const now = new Date();
-    const activeSub = await this.prisma.subscription.findFirst({
-      where: { vpnUserId: userId, active: true },
-      orderBy: { endsAt: 'desc' },
-      select: { endsAt: true },
-    });
     if (activeSub && activeSub.endsAt.getTime() > now.getTime()) {
       await this.prisma.$transaction(async (tx) => {
         await tx.userServer.updateMany({ where: { vpnUserId: userId }, data: { isActive: false } });
@@ -1159,7 +1099,7 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
     return { ok: true, dryRun, processed, renamed, skipped, failed, details };
   }
 
-  async activateServer(userId: string, serverId: string) {
+  async activateServer(userId: string, serverId: string, options?: { byAdmin?: boolean }) {
     const [us, previousActive, user] = await Promise.all([
       this.prisma.userServer.findUnique({
         where: { vpnUserId_serverId: { vpnUserId: userId, serverId } },
@@ -1179,7 +1119,7 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
 
     await this.prisma.$transaction([
       this.prisma.userServer.updateMany({ where: { vpnUserId: userId }, data: { isActive: false } }),
-      this.prisma.userServer.update({ where: { id: us.id }, data: { isActive: true } }),
+      this.prisma.userServer.update({ where: { id: us.id }, data: { isActive: true, active: true } }),
     ]);
 
     const secret = this.config.get<string>('PANEL_CRED_SECRET');
@@ -1203,15 +1143,21 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
       }
     }
     this.clearTrafficCache(userId);
+
+    if (options?.byAdmin && user.telegramId && us.server) {
+      void this.telegramBot.sendLocationChangedByAdmin(user.telegramId, us.server.name);
+    }
+
     return this.get(userId);
   }
 
-  async removeServer(userId: string, serverId: string) {
+  async removeServer(userId: string, serverId: string, options?: { byAdmin?: boolean }) {
     const us = await this.prisma.userServer.findUnique({
       where: { vpnUserId_serverId: { vpnUserId: userId, serverId } },
       include: { server: true },
     });
     if (!us) throw new NotFoundException('User server not found');
+    const wasActive = us.isActive;
     const server = us.server;
     if (server.panelBaseUrl && server.panelUsername && server.panelPasswordEnc && server.panelInboundId != null) {
       try {
@@ -1230,6 +1176,14 @@ export class UsersService implements OnModuleInit, OnModuleDestroy {
       }
     }
     await this.prisma.userServer.delete({ where: { id: us.id } });
+
+    if (options?.byAdmin && wasActive) {
+      const user = await this.prisma.vpnUser.findUnique({ where: { id: userId }, select: { telegramId: true } });
+      if (user) {
+        void this.telegramBot.sendLocationRemovedByAdmin(user.telegramId, server.name);
+      }
+    }
+
     return this.get(userId);
   }
 
