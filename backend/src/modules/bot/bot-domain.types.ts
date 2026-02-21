@@ -4,6 +4,7 @@ export type PlanLike = {
   periodDays: number;
   active?: boolean;
   isTrial?: boolean;
+  isTop?: boolean;
   variants?: Array<{
     id: string;
     code: string;
@@ -17,5 +18,6 @@ export type PlanLike = {
 export type ServerLike = {
   id: string;
   name: string;
+  isRecommended?: boolean;
 };
 

@@ -81,9 +81,9 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       }
 
       const Markup = await getMarkup();
-      const buttons = servers.map((server: ServerLike) => [
-        Markup.button.callback(server.name, `select_server_${server.id}`),
-      ]);
+      const buttons = servers.map((server: ServerLike) => {
+        return [{ text: server.name, callback_data: `select_server_${server.id}` }];
+      });
       const miniAppUrl = await args.getTelegramMiniAppUrl();
       if (miniAppUrl) {
         const btn = Markup?.button?.webApp
@@ -93,6 +93,12 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       }
 
       const trialDays = await args.getTrialDaysForUser(user.id);
+      const recommended = servers.find((s: ServerLike) => s.isRecommended);
+      const recommendLine = recommended
+        ? lang === 'en'
+          ? `\n\n💡 We recommend: <b>${args.esc(recommended.name)}</b>`
+          : `\n\n💡 Рекомендуем: <b>${args.esc(recommended.name)}</b>`
+        : '';
 
       await args.replyHtml(
         ctx,
@@ -101,12 +107,14 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
               `1) Choose a location\n` +
               `2) Get config and import into the app\n` +
               `3) Enable VPN\n\n` +
-              `🎁 After first connection — trial period <b>${args.esc(trialDays)} day(s)</b>`
+              `🎁 After first connection — trial period <b>${args.esc(trialDays)} day(s)</b>` +
+              recommendLine
           : `👋 Привет, <b>${args.esc(userName)}</b>!\n\n` +
               `1) Выберите локацию\n` +
               `2) Получите конфиг и импортируйте в приложение\n` +
               `3) Включите VPN\n\n` +
-              `🎁 После первого подключения — пробный период <b>${args.esc(trialDays)} дн.</b>`,
+              `🎁 После первого подключения — пробный период <b>${args.esc(trialDays)} дн.</b>` +
+              recommendLine,
         Markup.inlineKeyboard(buttons),
       );
     } catch (error: unknown) {
@@ -368,7 +376,9 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
       const buttons = allServers.map((server: ServerLike) => {
         const isActive = server.id === activeServerId;
         const label = isActive ? `✅ ${server.name}` : server.name;
-        return [Markup.button.callback(label, `select_server_${server.id}`)];
+        const btn: any = { text: label, callback_data: `select_server_${server.id}` };
+        if (isActive) btn.style = 'success';
+        return [btn];
       });
       const miniAppUrl = await args.getTelegramMiniAppUrl();
       if (miniAppUrl) {
@@ -381,13 +391,19 @@ export function registerOnboardingHandlers(args: TelegramRegistrarDeps) {
 
       const trialDays = user ? await args.getTrialDaysForUser(user.id) : 3;
       const hasServers = user && user.userServers && user.userServers.length > 0;
+      const recommended = allServers.find((s: ServerLike) => s.isRecommended);
+      const recommendLine = recommended
+        ? lang === 'en'
+          ? `\n💡 We recommend: <b>${args.esc(recommended.name)}</b>`
+          : `\n💡 Рекомендуем: <b>${args.esc(recommended.name)}</b>`
+        : '';
       const messageText = hasServers
         ? lang === 'en'
-          ? `📍 <b>Choose location</b>\n\nSelect a server to switch. ✅ — current.`
-          : `📍 <b>Выбор локации</b>\n\nВыберите сервер для переключения. ✅ — текущий.`
+          ? `📍 <b>Choose location</b>\n\nSelect a server to switch. ✅ — current.` + recommendLine
+          : `📍 <b>Выбор локации</b>\n\nВыберите сервер для переключения. ✅ — текущий.` + recommendLine
         : lang === 'en'
-          ? `📍 <b>Choose location</b>\n\nAfter connecting you'll get a trial period of <b>${args.esc(trialDays)} day(s)</b>.`
-          : `📍 <b>Выбор локации</b>\n\nПосле подключения будет пробный период <b>${args.esc(trialDays)} дн.</b>`;
+          ? `📍 <b>Choose location</b>\n\nAfter connecting you'll get a trial period of <b>${args.esc(trialDays)} day(s)</b>.` + recommendLine
+          : `📍 <b>Выбор локации</b>\n\nПосле подключения будет пробный период <b>${args.esc(trialDays)} дн.</b>` + recommendLine;
 
       await args.editHtml(ctx, messageText, Markup.inlineKeyboard(buttons));
     } catch (error: unknown) {

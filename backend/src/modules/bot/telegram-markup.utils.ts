@@ -7,4 +7,3 @@ export async function getMarkup(): Promise<any> {
   cachedMarkup = Markup;
   return cachedMarkup;
 }
-

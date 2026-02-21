@@ -52,17 +52,17 @@ export function registerPaymentsHandlers(args: TelegramRegistrarDeps) {
 
     const Markup = await getMarkup();
     const groups = groupPlansByNameAndPeriod(paidPlans);
-    const buttons = groups.map((g) => [
-      Markup.button.callback(
-        formatPlanGroupButtonLabel(g, {
-          showPlatega: providersAllowed.PLATEGA,
-          showCryptoCloud: providersAllowed.CRYPTOCLOUD,
-          showStars: providersAllowed.TELEGRAM_STARS,
-          cryptoTelegramLanguageCode: user.telegramLanguageCode ?? null,
-        }),
-        `select_plan_${g.representative.id}`,
-      ),
-    ]);
+    const buttons = groups.map((g) => {
+      const label = formatPlanGroupButtonLabel(g, {
+        showPlatega: providersAllowed.PLATEGA,
+        showCryptoCloud: providersAllowed.CRYPTOCLOUD,
+        showStars: providersAllowed.TELEGRAM_STARS,
+        cryptoTelegramLanguageCode: user.telegramLanguageCode ?? null,
+      });
+      const btn: any = { text: label, callback_data: `select_plan_${g.representative.id}` };
+      if ((g.representative as any).isTop) btn.style = 'success';
+      return [btn];
+    });
     buttons.push([Markup.button.callback(ui(lang).backToMenuBtn, 'back_to_main')]);
 
     const text =

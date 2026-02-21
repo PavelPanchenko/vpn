@@ -111,6 +111,7 @@ export function formatPlanGroupButtonLabel(
     .filter(Boolean)
     .map((v) => formatPriceShort((v as any).price, (v as any).currency))
     .join(' | ');
-  return prices ? `${group.name} — ${prices}` : group.name;
+  const text = prices ? `${group.name} — ${prices}` : group.name;
+  return text;
 }
 
