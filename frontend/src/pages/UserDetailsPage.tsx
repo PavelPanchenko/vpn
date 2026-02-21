@@ -27,6 +27,8 @@ export function UserDetailsPage() {
   const [assignPlanOpen, setAssignPlanOpen] = useState(false);
   const [selectedPlanId, setSelectedPlanId] = useState('');
   const [customDays, setCustomDays] = useState<number | ''>('');
+  const [confirmActivateServer, setConfirmActivateServer] = useState<UserServer | null>(null);
+  const [confirmRemoveServer, setConfirmRemoveServer] = useState<UserServer | null>(null);
 
   const userQ = useQuery({
     queryKey: ['user', id],
@@ -278,11 +280,7 @@ export function UserDetailsPage() {
                         size="sm"
                         className="w-full sm:w-auto"
                         disabled={activateServerM.isPending}
-                        onClick={() => {
-                          if (confirm(`Активировать локацию ${us.server.name}? Текущая активная локация будет отключена.`)) {
-                            activateServerM.mutate(us.serverId);
-                          }
-                        }}
+                        onClick={() => setConfirmActivateServer(us)}
                       >
                         Активировать
                       </Button>
@@ -292,11 +290,7 @@ export function UserDetailsPage() {
                       size="sm"
                       className="w-full sm:w-auto"
                       disabled={removeServerM.isPending}
-                      onClick={() => {
-                        if (confirm(`Удалить локацию ${us.server.name}?`)) {
-                          removeServerM.mutate(us.serverId);
-                        }
-                      }}
+                      onClick={() => setConfirmRemoveServer(us)}
                     >
                       Удалить
                     </Button>
@@ -349,6 +343,70 @@ export function UserDetailsPage() {
             <div className="mt-2 text-xs text-slate-500">Все доступные серверы уже добавлены</div>
           )}
         </label>
+      </Modal>
+
+      <Modal
+        open={confirmActivateServer !== null}
+        title="Подтверждение смены локации"
+        onClose={() => setConfirmActivateServer(null)}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" type="button" onClick={() => setConfirmActivateServer(null)}>
+              Отмена
+            </Button>
+            <Button
+              type="button"
+              disabled={activateServerM.isPending}
+              onClick={() => {
+                if (confirmActivateServer) {
+                  activateServerM.mutate(confirmActivateServer.serverId);
+                  setConfirmActivateServer(null);
+                }
+              }}
+            >
+              Активировать
+            </Button>
+          </div>
+        }
+      >
+        {confirmActivateServer && (
+          <p className="text-sm text-slate-700">
+            Активировать локацию <strong>{confirmActivateServer.server.name}</strong>? Текущая активная локация будет
+            отключена.
+          </p>
+        )}
+      </Modal>
+
+      <Modal
+        open={confirmRemoveServer !== null}
+        title="Подтверждение удаления"
+        onClose={() => setConfirmRemoveServer(null)}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" type="button" onClick={() => setConfirmRemoveServer(null)}>
+              Отмена
+            </Button>
+            <Button
+              variant="danger"
+              type="button"
+              disabled={removeServerM.isPending}
+              onClick={() => {
+                if (confirmRemoveServer) {
+                  removeServerM.mutate(confirmRemoveServer.serverId);
+                  setConfirmRemoveServer(null);
+                }
+              }}
+            >
+              Удалить
+            </Button>
+          </div>
+        }
+      >
+        {confirmRemoveServer && (
+          <p className="text-sm text-slate-700">
+            Удалить локацию <strong>{confirmRemoveServer.server.name}</strong>?
+          </p>
+        )}
       </Modal>
 
       <div className="grid gap-4 lg:grid-cols-2">

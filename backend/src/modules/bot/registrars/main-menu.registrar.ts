@@ -1,5 +1,6 @@
 import { SupportMessageType } from '@prisma/client';
 import { buildStatusMenuSnippet } from '../messages/status.message';
+import { buildHelpMessageHtml } from '../messages/help.message';
 import { scheduleDeleteMessage, scheduleDeleteMessageFromReply } from '../delete-after.utils';
 import type { TelegramRegistrarDeps } from './telegram-registrar.deps';
 import { getPaidPlansWithFallback } from '../plans/paid-plans.utils';
@@ -205,6 +206,22 @@ export function registerMainMenuHandlers(args: TelegramRegistrarDeps) {
       await args.showMainMenuEdit(ctx, user);
     } catch (error: unknown) {
       args.logger.error('Error handling back_to_main action:', error);
+      await ctx.answerCbQuery(bm(lang).errorCbText);
+    }
+  });
+
+  args.bot.action('show_help', async (ctx: TelegramCallbackCtx) => {
+    const telegramId = ctx.from.id.toString();
+    const lang = botLangFromCtx(ctx);
+    void args.usersService.updateTelegramLanguageCodeByTelegramId(telegramId, extractTelegramLanguageCode(ctx));
+
+    try {
+      const user = await args.usersService.findByTelegramId(telegramId);
+      await ctx.answerCbQuery();
+      const menuKeyboard = await args.buildMainMenuKeyboard(user, lang);
+      await args.editHtml(ctx, buildHelpMessageHtml(lang), menuKeyboard);
+    } catch (error: unknown) {
+      args.logger.error('Error handling show_help action:', error);
       await ctx.answerCbQuery(bm(lang).errorCbText);
     }
   });

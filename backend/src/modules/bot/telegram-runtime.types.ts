@@ -33,7 +33,7 @@ export type TelegramCallbackMatch = RegExpExecArray;
 export type TelegramCallbackCtx<TMatch = TelegramCallbackMatch | undefined> = TelegramMessageCtx & {
   match: TMatch;
 
-  answerCbQuery: (text?: string) => Promise<unknown>;
+  answerCbQuery: (text?: string, extra?: { show_alert?: boolean }) => Promise<unknown>;
   editMessageText: (text: string, extra?: TelegramReplyOptions) => Promise<unknown>;
 };
 

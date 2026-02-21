@@ -20,6 +20,10 @@ const BotMessagesByLang = {
     locationConnectedHeaderText: '✅ Локация успешно подключена!',
     switchLocationUpdateConfigText:
       '🔄 При смене локации обязательно получите новый конфиг («📥 Получить конфиг» или /config) и обновите его в VPN-приложении — параметры сервера изменились.\n\n',
+    /** Alert при смене локации. {name} — название сервера. */
+    switchLocationAlertText: '📍 Локация изменена на {name}',
+    /** Подтверждение смены локации. {name} — новая локация. */
+    switchLocationConfirmText: '🔄 Переключиться на <b>{name}</b>?\n\nТекущая активная локация будет отключена.',
     afterConnectHintText:
       `Что дальше:\n` +
       `1) Нажмите «📥 Получить конфиг» (или команда /config)\n` +
@@ -51,6 +55,14 @@ const BotMessagesByLang = {
     accessDaysChangedTemplate: '📅 <b>Срок доступа изменён</b>\n\nНовый срок действия: до {date}\n\nПроверить: /status',
     /** Уведомление при снятии срока доступа админом. */
     accessDaysRemovedText: '📅 <b>Срок доступа снят</b> администратором.\n\nПроверить статус: /status',
+    /** Уведомление при смене локации админом. {name} — название сервера. */
+    locationChangedByAdminTemplate:
+      '📍 <b>Администратор изменил вашу локацию</b> на {name}.\n\n' +
+      '🔄 Обязательно получите новый конфиг («📥 Получить конфиг» или /config) и обновите его в VPN-приложении.',
+    /** Уведомление при удалении активной локации админом. {name} — название сервера. */
+    locationRemovedByAdminTemplate:
+      '🗑 <b>Администратор удалил вашу локацию</b> {name}.\n\n' +
+      'Выберите другую локацию: /start',
   },
   en: {
     userNotFoundStartHtml: '❌ User not found. Tap <code>/start</code> to register.',
@@ -71,6 +83,8 @@ const BotMessagesByLang = {
     locationConnectedHeaderText: '✅ Location connected!',
     switchLocationUpdateConfigText:
       '🔄 After switching location, get a new config (“📥 Get config” or /config) and update it in your VPN app — the server parameters have changed.\n\n',
+    switchLocationAlertText: '📍 Location switched to {name}',
+    switchLocationConfirmText: '🔄 Switch to <b>{name}</b>?\n\nCurrent active location will be deactivated.',
     afterConnectHintText:
       `Next steps:\n` +
       `1) Tap “📥 Get config” (or /config)\n` +
@@ -97,6 +111,9 @@ const BotMessagesByLang = {
     expiryReminderTemplate: '⏰ <b>Reminder</b>: your subscription expires in 24 hours (until {date}).\n\nExtend: /pay',
     accessDaysChangedTemplate: '📅 <b>Access period changed</b>\n\nNew expiry: {date}\n\nCheck: /status',
     accessDaysRemovedText: '📅 <b>Access period removed</b> by admin.\n\nCheck status: /status',
+    locationChangedByAdminTemplate:
+      '📍 <b>Admin changed your location</b> to {name}.\n\n' +
+      '🔄 Get a new config (“📥 Get config” or /config) and update it in your VPN app.',
   },
   uk: {
     userNotFoundStartHtml: '❌ Користувача не знайдено. Натисніть <code>/start</code> для реєстрації.',
@@ -117,6 +134,8 @@ const BotMessagesByLang = {
     locationConnectedHeaderText: '✅ Локацію успішно підключено!',
     switchLocationUpdateConfigText:
       '🔄 Після зміни локації обовʼязково отримайте новий конфіг («📥 Отримати конфіг» або /config) та оновіть його у VPN-застосунку — параметри сервера змінилися.\n\n',
+    switchLocationAlertText: '📍 Локацію змінено на {name}',
+    switchLocationConfirmText: '🔄 Перемкнутися на <b>{name}</b>?\n\nПоточна активна локація буде вимкнена.',
     afterConnectHintText:
       `Що далі:\n` +
       `1) Натисніть «📥 Отримати конфіг» (або /config)\n` +
@@ -143,6 +162,11 @@ const BotMessagesByLang = {
     expiryReminderTemplate: '⏰ <b>Нагадування</b>: підписка закінчується через добу (до {date}).\n\nПодовжити: /pay',
     accessDaysChangedTemplate: '📅 <b>Термін доступу змінено</b>\n\nНовий термін: до {date}\n\nПеревірити: /status',
     accessDaysRemovedText: '📅 <b>Термін доступу знято</b> адміністратором.\n\nПеревірити статус: /status',
+    locationChangedByAdminTemplate:
+      '📍 <b>Адміністратор змінив вашу локацію</b> на {name}.\n\n' +
+      '🔄 Отримайте новий конфіг («📥 Отримати конфіг» або /config) та оновіть його у VPN-застосунку.',
+    locationRemovedByAdminTemplate:
+      '🗑 <b>Адміністратор видалив вашу локацію</b> {name}.\n\nОберіть іншу локацію: /start',
   },
 } as const;
 
@@ -187,6 +211,8 @@ const PaymentMessagesByLang = {
       `Tap the button below to open the invoice and pay. After payment the subscription will activate automatically.`,
     starsPayButtonLabel: 'Pay ⭐{price}',
     paymentSuccessBotText: '✅ Payment successful, status updated.',
+    locationRemovedByAdminTemplate:
+      '🗑 <b>Admin removed your location</b> {name}.\n\nChoose another location: /start',
   },
   uk: {
     billSentStarsTemplate: '💳 Рахунок надіслано.\n\nСплатіть <b>{price}</b> XTR, після чого підписка активується автоматично.',
